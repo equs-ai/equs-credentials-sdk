@@ -3344,6 +3344,7 @@ dependencies = [
  "equs-one-core-standardized-types",
  "jsonwebtoken",
  "p256",
+ "pem 3.0.6",
  "rcgen",
  "rsa 0.9.10",
  "rstest 0.22.0",

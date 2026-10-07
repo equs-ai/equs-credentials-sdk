@@ -1,5 +1,6 @@
 use crate::utils::fixtures::oid4vp::{
-    MockNonceHandler, mdl_chain, mdl_iaca, mdl_vp_token, sample_dcql_query_for_mso_mdoc_vp_request,
+    MDL_CLIENT_ID, MDL_NONCE, MockNonceHandler, mdl_chain, mdl_iaca, mdl_vp_token,
+    sample_dcql_query_for_mso_mdoc_vp_request,
 };
 use crate::utils::fixtures::oid4vp::{NONCE, create_vc, generate_did_key_and_vm};
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
@@ -272,7 +273,7 @@ async fn presentation_verification_flow_with_mdl(#[case] trusted: bool) {
     .unwrap();
 
     let session = PresentationSession {
-        nonce: Nonce::from_secret("BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4".to_string()),
+        nonce: Nonce::from_secret(MDL_NONCE.to_string()),
         resolved_presentation_query: ResolvedPresentationQuery::DCQL(
             sample_dcql_query_for_mso_mdoc_vp_request(),
         ),
@@ -294,7 +295,7 @@ async fn presentation_verification_flow_with_mdl(#[case] trusted: bool) {
             &session,
             &CredentialVerificationMetadata {
                 transaction_data: None,
-                audience: Some("https://verifier.example.com:5173".to_string()),
+                audience: Some(MDL_CLIENT_ID.to_string()),
             },
         )
         .await

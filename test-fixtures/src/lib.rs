@@ -588,19 +588,11 @@ fn cbor(value: &Cbor) -> Vec<u8> {
 
 /// One certificate's DER, or an array for a chain.
 fn x5chain(pem: &str) -> Cbor {
-    let mut certificates: Vec<Cbor> = pem
-        .split("-----BEGIN CERTIFICATE-----")
-        .skip(1)
-        .map(|block| {
-            let (body, _) = block
-                .split_once("-----END CERTIFICATE-----")
-                .expect("unterminated PEM certificate");
-            let body: String = body.split_whitespace().collect();
-            base64::prelude::BASE64_STANDARD
-                .decode(body)
-                .expect("PEM certificate base64")
-                .into()
-        })
+    let mut certificates: Vec<Cbor> = pem::parse_many(pem)
+        .expect("PEM certificate")
+        .into_iter()
+        .filter(|block| block.tag() == "CERTIFICATE")
+        .map(|block| block.into_contents().into())
         .collect();
     match certificates.len() {
         0 => panic!("no PEM certificate"),

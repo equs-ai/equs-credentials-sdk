@@ -651,8 +651,10 @@ pub fn mdl_chain() -> (String, String, test_fixtures::JWK) {
     (iaca, ds, ds_key)
 }
 
-/// mDL presentation of Erika Mustermann issued under `ds`, bound to nonce
-/// `BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4` and verifier `https://verifier.example.com:5173`.
+pub const MDL_NONCE: &str = "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4";
+pub const MDL_CLIENT_ID: &str = "https://verifier.example.com:5173";
+
+/// mDL presentation of Erika Mustermann issued under `ds`, bound to `MDL_NONCE` and `MDL_CLIENT_ID`.
 pub fn mdl_vp_token(ds: &str, ds_key: &test_fixtures::JWK) -> String {
     test_fixtures::mdoc(
         &json!({
@@ -663,8 +665,8 @@ pub fn mdl_vp_token(ds: &str, ds_key: &test_fixtures::JWK) -> String {
             "valid_from": "2026-01-01T00:00:00Z",
             "valid_until": "2046-01-01T00:00:00Z",
             "x5chain": ds,
-            "client_id": "https://verifier.example.com:5173",
-            "nonce": "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4"
+            "client_id": MDL_CLIENT_ID,
+            "nonce": MDL_NONCE
         }),
         ds_key,
         &test_fixtures::keys().holder,
