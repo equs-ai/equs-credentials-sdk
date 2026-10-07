@@ -263,9 +263,16 @@ pub mod tests {
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
     use std::collections::HashMap;
 
+    const RESPONSE_URI: &str = "https://verifier.example.com/response";
+
     /// mDL presentation of Erika Mustermann under a fresh IACA → DS chain, bound to nonce
     /// `4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM` and verifier `https://verifier.example.com`.
     pub fn sample_mso_mdoc_vp() -> String {
+        mdoc_vp(None)
+    }
+
+    /// `sample_mso_mdoc_vp`, also bound to `response_uri` when given.
+    fn mdoc_vp(response_uri: Option<&str>) -> String {
         let (_, ds, ds_key) = mdl_chain();
         test_fixtures::mdoc(
             &serde_json::json!({
@@ -276,7 +283,8 @@ pub mod tests {
                 "valid_from": "2026-01-01T00:00:00Z",
                 "valid_until": "2046-01-01T00:00:00Z",
                 "client_id": "https://verifier.example.com",
-                "nonce": "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM"
+                "nonce": "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM",
+                "response_uri": response_uri
             }),
             (&ds, &ds_key),
             &test_fixtures::keys().holder,
@@ -366,5 +374,37 @@ pub mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[rstest::rstest]
+    #[case::matching_response_uri(Some(RESPONSE_URI), true)]
+    #[case::other_response_uri(Some("https://verifier.example.com/other"), false)]
+    #[case::no_response_uri(None, false)]
+    #[tokio::test]
+    async fn verify_vp_binds_the_response_uri(
+        #[case] response_uri: Option<&str>,
+        #[case] valid: bool,
+    ) {
+        let result = MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: mdoc_vp(Some(RESPONSE_URI)),
+                enc_pub_key: None,
+            },
+            Some(HolderBinder {
+                nonce: Nonce::from_secret(
+                    "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
+                ),
+                verifier_id: "https://verifier.example.com".to_string(),
+                response_uri: response_uri.map(str::to_string),
+            }),
+            VerifyOptions {
+                trusted_certs: None,
+                selective_claims: None,
+            },
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert_eq!(result.is_ok(), valid, "{result:?}");
     }
 }

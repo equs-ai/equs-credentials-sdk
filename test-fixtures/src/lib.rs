@@ -358,14 +358,15 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
     T::deserialize(value).unwrap_or_else(|err| panic!("{what}: {err}"))
 }
 
-/// mso_mdoc DeviceResponse (base64url CBOR) presenting one document under the OID4VP 1.0 handover
-/// without `response_uri`, issuer-signed by `issuer` (DS certificate PEM and its key) and
-/// device-signed by `device`. `spec` is JSON: `{"doc_type": "org.iso.18013.5.1.mDL",
+/// mso_mdoc DeviceResponse (base64url CBOR) presenting one document under an OpenID4VP 1.0
+/// handover (`OpenID4VPHandover` when `response_uri` is given, `OpenID4VPDCAPIHandover`
+/// otherwise; no verifier-key thumbprint), issuer-signed by `issuer` (DS certificate PEM and its
+/// key) and device-signed by `device`. `spec` is JSON: `{"doc_type": "org.iso.18013.5.1.mDL",
 /// "name_spaces": {"org.iso.18013.5.1": {"family_name": "Mustermann"}}, "valid_from":
 /// "2026-01-01T00:00:00Z", "valid_until": "2046-01-01T00:00:00Z", "client_id":
-/// "https://verifier.example.com", "nonce": "…"}`. Element values are strings, integers or
-/// booleans; digest IDs follow the order given, each item gets a fresh random salt, and an
-/// unknown field or another value type panics.
+/// "https://verifier.example.com", "nonce": "…", "response_uri": "…"}`; `response_uri` is
+/// optional. Element values are strings, integers or booleans; digest IDs follow the order given,
+/// each item gets a fresh random salt, and an unknown field or another value type panics.
 pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
     let doc_type = spec.doc_type.as_str();
@@ -419,7 +420,7 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let device_name_spaces = embed(&Cbor::Map(Vec::new()));
     let device_authentication = Cbor::Array(vec![
         "DeviceAuthentication".into(),
-        session_transcript(&spec.client_id, &spec.nonce),
+        session_transcript(&spec.client_id, &spec.nonce, spec.response_uri.as_deref()),
         doc_type.into(),
         device_name_spaces.clone(),
     ]);
@@ -468,26 +469,38 @@ struct MdocSpec {
     valid_until: String,
     client_id: String,
     nonce: String,
+    response_uri: Option<String>,
 }
 
 fn b64(value: &Value) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).expect("JSON"))
 }
 
-/// OID4VP 1.0 SessionTranscript for a response without `response_uri` or encryption key, as
-/// one-core rebuilds it to verify the device signature.
-fn session_transcript(client_id: &str, nonce: &str) -> Cbor {
-    let info = cbor(&Cbor::Array(vec![
-        client_id.into(),
-        nonce.into(),
-        Cbor::Null,
-    ]));
+/// OpenID4VP 1.0 SessionTranscript without a verifier-key thumbprint, as one-core rebuilds it to
+/// verify the device signature: `OpenID4VPHandover` with `response_uri`, `OpenID4VPDCAPIHandover`
+/// without.
+fn session_transcript(client_id: &str, nonce: &str, response_uri: Option<&str>) -> Cbor {
+    let (handover, info) = match response_uri {
+        Some(response_uri) => (
+            "OpenID4VPHandover",
+            vec![
+                client_id.into(),
+                nonce.into(),
+                Cbor::Null,
+                response_uri.into(),
+            ],
+        ),
+        None => (
+            "OpenID4VPDCAPIHandover",
+            vec![client_id.into(), nonce.into(), Cbor::Null],
+        ),
+    };
     Cbor::Array(vec![
         Cbor::Null,
         Cbor::Null,
         Cbor::Array(vec![
-            "OpenID4VPDCAPIHandover".into(),
-            Sha256::digest(info).to_vec().into(),
+            handover.into(),
+            Sha256::digest(cbor(&Cbor::Array(info))).to_vec().into(),
         ]),
     ])
 }
@@ -1140,6 +1153,16 @@ mod tests {
         }
     }
 
+    fn device_payload(device_signed: &Cbor, nonce: &str, response_uri: Option<&str>) -> Vec<u8> {
+        let authentication = Cbor::Array(vec![
+            "DeviceAuthentication".into(),
+            session_transcript("https://verifier.example.com", nonce, response_uri),
+            "org.iso.18013.5.1.mDL".into(),
+            field(device_signed, "nameSpaces").clone(),
+        ]);
+        cbor(&Cbor::Tag(24, Box::new(cbor(&authentication).into())))
+    }
+
     #[test]
     fn mdoc_device_signature_is_bound_to_the_client_id_and_nonce() {
         let ds_key = JWK::generate_p256();
@@ -1148,18 +1171,40 @@ mod tests {
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
         assert_eq!(signature.as_array().unwrap()[2], Cbor::Null);
 
-        let payload = |nonce: &str| {
-            let authentication = Cbor::Array(vec![
-                "DeviceAuthentication".into(),
-                session_transcript("https://verifier.example.com", nonce),
-                "org.iso.18013.5.1.mDL".into(),
-                field(device_signed, "nameSpaces").clone(),
-            ]);
-            cbor(&Cbor::Tag(24, Box::new(cbor(&authentication).into())))
-        };
-
+        let payload = |nonce| device_payload(device_signed, nonce, None);
         verify_sign1(signature, &payload("n-0S6_WzA2Mj"), &keys().holder).unwrap();
         assert!(verify_sign1(signature, &payload("another"), &keys().holder).is_err());
+    }
+
+    #[test]
+    fn mdoc_device_signature_with_a_response_uri_is_bound_to_it() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["response_uri"] = json!("https://verifier.example.com/response");
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let device_signed = field(&document, "deviceSigned");
+        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
+
+        let payload = |response_uri| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri);
+        let holder = &keys().holder;
+        verify_sign1(
+            signature,
+            &payload(Some("https://verifier.example.com/response")),
+            holder,
+        )
+        .unwrap();
+        assert!(
+            verify_sign1(
+                signature,
+                &payload(Some("https://other.example/response")),
+                holder
+            )
+            .is_err()
+        );
+        assert!(verify_sign1(signature, &payload(None), holder).is_err());
+        let transcript = session_transcript("https://verifier.example.com", "n", Some("https://r"));
+        let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
+        assert_eq!(handover[0].as_text(), Some("OpenID4VPHandover"));
     }
 
     #[test]
@@ -1167,6 +1212,7 @@ mod tests {
         let transcript = session_transcript(
             "https://verifier.example.com:5173",
             "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4",
+            None,
         );
 
         let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
