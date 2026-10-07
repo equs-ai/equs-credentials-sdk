@@ -362,14 +362,16 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
 /// device-signed by `device` under an OpenID4VP 1.0 handover. `spec`: `doc_type`, `name_spaces`
 /// (string, integer or boolean values), `valid_from` / `valid_until` (`YYYY-MM-DDThh:mm:ssZ`),
 /// `x5chain` (PEM of the DS certificate, optionally followed by its chain), `client_id`, `nonce`,
-/// optional `response_uri` and `verifier_key`. Other input panics.
+/// optional `response_uri` and `verifier_key`. Malformed fields panic.
 pub fn mdoc(spec: &Value, ds_key: &JWK, device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
     let doc_type = spec.doc_type.as_str();
     let mut name_spaces = Vec::new();
     let mut value_digests = Vec::new();
+    assert!(!spec.name_spaces.is_empty(), "mdoc spec: no name space");
     for (name_space, elements) in &spec.name_spaces {
         let elements: serde_json::Map<String, Value> = parse("a name space", elements);
+        assert!(!elements.is_empty(), "name space `{name_space}` is empty");
         let mut items = Vec::new();
         let mut digests = Vec::new();
         for (digest_id, (identifier, value)) in elements.iter().enumerate() {
@@ -477,8 +479,7 @@ fn b64(value: &Value) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).expect("JSON"))
 }
 
-/// OpenID4VP 1.0 SessionTranscript as one-core rebuilds it: `OpenID4VPHandover` with `response_uri`
-/// (trailing `/` trimmed), `OpenID4VPDCAPIHandover` without.
+/// OpenID4VP 1.0 SessionTranscript; `OpenID4VPDCAPIHandover` without `response_uri`.
 fn session_transcript(
     client_id: &str,
     nonce: &str,
@@ -490,10 +491,10 @@ fn session_transcript(
         Some(response_uri) => (
             "OpenID4VPHandover",
             vec![
-                client_id.trim_end_matches('/').into(),
+                client_id.into(),
                 nonce.into(),
                 thumbprint,
-                response_uri.trim_end_matches('/').into(),
+                response_uri.into(),
             ],
         ),
         None => (
@@ -610,11 +611,15 @@ fn x5chain(pem: &str) -> Cbor {
 
 /// `#6.0(text)`, UTC whole seconds only.
 fn tdate(text: &str) -> Cbor {
-    time::PrimitiveDateTime::parse(
-        text,
-        time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z"),
-    )
-    .unwrap_or_else(|err| panic!("date `{text}` is not YYYY-MM-DDThh:mm:ssZ: {err}"));
+    let format =
+        time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z");
+    let canonical = time::PrimitiveDateTime::parse(text, format)
+        .ok()
+        .and_then(|date| date.format(format).ok());
+    assert!(
+        canonical.as_deref() == Some(text),
+        "date `{text}` is not YYYY-MM-DDThh:mm:ssZ"
+    );
     Cbor::Tag(0, Box::new(text.into()))
 }
 
@@ -1232,23 +1237,6 @@ mod tests {
     }
 
     #[test]
-    fn session_transcript_drops_a_trailing_slash_only_in_the_openid4vp_handover() {
-        assert_eq!(
-            session_transcript(
-                "https://verifier.example.com/",
-                NONCE,
-                Some("https://r/"),
-                None
-            ),
-            session_transcript(CLIENT_ID, NONCE, Some("https://r"), None)
-        );
-        assert_ne!(
-            session_transcript("https://verifier.example.com/", NONCE, None, None),
-            session_transcript(CLIENT_ID, NONCE, None, None)
-        );
-    }
-
-    #[test]
     #[should_panic(expected = "mdoc spec: unknown field `docType`")]
     fn mdoc_rejects_an_unknown_spec_field() {
         let ds_key = JWK::generate_p256();
@@ -1274,10 +1262,22 @@ mod tests {
     }
 
     #[rstest]
+    #[case::no_name_space(json!({}))]
+    #[case::empty_name_space(json!({ "org.iso.18013.5.1": {} }))]
+    #[should_panic(expected = "name space")]
+    fn mdoc_rejects_empty_name_spaces(#[case] name_spaces: Value) {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["name_spaces"] = name_spaces;
+        mdoc(&spec, &ds_key, &keys().holder);
+    }
+
+    #[rstest]
     #[case::fraction("2046-01-01T00:00:00.5Z")]
     #[case::offset("2046-01-01T00:00:00+01:00")]
     #[case::date_only("2046-01-01")]
     #[case::no_such_day("2046-02-30T00:00:00Z")]
+    #[case::signed_year("+2046-01-01T00:00:00Z")]
     #[should_panic(expected = "is not YYYY-MM-DDThh:mm:ssZ")]
     fn mdoc_rejects_a_date_that_is_not_a_utc_tdate(#[case] date: &str) {
         let ds_key = JWK::generate_p256();

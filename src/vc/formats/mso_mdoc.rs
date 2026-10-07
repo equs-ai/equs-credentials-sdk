@@ -263,8 +263,8 @@ pub mod tests {
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
     use std::collections::HashMap;
 
-    const NONCE: &str = "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM";
-    const VERIFIER: &str = "https://verifier.example.com";
+    pub const NONCE: &str = "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM";
+    pub const VERIFIER: &str = "https://verifier.example.com";
     const RESPONSE_URI: &str = "https://verifier.example.com/response";
 
     /// mDL presentation under a fresh IACA → DS chain, bound to `NONCE` and `VERIFIER`.
@@ -335,19 +335,17 @@ pub mod tests {
     }
 
     #[rstest::rstest]
-    #[case::matching_response_uri(RESPONSE_URI, Some(RESPONSE_URI), true)]
-    #[case::trailing_slash("https://verifier.example.com/response/", Some(RESPONSE_URI), true)]
-    #[case::other_response_uri(RESPONSE_URI, Some("https://verifier.example.com/other"), false)]
-    #[case::no_response_uri(RESPONSE_URI, None, false)]
+    #[case::matching_response_uri(Some(RESPONSE_URI), true)]
+    #[case::other_response_uri(Some("https://verifier.example.com/other"), false)]
+    #[case::no_response_uri(None, false)]
     #[tokio::test]
     async fn verify_vp_binds_the_response_uri(
-        #[case] presented: &str,
         #[case] response_uri: Option<&str>,
         #[case] valid: bool,
     ) {
         let result = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: mdoc_vp(Some(presented), None),
+                value: mdoc_vp(Some(RESPONSE_URI), None),
                 enc_pub_key: None,
             },
             Some(binder(response_uri)),
@@ -356,7 +354,7 @@ pub mod tests {
         )
         .await;
 
-        assert_eq!(result.is_ok(), valid, "{result:?}");
+        assert_binding(result, valid);
     }
 
     #[rstest::rstest]
@@ -379,7 +377,7 @@ pub mod tests {
         )
         .await;
 
-        assert_eq!(result.is_ok(), valid, "{result:?}");
+        assert_binding(result, valid);
     }
 
     /// `sample_mso_mdoc_vp`, also bound to `response_uri` and `verifier_key` when given.
@@ -402,6 +400,18 @@ pub mod tests {
             &ds_key,
             &test_fixtures::keys().holder,
         )
+    }
+
+    /// Ok, or the DeviceSigned failure of a wrong binding.
+    fn assert_binding<T: std::fmt::Debug, E: std::fmt::Debug>(result: Result<T, E>, valid: bool) {
+        match result {
+            Ok(_) if valid => {}
+            Err(err) if !valid => assert!(
+                format!("{err:?}").contains("verifying DeviceSigned"),
+                "{err:?}"
+            ),
+            result => panic!("expected valid = {valid}, got {result:?}"),
+        }
     }
 
     fn binder(response_uri: Option<&str>) -> HolderBinder {

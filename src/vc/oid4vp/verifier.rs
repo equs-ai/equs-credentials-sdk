@@ -1204,7 +1204,7 @@ mod tests {
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
     use crate::vc::dcql::DCQLCredential;
-    use crate::vc::formats::mso_mdoc::tests::sample_mso_mdoc_vp;
+    use crate::vc::formats::mso_mdoc::tests as mdoc;
     use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements, transaction_data_items,
@@ -2019,7 +2019,7 @@ mod tests {
     async fn verifier_validating_mso_mdoc_vp_works_correctly() {
         let (verifier, _) = verifier_service().await;
         let session = PresentationSession {
-            nonce: Nonce::from_secret("4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string()),
+            nonce: Nonce::from_secret(mdoc::NONCE.to_string()),
             resolved_presentation_query: ResolvedPresentationQuery::DCQL(
                 sample_dcql_query_for_mso_mdoc_vp_request(),
             ),
@@ -2028,7 +2028,7 @@ mod tests {
         let mut vp_token = HashMap::new();
         vp_token.insert(
             "mDL",
-            Value::Array(vec![Value::String(sample_mso_mdoc_vp())]),
+            Value::Array(vec![Value::String(mdoc::sample_mso_mdoc_vp())]),
         );
 
         let response = AuthorizationResponseObject {
@@ -2045,7 +2045,7 @@ mod tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    audience: Some("https://verifier.example.com".to_string()),
+                    audience: Some(mdoc::VERIFIER.to_string()),
                 },
             )
             .await

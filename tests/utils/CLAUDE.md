@@ -24,5 +24,5 @@ resolution, static fixtures, and builder helpers consumed by all e2e test module
 
 ## Constraints
 - mdoc presentations are generated per test through `test_fixtures::mdoc` under a fresh IACA → DS chain
-  (`mdl_chain`). The token's device signature is bound to the nonce and verifier `client_id` given at the call
-  site, so a test verifying with other values generates its own token.
+  (`mdl_chain`). `mdl_vp_token` binds the device signature to the e2e nonce and verifier `client_id` it
+  hard-codes, so a test verifying with other values generates its own token.
