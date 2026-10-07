@@ -358,12 +358,12 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
     T::deserialize(value).unwrap_or_else(|err| panic!("{what}: {err}"))
 }
 
-/// mso_mdoc DeviceResponse (base64url CBOR) of one document, issuer-signed by `issuer` (DS
-/// certificate PEM, optionally followed by its chain, and DS key) and device-signed by `device`
-/// under an OpenID4VP 1.0 handover. `spec`: `doc_type`, `name_spaces` (string, integer or boolean
-/// values), `valid_from` / `valid_until` (`YYYY-MM-DDThh:mm:ssZ`), `client_id`, `nonce`, optional
-/// `response_uri` and `verifier_key`. Other input panics.
-pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
+/// mso_mdoc DeviceResponse (base64url CBOR) of one document, issuer-signed by `ds_key` and
+/// device-signed by `device` under an OpenID4VP 1.0 handover. `spec`: `doc_type`, `name_spaces`
+/// (string, integer or boolean values), `valid_from` / `valid_until` (`YYYY-MM-DDThh:mm:ssZ`),
+/// `x5chain` (PEM of the DS certificate, optionally followed by its chain), `client_id`, `nonce`,
+/// optional `response_uri` and `verifier_key`. Other input panics.
+pub fn mdoc(spec: &Value, ds_key: &JWK, device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
     let doc_type = spec.doc_type.as_str();
     let mut name_spaces = Vec::new();
@@ -405,9 +405,8 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
             ]),
         ),
     ]);
-    let (ds_cert, ds_key) = issuer;
     let issuer_auth = cose_sign1(
-        Cbor::Map(vec![(33.into(), x5chain(ds_cert))]),
+        Cbor::Map(vec![(33.into(), x5chain(&spec.x5chain))]),
         cbor(&embed(&mso)),
         true,
         ds_key,
@@ -467,6 +466,7 @@ struct MdocSpec {
     name_spaces: serde_json::Map<String, Value>,
     valid_from: String,
     valid_until: String,
+    x5chain: String,
     client_id: String,
     nonce: String,
     response_uri: Option<String>,
@@ -1053,7 +1053,7 @@ mod tests {
     #[test]
     fn mdoc_issuer_auth_signs_the_digest_of_every_item_under_the_ds_certificate() {
         let ds_key = JWK::generate_p256();
-        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
+        let document = document(&mdoc(&mdl_spec(), &ds_key, &keys().holder));
         let issuer_signed = field(&document, "issuerSigned");
         let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
 
@@ -1087,7 +1087,7 @@ mod tests {
         let ds_key = JWK::generate_p256();
         let mut spec = mdl_spec();
         spec["name_spaces"]["org.iso.18013.5.1.aamva"] = json!({ "DHS_compliance": "F" });
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let document = document(&mdoc(&spec, &ds_key, &keys().holder));
         let issuer_signed = field(&document, "issuerSigned");
         let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
         let mso = embedded(&decode(issuer_auth[2].as_bytes().unwrap()));
@@ -1114,13 +1114,15 @@ mod tests {
     #[should_panic(expected = "PEM certificate")]
     fn mdoc_rejects_an_issuer_pem_without_a_valid_certificate(#[case] pem: &str) {
         let ds_key = JWK::generate_p256();
-        mdoc(&mdl_spec(), (pem, &ds_key), &keys().holder);
+        let mut spec = mdl_spec();
+        spec["x5chain"] = json!(pem);
+        mdoc(&spec, &ds_key, &keys().holder);
     }
 
     #[test]
     fn mdoc_device_signature_is_bound_to_the_client_id_and_nonce() {
         let ds_key = JWK::generate_p256();
-        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
+        let document = document(&mdoc(&mdl_spec(), &ds_key, &keys().holder));
         let device_signed = field(&document, "deviceSigned");
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
         assert_eq!(signature.as_array().unwrap()[2], Cbor::Null);
@@ -1138,7 +1140,7 @@ mod tests {
         let ds_key = JWK::generate_p256();
         let mut spec = mdl_spec();
         spec["response_uri"] = json!(RESPONSE_URI);
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let document = document(&mdoc(&spec, &ds_key, &keys().holder));
         let device_signed = field(&document, "deviceSigned");
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
 
@@ -1166,7 +1168,7 @@ mod tests {
         let mut spec = mdl_spec();
         spec["response_uri"] = json!(RESPONSE_URI);
         spec["verifier_key"] = json!(keys().verifier.to_public());
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let document = document(&mdoc(&spec, &ds_key, &keys().holder));
         let device_signed = field(&document, "deviceSigned");
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
 
@@ -1250,11 +1252,7 @@ mod tests {
     #[should_panic(expected = "mdoc spec: unknown field `docType`")]
     fn mdoc_rejects_an_unknown_spec_field() {
         let ds_key = JWK::generate_p256();
-        mdoc(
-            &json!({ "docType": "x" }),
-            (DS_CERT, &ds_key),
-            &keys().holder,
-        );
+        mdoc(&json!({ "docType": "x" }), &ds_key, &keys().holder);
     }
 
     #[test]
@@ -1272,7 +1270,7 @@ mod tests {
         let ds_key = JWK::generate_p256();
         let mut spec = mdl_spec();
         spec["name_spaces"]["org.iso.18013.5.1"]["family_name"] = value;
-        mdoc(&spec, (DS_CERT, &ds_key), &keys().holder);
+        mdoc(&spec, &ds_key, &keys().holder);
     }
 
     #[rstest]
@@ -1285,7 +1283,7 @@ mod tests {
         let ds_key = JWK::generate_p256();
         let mut spec = mdl_spec();
         spec["valid_until"] = json!(date);
-        mdoc(&spec, (DS_CERT, &ds_key), &keys().holder);
+        mdoc(&spec, &ds_key, &keys().holder);
     }
 
     /// Fake PEMs: the builder copies the DER without parsing it.
@@ -1304,6 +1302,7 @@ mod tests {
             } },
             "valid_from": "2026-01-01T00:00:00Z",
             "valid_until": "2046-01-01T00:00:00Z",
+            "x5chain": DS_CERT,
             "client_id": CLIENT_ID,
             "nonce": NONCE
         })

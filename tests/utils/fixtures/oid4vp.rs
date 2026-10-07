@@ -653,7 +653,7 @@ pub fn mdl_chain() -> (String, String, test_fixtures::JWK) {
 
 /// mDL presentation of Erika Mustermann issued under `ds`, bound to nonce
 /// `BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4` and verifier `https://verifier.example.com:5173`.
-pub fn mdl_vp_token(ds: (&str, &test_fixtures::JWK)) -> String {
+pub fn mdl_vp_token(ds: &str, ds_key: &test_fixtures::JWK) -> String {
     test_fixtures::mdoc(
         &json!({
             "doc_type": "org.iso.18013.5.1.mDL",
@@ -662,10 +662,11 @@ pub fn mdl_vp_token(ds: (&str, &test_fixtures::JWK)) -> String {
             } },
             "valid_from": "2026-01-01T00:00:00Z",
             "valid_until": "2046-01-01T00:00:00Z",
+            "x5chain": ds,
             "client_id": "https://verifier.example.com:5173",
             "nonce": "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4"
         }),
-        ds,
+        ds_key,
         &test_fixtures::keys().holder,
     )
 }

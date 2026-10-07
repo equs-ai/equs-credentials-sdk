@@ -400,12 +400,13 @@ pub mod tests {
                 } },
                 "valid_from": "2026-01-01T00:00:00Z",
                 "valid_until": "2046-01-01T00:00:00Z",
+                "x5chain": ds,
                 "client_id": VERIFIER,
                 "nonce": NONCE,
                 "response_uri": response_uri,
                 "verifier_key": verifier_key.map(test_fixtures::JWK::to_public)
             }),
-            (&ds, &ds_key),
+            &ds_key,
             &test_fixtures::keys().holder,
         );
         (iaca, value)

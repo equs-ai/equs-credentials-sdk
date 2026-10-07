@@ -282,7 +282,7 @@ async fn presentation_verification_flow_with_mdl(#[case] trusted: bool) {
     let auth_response = serde_json::from_value(json!(
         {
             "vp_token": {
-                "mDL": [mdl_vp_token((&ds, &ds_key))]
+                "mDL": [mdl_vp_token(&ds, &ds_key)]
             }
         }
     ))
