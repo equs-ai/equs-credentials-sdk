@@ -10,6 +10,10 @@ use crate::vc::core::{
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::oid4vci::AuthzFlow::Authorize;
+use crate::vc::oid4vci::auth_server_selection::{
+    AuthServerChoice, AuthServerHint, discover_first_supporting_authorization_code,
+    listed_offered_server, select_authorization_server,
+};
 use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::oid4vci::internal_error::{
     AuthorizationCallbackSnafu, AuthorizationRequestSnafu, HolderServiceSnafu, MetadataSnafu,
@@ -35,7 +39,6 @@ use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
 use oid4vci::credential::{CredentialId, Proofs, RequestBuilder, ResponseEnum};
-use oid4vci::metadata::authorization_server::GrantType;
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
 use oid4vci::token;
@@ -45,7 +48,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::string::ToString;
 use std::sync::Arc;
-use tracing::{Level, debug, info, instrument, trace, warn};
+use tracing::{Level, debug, info, instrument, trace};
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -115,17 +118,7 @@ where
 
         let iss_url = offer.credential_issuer().to_owned();
 
-        // The client is bound to one authorization server at construction. A pre-authorized grant
-        // resolves the server it names on every token request, so only an offer without one lets
-        // the authorization code grant pick the server to discover (OID4VCI 1.0 §4.1.1)
-        let hint = match offer.grants() {
-            Some(grants) if grants.pre_authorized_code.is_some() => AuthServerHint::PreAuthorized,
-            grants => AuthServerHint::AuthorizationCode(
-                grants
-                    .and_then(|grants| grants.authorization_code.as_ref())
-                    .and_then(|grant| grant.authorization_server()),
-            ),
-        };
+        let hint = AuthServerHint::from_grants(offer.grants());
 
         let holder_service = Self::from_iss_url_with_configs(
             holder,
@@ -148,7 +141,7 @@ where
         holder: HL,
         http_client: Arc<HC>,
         issuer_url: String,
-        hint: AuthServerHint<'_>,
+        hint: AuthServerHint,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
         credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
@@ -157,29 +150,26 @@ where
             MetadataDiscovery::discover_metadata(http_client.as_ref(), &issuer_url).await?;
         debug!(resolved_issuer_metadata = ?issuer_metadata);
 
-        let mut pre_authorized_server = None;
         let authz_metadata: AuthorizationMetadata =
-            match select_authorization_server(&issuer_metadata, hint) {
+            match select_authorization_server(&issuer_metadata, &hint) {
                 AuthServerChoice::Issuer => {
                     MetadataDiscovery::discover_metadata(http_client.as_ref(), &issuer_url).await?
                 }
                 AuthServerChoice::Server(server) => {
-                    MetadataDiscovery::discover_metadata(http_client.as_ref(), server).await?
+                    MetadataDiscovery::discover_metadata(http_client.as_ref(), &server).await?
                 }
                 AuthServerChoice::FirstSupportingAuthorizationCode(servers) => {
-                    let metadata =
-                        discover_first_supporting_authorization_code(http_client.as_ref(), servers)
-                            .await?;
-                    // A pre-authorized grant naming no server still goes where it went before
-                    // selection by capability: the first advertised server
-                    pre_authorized_server = servers
-                        .first()
-                        .filter(|first| *first != metadata.issuer())
-                        .cloned();
-                    metadata
+                    discover_first_supporting_authorization_code(http_client.as_ref(), &servers)
+                        .await?
                 }
             };
         debug!(resolved_authorization_server_metadata = ?authz_metadata);
+
+        let pre_authorized_server = issuer_metadata
+            .authorization_servers()
+            .and_then(|servers| servers.first())
+            .filter(|first| *first != authz_metadata.issuer())
+            .cloned();
 
         let mut holder_service = Self::new(
             holder,
@@ -249,12 +239,16 @@ where
         })
     }
 
-    fn pre_authorized_token_server<'a>(
-        &'a self,
-        named: Option<&'a IssuerUrl>,
-    ) -> Option<&'a IssuerUrl> {
-        if named.is_some() {
-            return named;
+    fn pre_authorized_token_server(&self, named: Option<&IssuerUrl>) -> Option<IssuerUrl> {
+        if let Some(named) = named {
+            if let Some(server) = listed_offered_server(&self.issuer_metadata, named) {
+                return Some(server);
+            }
+
+            debug!(
+                authorization_server = %named.as_str(),
+                "ignoring the pre-authorized grant's authorization server: the issuer metadata does not list it"
+            );
         }
         if let Some(server) = &self.pre_authorized_server {
             debug!(
@@ -262,7 +256,7 @@ where
                 "exchanging the pre-authorized code at the issuer's first advertised server"
             );
         }
-        self.pre_authorized_server.as_ref()
+        self.pre_authorized_server.clone()
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -279,7 +273,8 @@ where
 
         if let Some(issuer_url) = self.pre_authorized_token_server(issuer_url) {
             let auth_serv_metadata: AuthorizationMetadata =
-                MetadataDiscovery::discover_metadata(self.http_client.as_ref(), issuer_url).await?;
+                MetadataDiscovery::discover_metadata(self.http_client.as_ref(), &issuer_url)
+                    .await?;
 
             req = req.set_token_url(auth_serv_metadata.token_endpoint().clone())
         }
@@ -956,148 +951,6 @@ impl TryInto<SpruceProof> for EqusSdkProof {
     }
 }
 
-/// What the holder knows, at construction, about the grant it will use.
-#[derive(Debug, Clone, Copy)]
-enum AuthServerHint<'o> {
-    /// The offer carries a pre-authorized grant, which resolves its own server per token request.
-    PreAuthorized,
-    /// The holder will run the authorization code grant; the server the offer names, if any.
-    AuthorizationCode(Option<&'o IssuerUrl>),
-}
-
-/// Where the holder takes its authorization server metadata from.
-#[derive(Debug, PartialEq)]
-enum AuthServerChoice<'a> {
-    Issuer,
-    Server(&'a IssuerUrl),
-    /// The first of these advertised servers whose metadata supports the authorization code flow.
-    FirstSupportingAuthorizationCode(&'a [IssuerUrl]),
-}
-
-fn select_authorization_server<'a>(
-    issuer_metadata: &'a IssuerMetadata,
-    hint: AuthServerHint<'_>,
-) -> AuthServerChoice<'a> {
-    let offered = match hint {
-        AuthServerHint::AuthorizationCode(offered) => offered,
-        AuthServerHint::PreAuthorized => None,
-    };
-
-    let servers = match issuer_metadata.authorization_servers() {
-        Some(servers) if !servers.is_empty() => servers.as_slice(),
-        _ => {
-            if let Some(offered) = offered {
-                warn!(
-                    authorization_server = %offered.as_str(),
-                    "ignoring the offered authorization server: the issuer metadata lists none"
-                );
-            }
-            return AuthServerChoice::Issuer;
-        }
-    };
-
-    if servers.len() == 1 || matches!(hint, AuthServerHint::PreAuthorized) {
-        if let Some(offered) = offered.filter(|offered| *offered != &servers[0]) {
-            warn!(
-                authorization_server = %offered.as_str(),
-                "ignoring the offered authorization server: the issuer metadata lists a single other one"
-            );
-        }
-        return AuthServerChoice::Server(&servers[0]);
-    }
-
-    let Some(offered) = offered else {
-        return AuthServerChoice::FirstSupportingAuthorizationCode(servers);
-    };
-
-    // The returned URL always comes from the issuer metadata, never from the offer
-    if let Some(server) = servers.iter().find(|server| *server == offered) {
-        debug!(
-            authorization_server = %server.as_str(),
-            "using the authorization server named by the offer"
-        );
-        return AuthServerChoice::Server(server);
-    }
-
-    warn!(
-        authorization_server = %offered.as_str(),
-        advertised = ?servers,
-        "ignoring the offered authorization server: the issuer metadata does not list it"
-    );
-    AuthServerChoice::FirstSupportingAuthorizationCode(servers)
-}
-
-fn supports_authorization_code(metadata: &AuthorizationMetadata) -> bool {
-    metadata
-        .grant_types_supported()
-        .0
-        .contains(&GrantType::AuthorizationCode)
-        && metadata.authorization_endpoint().is_some()
-        && metadata.pushed_authorization_request_endpoint().is_some()
-}
-
-/// Discovers the advertised servers in order and returns the first that supports the authorization
-/// code flow. A server whose metadata cannot be fetched is skipped. When none supports it, the first
-/// discovered server is used.
-async fn discover_first_supporting_authorization_code<HC: HttpClient>(
-    http_client: &HC,
-    servers: &[IssuerUrl],
-) -> Result<AuthorizationMetadata> {
-    let mut first_discovered: Option<AuthorizationMetadata> = None;
-    let mut last_error: Option<Error> = None;
-
-    for server in servers {
-        let metadata = match MetadataDiscovery::discover_metadata::<_, AuthorizationMetadata>(
-            http_client,
-            server,
-        )
-        .await
-        {
-            Ok(metadata) => metadata,
-            Err(e) => {
-                warn!(
-                    authorization_server = %server.as_str(),
-                    error = ?e,
-                    "could not discover the authorization server metadata, trying the next one"
-                );
-                last_error = Some(e.into());
-                continue;
-            }
-        };
-
-        if supports_authorization_code(&metadata) {
-            debug!(
-                authorization_server = %server.as_str(),
-                "using the first advertised authorization server supporting the authorization code flow"
-            );
-            return Ok(metadata);
-        }
-
-        debug!(
-            authorization_server = %server.as_str(),
-            "skipping an authorization server that cannot serve the authorization code flow"
-        );
-        first_discovered.get_or_insert(metadata);
-    }
-
-    if let Some(metadata) = first_discovered {
-        warn!(
-            advertised = ?servers,
-            "no advertised authorization server supports the authorization code flow, using the first discovered one"
-        );
-        return Ok(metadata);
-    }
-
-    // Selection only asks for this with at least two servers, so every one of them failed
-    Err(last_error.unwrap_or_else(|| {
-        HolderServiceSnafu {
-            details: "the issuer advertises no authorization server",
-        }
-        .build()
-        .into()
-    }))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1113,7 +966,7 @@ mod tests {
     use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
-        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SECOND_AUTH_URL,
         SampleIssuerMetadata, access_token, fake_access_token, sample_access_token,
         sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
         sample_credential_definition, sample_offer_with_auth_code_grant,
@@ -1239,66 +1092,116 @@ mod tests {
         holder_service_from_offer(http_client, offer).await;
     }
 
+    #[rstest]
+    #[case::grant_names_no_server(None, AUTH_URL)]
+    #[case::grant_names_a_listed_server(Some(SECOND_AUTH_URL), SECOND_AUTH_URL)]
+    #[case::grant_names_an_unlisted_server(Some("https://attacker-authz.com"), AUTH_URL)]
     #[tokio::test]
-    async fn offer_with_a_pre_authorized_grant_keeps_the_first_advertised_authorization_server() {
+    async fn offer_with_a_pre_authorized_grant_discovers_the_server_it_names_when_listed(
+        #[case] named: Option<&str>,
+        #[case] expected: &str,
+    ) {
         let mut http_client = MockHttpClient::new();
-        // Only the first advertised server is mocked: discovering any other one fails the test
-        mock_discovery(&mut http_client, AUTH_URL);
+        // Only the expected server is mocked: discovering any other one fails the test
+        mock_discovery(&mut http_client, expected);
 
+        // The authorization code grant names the other server, and must not win
+        let other = if expected == AUTH_URL {
+            SECOND_AUTH_URL
+        } else {
+            AUTH_URL
+        };
         let offer = offer_with_grants(
-            Some(auth_code_grant_naming(Some(SECOND_AUTH_URL))),
-            Some(api::PreAuthorizedCodeGrant::new(PreAuthorizedCode::new(
-                "pre_auth_code".to_string(),
-            ))),
+            Some(auth_code_grant_naming(Some(other))),
+            Some(pre_auth_grant_naming(named)),
         );
 
         holder_service_from_offer(http_client, offer).await;
     }
 
     #[rstest]
-    #[case::offered_among_several(json!([AUTH_URL, SECOND_AUTH_URL]), Some(SECOND_AUTH_URL), SECOND_AUTH_URL)]
-    #[case::offered_is_the_first_of_several(json!([AUTH_URL, SECOND_AUTH_URL]), Some(AUTH_URL), AUTH_URL)]
-    #[case::offered_is_the_only_one(json!([SECOND_AUTH_URL]), Some(SECOND_AUTH_URL), SECOND_AUTH_URL)]
-    #[case::offered_differs_from_the_only_one(json!([AUTH_URL]), Some(SECOND_AUTH_URL), AUTH_URL)]
-    #[case::none_offered_and_only_one_listed(json!([SECOND_AUTH_URL]), None, SECOND_AUTH_URL)]
-    #[case::offered_is_not_listed(json!([AUTH_URL, SECOND_AUTH_URL]), Some("https://attacker-authz.com"), BY_CAPABILITY)]
-    #[case::offered_differs_by_a_trailing_slash(json!([AUTH_URL, SECOND_AUTH_URL]), Some("https://second-authz-backend.com/"), BY_CAPABILITY)]
-    #[case::none_offered(json!([AUTH_URL, SECOND_AUTH_URL]), None, BY_CAPABILITY)]
-    #[case::metadata_lists_none(serde_json::Value::Null, Some(SECOND_AUTH_URL), ISSUER_ITSELF)]
-    #[case::metadata_lists_an_empty_array(json!([]), Some(SECOND_AUTH_URL), ISSUER_ITSELF)]
-    fn selects_the_authorization_server_to_discover(
-        #[case] advertised: serde_json::Value,
-        #[case] offered: Option<&str>,
-        #[case] expected: &str,
+    #[case::grant_names_a_listed_server(Some(SECOND_AUTH_URL), SECOND_AUTH_URL)]
+    #[case::grant_names_an_unlisted_server(Some("https://attacker-authz.com"), AUTH_URL)]
+    #[case::grant_names_no_server(None, AUTH_URL)]
+    #[tokio::test]
+    async fn pre_authorized_code_is_exchanged_at_the_named_server_only_when_listed(
+        #[case] named: Option<&str>,
+        #[case] expected: &'static str,
     ) {
-        let mut metadata = serde_json::to_value(SampleIssuerMetadata::with_sdjwtvc_conf()).unwrap();
-        if advertised.is_null() {
-            metadata
-                .as_object_mut()
-                .unwrap()
-                .remove("authorization_servers");
-        } else {
-            metadata["authorization_servers"] = advertised;
+        let mut http_client = MockHttpClient::new();
+        if expected != AUTH_URL {
+            mock_http_once(
+                &mut http_client,
+                Method::GET,
+                well_known(expected, "oauth-authorization-server"),
+                authorization_metadata_of(expected),
+                StatusCode::OK,
+            );
         }
-        let metadata: IssuerMetadata = serde_json::from_value(metadata).unwrap();
-        let offered = offered.map(|url| IssuerUrl::new(url.to_string()).unwrap());
-
-        let selected = select_authorization_server(
-            &metadata,
-            AuthServerHint::AuthorizationCode(offered.as_ref()),
+        // Only the expected server's token endpoint is mocked: exchanging elsewhere fails the test
+        mock_http_req_predicate(
+            &mut http_client,
+            Method::POST,
+            Url::parse(&format!("{expected}/token")).unwrap(),
+            |req_body| req_body.contains("pre-authorized_code=pre_auth_code"),
+            sample_access_token_response(),
+            StatusCode::OK,
+            1.into(),
         );
 
-        assert_eq!(describe(&selected), expected);
+        // Bound to the first listed server, as `sample_authorization_metadata` describes it
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            serde_json::from_value(issuer_metadata_with_two_auth_servers()).unwrap(),
+        )
+        .await;
+
+        holder_service
+            .get_access_token(
+                &offer_with_grants(None, Some(pre_auth_grant_naming(named))),
+                |_: AuthzFlow| async { Ok::<String, io::Error>("tx_code".to_string()) },
+            )
+            .await
+            .unwrap();
     }
 
-    #[test]
-    fn pre_authorized_grant_selects_the_first_advertised_server() {
-        let metadata: IssuerMetadata =
-            serde_json::from_value(issuer_metadata_with_two_auth_servers()).unwrap();
+    #[tokio::test]
+    async fn pre_authorized_code_ignores_a_named_server_when_the_issuer_lists_none() {
+        let mut http_client = MockHttpClient::new();
+        // No discovery is mocked, and only the bound client's token endpoint: using the named
+        // server fails the test
+        mock_http_req_predicate(
+            &mut http_client,
+            Method::POST,
+            access_token_endpoint(),
+            |req_body| req_body.contains("pre-authorized_code=pre_auth_code"),
+            sample_access_token_response(),
+            StatusCode::OK,
+            1.into(),
+        );
+        let mut metadata = serde_json::to_value(SampleIssuerMetadata::with_sdjwtvc_conf()).unwrap();
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("authorization_servers");
 
-        let selected = select_authorization_server(&metadata, AuthServerHint::PreAuthorized);
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            serde_json::from_value(metadata).unwrap(),
+        )
+        .await;
 
-        assert_eq!(describe(&selected), AUTH_URL);
+        holder_service
+            .get_access_token(
+                &offer_with_grants(None, Some(pre_auth_grant_naming(Some(SECOND_AUTH_URL)))),
+                |_: AuthzFlow| async { Ok::<String, io::Error>("tx_code".to_string()) },
+            )
+            .await
+            .unwrap();
     }
 
     #[rstest]
@@ -2338,20 +2241,6 @@ mod tests {
         .unwrap()
     }
 
-    const SECOND_AUTH_URL: &str = "https://second-authz-backend.com";
-
-    /// What `select_authorization_server` returned, in a form a test case can spell out
-    const BY_CAPABILITY: &str = "first supporting the authorization code flow";
-    const ISSUER_ITSELF: &str = "the issuer itself";
-
-    fn describe(choice: &AuthServerChoice<'_>) -> String {
-        match choice {
-            AuthServerChoice::Issuer => ISSUER_ITSELF.to_string(),
-            AuthServerChoice::Server(server) => server.as_str().to_string(),
-            AuthServerChoice::FirstSupportingAuthorizationCode(_) => BY_CAPABILITY.to_string(),
-        }
-    }
-
     fn pre_authorized_only_metadata_of(auth_url: &str) -> serde_json::Value {
         // Shaped like an issuer's own pre-authorized code server: no `grant_types_supported`, so
         // RFC 8414 defaults it to `authorization_code`, but no authorization endpoint either
@@ -2453,6 +2342,11 @@ mod tests {
 
     fn auth_code_grant_naming(auth_url: Option<&str>) -> api::AuthorizationCodeGrant {
         api::AuthorizationCodeGrant::new(None, None)
+            .set_authorization_server(auth_url.map(|url| IssuerUrl::new(url.to_string()).unwrap()))
+    }
+
+    fn pre_auth_grant_naming(auth_url: Option<&str>) -> api::PreAuthorizedCodeGrant {
+        api::PreAuthorizedCodeGrant::new(PreAuthorizedCode::new("pre_auth_code".to_string()))
             .set_authorization_server(auth_url.map(|url| IssuerUrl::new(url.to_string()).unwrap()))
     }
 

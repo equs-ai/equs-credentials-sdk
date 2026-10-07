@@ -1,6 +1,7 @@
 //! OID4VCi Spec implementation.
 
 pub(crate) mod api;
+mod auth_server_selection;
 pub(crate) mod holder;
 pub(crate) mod issuer;
 mod metadata;
