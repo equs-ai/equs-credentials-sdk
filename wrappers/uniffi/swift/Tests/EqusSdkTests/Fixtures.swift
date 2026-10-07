@@ -18,6 +18,18 @@ enum Fixtures {
 			.replacingOccurrences(of: "=", with: "")
 	}
 
+	static func base64UrlDecode(_ text: String) -> Data {
+		var base64 = text
+			.replacingOccurrences(of: "-", with: "+")
+			.replacingOccurrences(of: "_", with: "/")
+		base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+		return Data(base64Encoded: base64)!
+	}
+
+	static func jsonObject(_ text: String) -> [String: Any] {
+		try! JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+	}
+
 	static let identitySdJwt: String = try! fixtureSdJwt(
 		headerJson: #"{"typ":"vc+sd-jwt","alg":"ES256","kid":"\#(didKeyUrl(.issuer))"}"#,
 		claimsJson: #"{"vct":"https://credentials.example.com/identity_credential","sub":"\#(didKey(.holder))","nbf":1728882611,"_sd_alg":"sha-256","iss":"\#(didKey(.issuer))","iat":1728882611,"exp":1760418611,"cnf":{"jwk":\#(publicJwk(.holder))}}"#,

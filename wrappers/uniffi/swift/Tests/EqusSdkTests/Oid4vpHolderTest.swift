@@ -49,6 +49,101 @@ import Testing
             #expect(actual.transactionData?.first?.transactionDataHashesAlg?.first == transactionData.transactionDataHashesAlg?.first)
     	}
 
+	@Test func delegateTransactionDataYieldsDelegationGrant() async throws {
+		self.http["/auth_request_delegate"] = { _ in
+			MockHttpRouter.ok(Oid4vpHolderTestConstants.delegationAuthRequestJwt, contentType: "application/oauth-authz-req+jwt")
+		}
+
+		var request = try await self.holder.getAuthorizationRequest(
+			requestUri: Oid4vpHolderTestConstants.requestUriForDelegation)
+
+		let items = try #require(request.transactionData)
+		#expect(items.count == 2)
+		#expect(items[0].type == "delegate")
+		#expect(items[0].credentialIds == ["Identity-1"])
+		let delegateData = try #require(items[0].data)
+		compareJsonValues(
+			actual: delegateData,
+			expected: #"{"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(Oid4vpHolderTestConstants.delegatePayloadDisclosure)"}"#)
+		#expect(items[1].type == "payment")
+		let paymentData = try #require(items[1].data)
+		compareJsonValues(actual: paymentData, expected: #"{"amount":{"value":"42.00","currency":"EUR"}}"#)
+
+		let origin = "https://agent.example.org"
+		request.responseMode = "dc_api"
+		request.responseUri = nil
+		let result = try await self.holder.presentCredentialsAuto(
+			authRequest: request,
+			authResponseMetadata: AuthorizationResponseMetadata(
+				claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: origin)
+		)
+		guard case let .authResponse(.plain(response)) = result else {
+			Issue.record("expected a plain authorization response, got \(result)")
+			return
+		}
+
+		let grant = try #require((Fixtures.jsonObject(response.vpToken)["Identity-1"] as? [String])?.first)
+		#expect(grant.hasSuffix("~"))
+		let link = try #require(grant.split(separator: "~").last)
+		let linkPayload = try #require(
+			JSONSerialization.jsonObject(with: Fixtures.base64UrlDecode(String(link.split(separator: ".")[1])))
+				as? [String: Any])
+		let delegatePayloads = try #require(linkPayload["delegate_payload"] as? [[String: Any]])
+		#expect(delegatePayloads.count == 1)
+		let delegatePayload = delegatePayloads[0]
+		#expect(delegatePayload["purchase_id"] as? String == "p-42")
+		let cnf = try #require(delegatePayload["cnf"] as? [String: Any])
+		let jwk = try #require(cnf["jwk"] as? [String: Any])
+		#expect(NSDictionary(dictionary: jwk).isEqual(
+			NSDictionary(dictionary: Fixtures.jsonObject(Oid4vpHolderTestConstants.delegateJwk))))
+		#expect(delegatePayload["aud"] as? String == "origin:\(origin)")
+		#expect(delegatePayload["nonce"] as? String == request.nonce)
+		#expect(response.transactionDataHashes?.count == 2)
+	}
+
+	@Test func transactionDataPayloadIsHashed() async throws {
+		func hash(_ data: String?) async throws -> String {
+			var request = Oid4vpHolderTestConstants.authRequest
+			request.responseMode = "dc_api"
+			request.responseUri = nil
+			request.transactionData = [
+				TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: data)
+			]
+			let result = try await self.holder.presentCredentialsAuto(
+				authRequest: request,
+				authResponseMetadata: AuthorizationResponseMetadata(
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: "https://example.verifier.org"))
+			guard case let .authResponse(.plain(response)) = result else {
+				throw NSError(
+					domain: "Oid4vpHolderTests", code: 1,
+					userInfo: [NSLocalizedDescriptionKey: "expected a plain authorization response"])
+			}
+			return try #require(response.transactionDataHashes?.first)
+		}
+
+		let withoutPayload = try await hash(nil)
+		let withPayload = try await hash(#"{"amount":{"value":"42.00","currency":"EUR"}}"#)
+		#expect(withoutPayload != withPayload)
+	}
+
+	@Test func invalidTransactionDataItemsAreRejected() async throws {
+		let invalidItems = [
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: "[]"),
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: #"{"type":"other"}"#),
+			TransactionDataItem(type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: #"{"format":"dSD-JWT+KB"}"#),
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: ["md5"], data: nil),
+		]
+		for item in invalidItems {
+			var request = Oid4vpHolderTestConstants.authRequest
+			request.transactionData = [item]
+			do {
+				_ = try await self.holder.findVcsForPresentation(authRequest: request)
+				Issue.record("expected the \(item.type) item to be rejected")
+			} catch EqusSdk.Error.Oid4vpHolder(_) {
+			}
+		}
+	}
+
 	@Test func checkCustomNonceHandler() async throws {
 		self.http["/request"] = { request in
 			let body = request.body ?? "<invalid body>"
@@ -595,6 +690,22 @@ static let presentationDefinitionWithFakeConstraints = """
 
 	static let transactionData = Fixtures.base64Url(
 		#"{"type":"type1","credential_ids":["Identity-1"],"transaction_data_hashes_alg":["sha-256"]}"#)
+	static let delegateJwk = Fixtures.publicJwk(.verifier)
+	static let delegatePayloadDisclosure = Fixtures.base64Url(
+		#"["test-salt-for-delegation",{"purchase_id":"p-42","cnf":{"jwk":\#(delegateJwk)}}]"#)
+	static let identityDcqlQuery =
+		#"{"credentials":[{"id":"Identity-1","format":"dc+sd-jwt","meta":{"vct_values":["https://credentials.example.com/identity_credential"]},"claims":[{"path":["name"]}]}]}"#
+	static let delegateTransactionData = Fixtures.base64Url(
+		#"{"type":"delegate","credential_ids":["Identity-1"],"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(delegatePayloadDisclosure)"}"#)
+	static let paymentTransactionData = Fixtures.base64Url(
+		#"{"type":"payment","credential_ids":["Identity-1"],"amount":{"value":"42.00","currency":"EUR"}}"#)
+	static let requestUriForDelegation =
+		"openid4vp://?client_id=\(encodedVerifierClientId)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request_delegate"
+	static let delegationAuthRequestJwt: String = try! fixtureJws(
+		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
+		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["\#(delegateTransactionData)","\#(paymentTransactionData)"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":\#(clientMetadata),"client_id":"\#(verifierClientId)","dcql_query":\#(identityDcqlQuery),"response_uri":"http://localhost:9001/response"}"#,
+		role: .verifier
+	)
 	static let authRequestJwt: String = try! fixtureJws(
 		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
 		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["\#(transactionData)"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["EdDSA","ES256"],"kb-jwt_alg_values":["EdDSA","ES256"]}},"jwks":{"keys":[{"use":"enc","alg":"ES256","kid":"5QsdgXUGuH:P256:","kty":"EC","crv":"P-256","x":"Cb_uJhiPN7H9KXdQN4PQN0uWC6LmEwIz4j03wX1rBAw","y":"yEZ8-uX5hGhCuN9NrIz4ShNH0T1y4fQts5siiCH0Q7w"}]},"encrypted_response_enc_values_supported":["A128GCM","A128CBC-HS256"],"subject_syntax_types_supported":["did:key"]},"client_id":"\#(verifierClientId)","presentation_definition":{"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]},"response_uri":"http://localhost:9001/response"}"#,

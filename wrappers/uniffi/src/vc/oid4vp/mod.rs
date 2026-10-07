@@ -7,13 +7,12 @@ use equs_sdk::vc::oid4vp::{
     AuthorizationResponseObject as EqusSdkAuthorizationResponseObject,
     PresentationResult as EqusSdkPresentationResult,
 };
-use equs_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
+use equs_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest, TRANSACTION_TYPE_DELEGATE, as_delegate};
 use std::collections::HashMap;
 mod builder;
 pub mod holder;
 
 pub type CoreTransactionDataItem = equs_sdk::vc::oid4vp::TransactionDataItem;
-pub type CoreTransactionDataItemTypeContent = equs_sdk::vc::oid4vp::TransactionDataItemTypeContent;
 pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 
@@ -55,50 +54,80 @@ pub struct AuthorizationResponseMetadata {
     pub dc_api_origin: Option<String>,
 }
 
+/// Keys of a transaction-data item that the record carries in its own fields.
+const TRANSACTION_DATA_ITEM_KEYS: [&str; 3] =
+    ["type", "credential_ids", "transaction_data_hashes_alg"];
+
 #[derive(uniffi::Record)]
 pub struct TransactionDataItem {
     pub type_: String,
     pub credential_ids: Vec<String>,
     pub transaction_data_hashes_alg: Option<Vec<String>>,
+    /// Every other field of the item as a JSON object, e.g. `format` and
+    /// `delegate_payload_disclosure` for a `delegate` item; `None` when there are none.
+    #[uniffi(default = None)]
+    pub data: Option<JsonValue>,
 }
 
 impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
     type Error = Error;
 
     fn try_from(value: TransactionDataItem) -> Result<Self> {
-        let transaction_data_hashes_alg = if let Some(algs) = value.transaction_data_hashes_alg {
-            let mut items = Vec::new();
-            for alg in algs {
-                items.push(
-                    alg.try_into()
-                        .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
-                );
+        let mut item = match value.data {
+            None => serde_json::Map::new(),
+            Some(serde_json::Value::Object(data)) => data,
+            Some(_) => {
+                return Err(Error::OID4VPHolder(
+                    "transaction data item `data` must be a JSON object".to_string(),
+                ));
             }
-            Some(items)
-        } else {
-            None
         };
-        Ok(Self {
-            credential_ids: value.credential_ids,
-            transaction_data_hashes_alg,
-            content: CoreTransactionDataItemTypeContent::Unknown {
-                type_: value.type_,
-                data: Default::default(),
-            },
-        })
+        if let Some(key) = TRANSACTION_DATA_ITEM_KEYS
+            .into_iter()
+            .find(|key| item.contains_key(*key))
+        {
+            return Err(Error::OID4VPHolder(format!(
+                "transaction data item `data` must not contain `{key}`"
+            )));
+        }
+        item.insert("type".to_string(), value.type_.into());
+        item.insert("credential_ids".to_string(), value.credential_ids.into());
+        if let Some(algs) = value.transaction_data_hashes_alg {
+            item.insert("transaction_data_hashes_alg".to_string(), algs.into());
+        }
+        let item: CoreTransactionDataItem = serde_json::from_value(serde_json::Value::Object(item))
+            .map_err(|e| Error::OID4VPHolder(format!("invalid transaction data item: {e}")))?;
+        // A malformed `delegate` item parses as `Unknown` rather than failing.
+        if item.type_() == TRANSACTION_TYPE_DELEGATE && as_delegate(&item).is_none() {
+            return Err(Error::OID4VPHolder(
+                "invalid `delegate` transaction data item".to_string(),
+            ));
+        }
+        Ok(item)
     }
 }
 
-impl From<CoreTransactionDataItem> for TransactionDataItem {
-    fn from(value: CoreTransactionDataItem) -> Self {
+impl TryFrom<CoreTransactionDataItem> for TransactionDataItem {
+    type Error = Error;
+
+    fn try_from(value: CoreTransactionDataItem) -> Result<Self> {
         let type_ = value.type_().to_owned();
-        Self {
+        let serde_json::Value::Object(mut data) = serde_json::to_value(&value.content)
+            .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?
+        else {
+            return Err(Error::OID4VPHolder(
+                "transaction data item content must be a JSON object".to_string(),
+            ));
+        };
+        data.remove("type");
+        Ok(Self {
             type_,
             credential_ids: value.credential_ids,
             transaction_data_hashes_alg: value
                 .transaction_data_hashes_alg
                 .map(|algs| algs.iter().map(|v| v.to_string()).collect::<Vec<_>>()),
-        }
+            data: (!data.is_empty()).then_some(serde_json::Value::Object(data)),
+        })
     }
 }
 
@@ -172,12 +201,15 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.map(|uri| uri.to_string()),
             state: value.state,
-            transaction_data: value.transaction_data.map(|items| {
-                items
-                    .iter()
-                    .map(|v| v.to_owned().into())
-                    .collect::<Vec<_>>()
-            }),
+            transaction_data: value
+                .transaction_data
+                .map(|items| {
+                    items
+                        .into_iter()
+                        .map(TryInto::try_into)
+                        .collect::<Result<Vec<_>>>()
+                })
+                .transpose()?,
             expected_origins: value.expected_origins,
         })
     }
