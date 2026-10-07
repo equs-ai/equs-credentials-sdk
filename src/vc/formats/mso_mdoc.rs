@@ -255,7 +255,7 @@ impl From<CredentialClaimValue> for Claim {
 pub mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::nonce::Nonce;
-    use crate::utils::test_utils::anchors;
+    use crate::utils::test_utils::{anchors, mdl_chain, mdl_iaca};
     use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
@@ -263,40 +263,24 @@ pub mod tests {
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
     use std::collections::HashMap;
 
-    pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBERERERERERERERERERERERERERERERERERERERERERcWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhJxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUCPAlVlCcdKtW_NgvnriGAvImXT0wCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAwMDBaFw00NjAxMDEwMDAwMDBaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfirDFSOgmMH7vUzoevRbzHEDHUKqVS2_Wgs6TTPel-EYXYnW5Tdp5Hqxxc9-kR6CXUexKxQdxfDPyIxPlCkm4aMzMDEwHwYDVR0jBBgwFoAUg8JM5sIlqsjvNR337KO_zIQbdMUwDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIBoknaCNrvgm0ddRfm9xQYWzx_3WL9Fs-gQfolp5K0NUAiEA2douiRD8Jf33sHgWZdpnMsmRUsAPCOWe4QGb_tVi3-BZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCAd9VB6Eetaki_Ezn9YWmXuDc2wwCLY5aSsTwJK0Vu88QFYIHDj8ldYRGUeM8LNa7OZU0NeOb7ayITJ5yOVaCZCJj_kbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVgg43kS_XmY3GpALvnEPRzn6GMuxJzInxX7r5XAeDah18UiWCCXlKF9EfKCs9NugFg2p8IbMMEMvwc0DucoRZQw3-a0XWdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wMS0wMVQwMDowMDowMFppdmFsaWRGcm9twHQyMDI2LTAxLTAxVDAwOjAwOjAwWmp2YWxpZFVudGlswHQyMDQ2LTAxLTAxVDAwOjAwOjAwWm5leHBlY3RlZFVwZGF0ZcB0MjA0Ni0wMS0wMVQwMDowMDowMFpYQGp32sfVRsBX3crXbFP1EPQ2EkXRe0L_cslmkkbyEMzj8MoNuAd5qVjercViO2oDpPPGFtL1LCVKNUxdYmTgJeZsZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WECCN_IWVAGLfKbNDKE8pPHD4Xi_AlUufrKO7r6br-z1WmpGBueaCf57nBVASs4DrBD88hLNRvR6btAlTMZx-WQ2ZnN0YXR1cwA";
-    /// Trusted certificates holding only a self-signed IACA (`CN=Test IACA, C=US`) unrelated to
-    /// `SAMPLE_MSO_MDOC_VP`.
-    fn unrelated_iaca() -> HashMap<String, String> {
-        let cert = test_fixtures::x509(
-            &serde_json::json!({
-                "subject": [["CN", "Test IACA"], ["C", "US"]],
-                "not_before": "2026-01-01", "not_after": "2046-01-01",
-                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
-            }),
-            &test_fixtures::JWK::generate_p256(),
-            None,
-        );
-        anchors(&[&cert])
+    pub const NONCE: &str = "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM";
+    pub const VERIFIER: &str = "https://verifier.example.com";
+    const RESPONSE_URI: &str = "https://verifier.example.com/response";
+
+    /// mDL presentation under a fresh IACA → DS chain, bound to `NONCE` and `VERIFIER`.
+    pub fn sample_mso_mdoc_vp() -> String {
+        mdoc_vp(None, None)
     }
 
     #[tokio::test]
     async fn verify_vp_works_correctly() {
         let verified_claims = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                value: sample_mso_mdoc_vp(),
                 enc_pub_key: None,
             },
-            Some(HolderBinder {
-                nonce: Nonce::from_secret(
-                    "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
-                ),
-                verifier_id: "https://verifier.example.com".to_string(),
-                response_uri: None,
-            }),
-            VerifyOptions {
-                trusted_certs: None,
-                selective_claims: None,
-            },
+            Some(binder(None)),
+            VerifyOptions::default(),
             UniversalResolver::default(),
         )
         .await
@@ -317,16 +301,10 @@ pub mod tests {
     async fn verify_vp_rejects_ds_chain_not_under_held_iaca() {
         MsoMdocAPI::verify_vp(
             &Presentation {
-                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                value: sample_mso_mdoc_vp(),
                 enc_pub_key: None,
             },
-            Some(HolderBinder {
-                nonce: Nonce::from_secret(
-                    "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
-                ),
-                verifier_id: "https://verifier.example.com".to_string(),
-                response_uri: None,
-            }),
+            Some(binder(None)),
             VerifyOptions {
                 trusted_certs: Some(unrelated_iaca()),
                 selective_claims: None,
@@ -335,5 +313,117 @@ pub mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "verifying DeviceSigned")]
+    async fn verify_vp_rejects_mismatched_nonce() {
+        MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: sample_mso_mdoc_vp(),
+                enc_pub_key: None,
+            },
+            Some(HolderBinder {
+                nonce: Nonce::from_secret("another-nonce".to_string()),
+                ..binder(None)
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[rstest::rstest]
+    #[case::matching_response_uri(Some(RESPONSE_URI), true)]
+    #[case::other_response_uri(Some("https://verifier.example.com/other"), false)]
+    #[case::no_response_uri(None, false)]
+    #[tokio::test]
+    async fn verify_vp_binds_the_response_uri(
+        #[case] response_uri: Option<&str>,
+        #[case] valid: bool,
+    ) {
+        let result = MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: mdoc_vp(Some(RESPONSE_URI), None),
+                enc_pub_key: None,
+            },
+            Some(binder(response_uri)),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert_binding(result, valid);
+    }
+
+    #[rstest::rstest]
+    #[case::matching_key(Some(test_fixtures::keys().verifier.to_public()), true)]
+    #[case::no_key(None, false)]
+    #[case::other_key(Some(test_fixtures::keys().issuer.to_public()), false)]
+    #[tokio::test]
+    async fn verify_vp_binds_the_verifier_key(
+        #[case] enc_pub_key: Option<test_fixtures::JWK>,
+        #[case] valid: bool,
+    ) {
+        let result = MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: mdoc_vp(Some(RESPONSE_URI), Some(&test_fixtures::keys().verifier)),
+                enc_pub_key,
+            },
+            Some(binder(Some(RESPONSE_URI))),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert_binding(result, valid);
+    }
+
+    /// `sample_mso_mdoc_vp`, also bound to `response_uri` and `verifier_key` when given.
+    fn mdoc_vp(response_uri: Option<&str>, verifier_key: Option<&test_fixtures::JWK>) -> String {
+        let (_, ds, ds_key) = mdl_chain();
+        test_fixtures::mdoc(
+            &serde_json::json!({
+                "doc_type": "org.iso.18013.5.1.mDL",
+                "name_spaces": { "org.iso.18013.5.1": {
+                    "family_name": "Mustermann", "given_name": "Erika"
+                } },
+                "valid_from": "2026-01-01T00:00:00Z",
+                "valid_until": "2046-01-01T00:00:00Z",
+                "x5chain": ds,
+                "client_id": VERIFIER,
+                "nonce": NONCE,
+                "response_uri": response_uri,
+                "verifier_key": verifier_key.map(test_fixtures::JWK::to_public)
+            }),
+            &ds_key,
+            &test_fixtures::keys().holder,
+        )
+    }
+
+    /// Ok, or the DeviceSigned failure of a wrong binding.
+    fn assert_binding<T: std::fmt::Debug, E: std::fmt::Debug>(result: Result<T, E>, valid: bool) {
+        match result {
+            Ok(_) if valid => {}
+            Err(err) if !valid => assert!(
+                format!("{err:?}").contains("verifying DeviceSigned"),
+                "{err:?}"
+            ),
+            result => panic!("expected valid = {valid}, got {result:?}"),
+        }
+    }
+
+    fn binder(response_uri: Option<&str>) -> HolderBinder {
+        HolderBinder {
+            nonce: Nonce::from_secret(NONCE.to_string()),
+            verifier_id: VERIFIER.to_string(),
+            response_uri: response_uri.map(str::to_string),
+        }
+    }
+
+    /// Anchors holding only an unrelated IACA.
+    fn unrelated_iaca() -> HashMap<String, String> {
+        anchors(&[&mdl_iaca(&test_fixtures::JWK::generate_p256())])
     }
 }

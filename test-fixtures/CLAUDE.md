@@ -10,8 +10,8 @@ kind; the crate owns only the key material and the cryptography.
 
 | File | Role |
 |------|------|
-| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `equs-one-core-crypto`, `serde`, `serde_json` and `base64`, plus `rcgen` and `p256` behind the default-on `x509` feature — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
-| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), each a `LazyLock` generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. `jwe(header, payload, recipient)` — compact JWE for a P-256 key by ECDH-ES direct key agreement, as the SDK's `JweEncryptor` builds it; `header` gives `kid`, `enc` and the raw `apu` / `apv`. `x509(spec, key, issuer)` (feature `x509`) — X.509 certificate (PEM) for a P-256 key, self-signed or issued by a CA certificate (PEM) and its key; `spec` is JSON (subject pairs, SANs, dates, CA flag, usages, authority key identifier); the subject keeps the given order, a field or value it cannot apply panics, and the serial number is random. |
+| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `equs-one-core-crypto`, `serde`, `serde_json`, `base64`, `pem` and `time`, plus `rcgen` and `p256` behind the default-on `x509` feature — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
+| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), each a `LazyLock` generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. `jwe(header, payload, recipient)` — compact JWE for a P-256 key by ECDH-ES direct key agreement, as the SDK's `JweEncryptor` builds it; `header` gives `kid`, `enc` and the raw `apu` / `apv`. `x509(spec, key, issuer)` (feature `x509`) — X.509 certificate (PEM) for a P-256 key, self-signed or issued by a CA certificate (PEM) and its key; `spec` is JSON (subject pairs, SANs, dates, CA flag, usages, authority key identifier); the subject keeps the given order, a field or value it cannot apply panics, and the serial number is random. `mdoc(spec, ds_key, device)` — mso_mdoc DeviceResponse (base64url CBOR) for one document: tag-24 issuer-signed items with fresh random salts, an MSO with SHA-256 digests, `device`'s EC2 COSE_Key and `signed` set to `valid_from`, issuerAuth signed by `ds_key` with the certificates of the spec's `x5chain` PEM (the DS certificate, optionally followed by its chain), and a detached device signature over the OID4VP 1.0 SessionTranscript of the spec's `client_id`, `nonce`, optional `response_uri` and optional `verifier_key` thumbprint; `spec` is a typed `serde` struct with `deny_unknown_fields` (doc type, name spaces with string / integer / boolean element values, `YYYY-MM-DDThh:mm:ssZ` validity dates, `x5chain`, `client_id`, `nonce`), and malformed input panics (unknown or missing field, empty name space, other value type or date format, PEM without a certificate block or with bad base64); the DER is copied unparsed. |
 
 ## Key types / traits
 - `Keys` — one key per role; every fixture in a process signs with the same keys, so a token and the JWKS or
@@ -21,8 +21,8 @@ kind; the crate owns only the key material and the cryptography.
 
 ## Dependencies
 - Depends on: `ssi` (P-256 generation, JWS signing, `did:key`), `rsa` (RSA generation, which `ssi` lacks),
-  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `rcgen` 0.14.10 or later (the first to write `key_usages` without another extension) with its `x509-parser` feature and `p256` (certificates issued for the same P-256 keys that sign JWS; feature `x509`), `serde` with `derive` (the typed certificate spec and JWE header), `serde_json` with `preserve_order` (headers and claims keep the
-  order they are written in), `base64`
+  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `rcgen` 0.14.10 or later (the first to write `key_usages` without another extension) with its `x509-parser` feature and `p256` (certificates issued for the same P-256 keys that sign JWS; feature `x509`), `ssi`'s COSE re-exports (`ssi::claims::cose::ciborium`, the mdoc CBOR), `serde` with `derive` (the typed certificate spec and JWE header), `serde_json` with `preserve_order` (headers and claims keep the
+  order they are written in), `time` (the mdoc `tdate` check), `pem` (the mdoc `x5chain`), `base64`
 - Used by: the SDK's `[dev-dependencies]` (unit tests under `src/`, the E2E suite under `tests/`),
   `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`, and the test builds of the wrappers: `wrappers/nodejs` and `wrappers/uniffi` (feature `test-fixtures`), `wrappers/wasm` (feature `test-utils`, without `x509`)
 
@@ -37,8 +37,9 @@ kind; the crate owns only the key material and the cryptography.
   so it differs per process — a test must not hard-code one.
 - RSA-2048 generation is the only slow step: the workspace root sets `opt-level = 3` for `num-bigint-dig`
   under the dev profile (tens of milliseconds instead of seconds), and it runs only when `authz` is first used.
-- Signing is deterministic (ES256 uses RFC 6979 nonces, RS256 is PKCS#1 v1.5, HS256 is a MAC), so two calls
-  with the same inputs give the same token.
+- Signing is deterministic (ES256 uses RFC 6979 nonces, RS256 is PKCS#1 v1.5, HS256 is a MAC), so `jws`,
+  `sd_jwt` and `sd_jwt_kb` give the same token for the same inputs; `jwe` (ephemeral key), `x509` (serial
+  number) and `mdoc` (salts) differ per call.
 - A disclosure is digested as the exact JSON text given (`sd_jwt_rs` writes `["salt", "name", value]` with a
   space after each comma; hand-made fixtures are compact), so a recorded salt reproduces the recorded `_sd`
   entry. `_sd` is sorted, as `sd_jwt_rs` sorts it, keeps any digests the caller already put in `_sd` (claims
@@ -50,5 +51,14 @@ kind; the crate owns only the key material and the cryptography.
 - `x509` certifies the fixture's own P-256 keys, so a certificate's subject key is the key that signs under its
   `x5c` header; CA keys that certify nothing else are `JWK::generate_p256()` at the call site. The feature pulls
   `rcgen` on `ring`, so a wasm build takes the crate with `default-features = false`.
+- `mdoc` builds the two OpenID4VP 1.0 handovers one-core verifies: with `response_uri`,
+  `[null, null, ["OpenID4VPHandover", SHA-256(CBOR([client_id, nonce, thumbprint, response_uri]))]]`; without,
+  `[null, null, ["OpenID4VPDCAPIHandover", SHA-256(CBOR([client_id, nonce, thumbprint]))]]`. `thumbprint` is the
+  RFC 7638 SHA-256 thumbprint of `verifier_key` (an encrypted response) or `null`; the OpenID4VP 1.0 Appendix
+  B.2.6.1 test vector pins the encoding. Values are hashed as given; in `OpenID4VPHandover` one-core's
+  verifier trims a trailing `/` from `client_id` and `response_uri`, so call sites with a `response_uri` avoid one. COSE_Sign1 is untagged ES256 with `x5chain`
+  (label 33) in the issuerAuth unprotected header: one certificate is a byte string, a chain an array. It needs
+  no `x509` feature (it only decodes the PEM), so the wasm build has it. With trusted IACAs configured, the SDK verifier accepts only a DS certificate
+  issued under one of them, so call sites issue it from an IACA with `x509`.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
   CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).

@@ -620,37 +620,55 @@ pub(crate) fn sample_dcql_query_for_mso_mdoc_vp_request() -> DCQL {
 
     DCQL::new(NonEmptyVec::new(desc))
 }
-pub const SAMPLE_MDL_VP_TOKEN: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBERERERERERERERERERERERERERERERERERERERERERcWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhJxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUERVW5ge2IOT6y0vVN5O_QUFZCWYwCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAwMDBaFw00NjAxMDEwMDAwMDBaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfcqx4dVDwPwb_sobQi_1B4cJjLXN_18NEBvLgWLpUO53VVGgrVoaBGfLbDnWOA4FIoa_QAZTcup8313z4kY9vKMzMDEwHwYDVR0jBBgwFoAU6DnStAe-8IwpE227WH3vVRbo2x0wDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIERbh8GQppbeliqRL1NRsHujzWxp7bMLvHTDTUso9pJIAiEAiY9FKvFxfi24dw5ySW0jjqYTDWROXQUyy_X5JObqklJZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCAd9VB6Eetaki_Ezn9YWmXuDc2wwCLY5aSsTwJK0Vu88QFYIHDj8ldYRGUeM8LNa7OZU0NeOb7ayITJ5yOVaCZCJj_kbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVggbmYKi0ktrvqYcWN_jwysi6gFZtcv3hg32cdUmdrXNO4iWCB8Y458utBPb2fYVQahZvrUH9zVM5hf3mgd70QwYAiB92dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wMS0wMVQwMDowMDowMFppdmFsaWRGcm9twHQyMDI2LTAxLTAxVDAwOjAwOjAwWmp2YWxpZFVudGlswHQyMDQ2LTAxLTAxVDAwOjAwOjAwWm5leHBlY3RlZFVwZGF0ZcB0MjA0Ni0wMS0wMVQwMDowMDowMFpYQDsOGx7rgChJ3VUXskbpJmdoaKxXciJsBhB0aJHTW7xEOUS8YrMZqpq0pkubYGR1gpzLiY24ixNayCEvUrvEKfFsZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WEBAkAWV8yYJvEPG6mofmeLWCHp3wuoC_qDWZDSTph7B9u7fDDmwn3Vp5aZjARWZuzg8lGzayTf_0cQvG7HfaA9SZnN0YXR1cwA";
-pub const SAMPLE_IACA_CERT_1: &str = "-----BEGIN CERTIFICATE-----
-MIIBhjCCASygAwIBAgIUYeDWpW7xP5iPyI2GeeWZAkM0rH4wCgYIKoZIzj0EAwIw
-ITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAw
-MDBaFw00NjAxMDEwMDAwMDBaMCExEjAQBgNVBAMMCVRlc3QgSUFDQTELMAkGA1UE
-BgwCVVMwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATUvw7HNlqR7vybTtnII6mB
-InzVekm+lbnUzEJHMdnWksPBZ3v7d+XL5Hr2vo8RTqUGV1T8N380oTylGae/bwfy
-o0IwQDAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFOg50rQHvvCMKRNtu1h971UW
-6NsdMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgRL+P8RTUsyWn
-m8Fy+Z2zfwQ4xi+NqZvl4EXUYwVuETICIQCjY6xnRO8NaKtIHt06OzTwyWnjV2tE
-vbbU/lxzAYuDvQ==
------END CERTIFICATE-----";
-pub const SAMPLE_IACA_CERT_2: &str = "-----BEGIN CERTIFICATE-----
-MIIDlTCCAxygAwIBAgITZ1Q7u+8TXCBKFn6jmzvPwCx3bDAKBggqhkjOPQQDAzBb
-MQswCQYDVQQGEwJYRzETMBEGA1UEChMKR29vZ2xlIExMQzEPMA0GA1UECxMGV2Fs
-bGV0MSYwJAYDVQQDEx1JZGVudGl0eSBDcmVkZW50aWFsIFJvb3QgSUFDQTAeFw0y
-NTAzMDQyMDUyMThaFw0zNTAzMDUwNjMyMTlaMFsxCzAJBgNVBAYTAlhHMRMwEQYD
-VQQKEwpHb29nbGUgTExDMQ8wDQYDVQQLEwZXYWxsZXQxJjAkBgNVBAMTHUlkZW50
-aXR5IENyZWRlbnRpYWwgUm9vdCBJQUNBMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE
-10PwkmBoPbxLLzP2Uph7NU55nM130T+wp8/QMdPa/SKXzMBTHINFb/uh0LmvKnfg
-k4wiDhREGM9ty/yuLB/ZT+2abS6cD7FDyvhVBzwNNR0VVsCDdqv2Ob8KaQzLAXLn
-o4IBoDCCAZwwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8CAQAwHQYD
-VR0OBBYEFBpEaI07wxCy/QSQd9UO5UBlzxTpMB8GA1UdIwQYMBaAFBpEaI07wxCy
-/QSQd9UO5UBlzxTpMIGNBggrBgEFBQcBAQSBgDB+MHwGCCsGAQUFBzAChnBodHRw
-Oi8vcHJpdmF0ZWNhLWNvbnRlbnQtNjdmNWY0MzItMDAwMC0yOTJmLTkxZDYtYWMz
-ZWIxNGU3YjY4LnN0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vYWE3NjAzMGUwYjIyYTNh
-OTVhOGIvY2EuY3J0MIGCBgNVHR8EezB5MHegdaBzhnFodHRwOi8vcHJpdmF0ZWNh
-LWNvbnRlbnQtNjdmNWY0MzItMDAwMC0yOTJmLTkxZDYtYWMzZWIxNGU3YjY4LnN0
-b3JhZ2UuZ29vZ2xlYXBpcy5jb20vYWE3NjAzMGUwYjIyYTNhOTVhOGIvY3JsLmNy
-bDAhBgNVHRIEGjAYhhZodHRwczovL3d3dy5nb29nbGUuY29tMAoGCCqGSM49BAMD
-A2cAMGQCMEleAuFo8yKVGk70NwJ/CzBt08mNHqBsxILZnTHwKvxXRkgDcXbwd931
-bVvQoTYppQIwTCcq+Kic8KAe1Y2lu0ohvkxwST1s34ytFqJcElPddS76rX4rJLLW
-wSde7pYC3LmY
------END CERTIFICATE-----";
+
+/// Self-signed IACA certificate (`CN=Test IACA, C=US`) for `key`.
+pub fn mdl_iaca(key: &test_fixtures::JWK) -> String {
+    test_fixtures::x509(
+        &json!({
+            "subject": [["CN", "Test IACA"], ["C", "US"]],
+            "not_before": "2026-01-01", "not_after": "2046-01-01",
+            "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+        }),
+        key,
+        None,
+    )
+}
+
+/// IACA certificate, a DS certificate (`CN=Test DS, C=US`) it issued, and the DS key.
+pub fn mdl_chain() -> (String, String, test_fixtures::JWK) {
+    let iaca_key = test_fixtures::JWK::generate_p256();
+    let iaca = mdl_iaca(&iaca_key);
+    let ds_key = test_fixtures::JWK::generate_p256();
+    let ds = test_fixtures::x509(
+        &json!({
+            "subject": [["CN", "Test DS"], ["C", "US"]],
+            "not_before": "2026-01-01", "not_after": "2046-01-01",
+            "key_usages": ["digital_signature"], "authority_key_identifier": true
+        }),
+        &ds_key,
+        Some((&iaca, &iaca_key)),
+    );
+    (iaca, ds, ds_key)
+}
+
+pub const MDL_NONCE: &str = "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4";
+pub const MDL_CLIENT_ID: &str = "https://verifier.example.com:5173";
+
+/// mDL presentation of Erika Mustermann issued under `ds`, bound to `MDL_NONCE` and `MDL_CLIENT_ID`.
+pub fn mdl_vp_token(ds: &str, ds_key: &test_fixtures::JWK) -> String {
+    test_fixtures::mdoc(
+        &json!({
+            "doc_type": "org.iso.18013.5.1.mDL",
+            "name_spaces": { "org.iso.18013.5.1": {
+                "family_name": "Mustermann", "given_name": "Erika"
+            } },
+            "valid_from": "2026-01-01T00:00:00Z",
+            "valid_until": "2046-01-01T00:00:00Z",
+            "x5chain": ds,
+            "client_id": MDL_CLIENT_ID,
+            "nonce": MDL_NONCE
+        }),
+        ds_key,
+        &test_fixtures::keys().holder,
+    )
+}

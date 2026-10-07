@@ -1,5 +1,5 @@
 use crate::utils::fixtures::oid4vp::{
-    MockNonceHandler, SAMPLE_IACA_CERT_1, SAMPLE_IACA_CERT_2, SAMPLE_MDL_VP_TOKEN,
+    MDL_CLIENT_ID, MDL_NONCE, MockNonceHandler, mdl_chain, mdl_iaca, mdl_vp_token,
     sample_dcql_query_for_mso_mdoc_vp_request,
 };
 use crate::utils::fixtures::oid4vp::{NONCE, create_vc, generate_did_key_and_vm};
@@ -243,11 +243,17 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
 }
 
 #[rstest]
-#[case::ds_cert_of_vp_was_signed_by_trusted_cert(SAMPLE_IACA_CERT_1)]
+#[case::ds_cert_of_vp_was_signed_by_trusted_cert(true)]
 #[should_panic(expected = "Issuer certificate chain is not trusted")]
-#[case::ds_cert_of_vp_was_signed_by_untrusted_cert(SAMPLE_IACA_CERT_2)]
+#[case::ds_cert_of_vp_was_signed_by_untrusted_cert(false)]
 #[tokio::test]
-async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
+async fn presentation_verification_flow_with_mdl(#[case] trusted: bool) {
+    let (iaca, ds, ds_key) = mdl_chain();
+    let anchor = if trusted {
+        iaca
+    } else {
+        mdl_iaca(&test_fixtures::JWK::generate_p256())
+    };
     let kms = LocalKms::new();
     let nonce_gen = LocalNonceHandler::default();
 
@@ -260,14 +266,14 @@ async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
         ClientId::from_did(&did).unwrap(),
     )
     .with_client_metadata(default_verifier_metadata())
-    .add_trusted_root_certificate(cert.as_bytes())
+    .add_trusted_root_certificate(anchor.as_bytes())
     .unwrap()
     .build()
     .await
     .unwrap();
 
     let session = PresentationSession {
-        nonce: Nonce::from_secret("BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4".to_string()),
+        nonce: Nonce::from_secret(MDL_NONCE.to_string()),
         resolved_presentation_query: ResolvedPresentationQuery::DCQL(
             sample_dcql_query_for_mso_mdoc_vp_request(),
         ),
@@ -277,7 +283,7 @@ async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
     let auth_response = serde_json::from_value(json!(
         {
             "vp_token": {
-                "mDL": [SAMPLE_MDL_VP_TOKEN]
+                "mDL": [mdl_vp_token(&ds, &ds_key)]
             }
         }
     ))
@@ -289,7 +295,7 @@ async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
             &session,
             &CredentialVerificationMetadata {
                 transaction_data: None,
-                audience: Some("https://verifier.example.com:5173".to_string()),
+                audience: Some(MDL_CLIENT_ID.to_string()),
             },
         )
         .await

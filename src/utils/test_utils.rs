@@ -233,3 +233,33 @@ pub fn skid_of(cert_pem: &str) -> String {
         .unwrap()
         .unwrap()
 }
+
+/// Self-signed IACA certificate (`CN=Test IACA, C=US`) for `key`.
+pub fn mdl_iaca(key: &JWK) -> String {
+    test_fixtures::x509(
+        &serde_json::json!({
+            "subject": [["CN", "Test IACA"], ["C", "US"]],
+            "not_before": "2026-01-01", "not_after": "2046-01-01",
+            "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+        }),
+        key,
+        None,
+    )
+}
+
+/// IACA certificate, a DS certificate (`CN=Test DS, C=US`) it issued, and the DS key.
+pub fn mdl_chain() -> (String, String, JWK) {
+    let iaca_key = JWK::generate_p256();
+    let iaca = mdl_iaca(&iaca_key);
+    let ds_key = JWK::generate_p256();
+    let ds = test_fixtures::x509(
+        &serde_json::json!({
+            "subject": [["CN", "Test DS"], ["C", "US"]],
+            "not_before": "2026-01-01", "not_after": "2046-01-01",
+            "key_usages": ["digital_signature"], "authority_key_identifier": true
+        }),
+        &ds_key,
+        Some((&iaca, &iaca_key)),
+    );
+    (iaca, ds, ds_key)
+}
