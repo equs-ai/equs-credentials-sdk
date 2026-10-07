@@ -269,22 +269,18 @@ pub mod tests {
 
     /// mDL presentation under a fresh IACA → DS chain, bound to `NONCE` and `VERIFIER`.
     pub fn sample_mso_mdoc_vp() -> String {
-        mdoc_vp(None, None).1
+        mdoc_vp(None, None)
     }
 
     #[tokio::test]
     async fn verify_vp_works_correctly() {
-        let (iaca, value) = mdoc_vp(None, None);
         let verified_claims = MsoMdocAPI::verify_vp(
             &Presentation {
-                value,
+                value: sample_mso_mdoc_vp(),
                 enc_pub_key: None,
             },
             Some(binder(None)),
-            VerifyOptions {
-                trusted_certs: Some(anchors(&[&iaca])),
-                selective_claims: None,
-            },
+            VerifyOptions::default(),
             UniversalResolver::default(),
         )
         .await
@@ -351,7 +347,7 @@ pub mod tests {
     ) {
         let result = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: mdoc_vp(Some(presented), None).1,
+                value: mdoc_vp(Some(presented), None),
                 enc_pub_key: None,
             },
             Some(binder(response_uri)),
@@ -374,7 +370,7 @@ pub mod tests {
     ) {
         let result = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: mdoc_vp(Some(RESPONSE_URI), Some(&test_fixtures::keys().verifier)).1,
+                value: mdoc_vp(Some(RESPONSE_URI), Some(&test_fixtures::keys().verifier)),
                 enc_pub_key,
             },
             Some(binder(Some(RESPONSE_URI))),
@@ -386,13 +382,10 @@ pub mod tests {
         assert_eq!(result.is_ok(), valid, "{result:?}");
     }
 
-    /// The IACA and a presentation issued under it.
-    fn mdoc_vp(
-        response_uri: Option<&str>,
-        verifier_key: Option<&test_fixtures::JWK>,
-    ) -> (String, String) {
-        let (iaca, ds, ds_key) = mdl_chain();
-        let value = test_fixtures::mdoc(
+    /// `sample_mso_mdoc_vp`, also bound to `response_uri` and `verifier_key` when given.
+    fn mdoc_vp(response_uri: Option<&str>, verifier_key: Option<&test_fixtures::JWK>) -> String {
+        let (_, ds, ds_key) = mdl_chain();
+        test_fixtures::mdoc(
             &serde_json::json!({
                 "doc_type": "org.iso.18013.5.1.mDL",
                 "name_spaces": { "org.iso.18013.5.1": {
@@ -408,8 +401,7 @@ pub mod tests {
             }),
             &ds_key,
             &test_fixtures::keys().holder,
-        );
-        (iaca, value)
+        )
     }
 
     fn binder(response_uri: Option<&str>) -> HolderBinder {
