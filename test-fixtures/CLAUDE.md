@@ -10,7 +10,7 @@ kind; the crate owns only the key material and the cryptography.
 
 | File | Role |
 |------|------|
-| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `equs-one-core-crypto`, `serde_json` and `base64`, plus `rcgen` and `p256` behind the default-on `x509` feature — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
+| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `equs-one-core-crypto`, `serde`, `serde_json` and `base64`, plus `rcgen` and `p256` behind the default-on `x509` feature — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
 | `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), each a `LazyLock` generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. `jwe(header, payload, recipient)` — compact JWE for a P-256 key by ECDH-ES direct key agreement, as the SDK's `JweEncryptor` builds it; `header` gives `kid`, `enc` and the raw `apu` / `apv`. `x509(spec, key, issuer)` (feature `x509`) — X.509 certificate (PEM) for a P-256 key, self-signed or issued by a CA certificate (PEM) and its key; `spec` is JSON (subject pairs, SANs, dates, CA flag, usages, authority key identifier); the subject keeps the given order, a field or value it cannot apply panics, and the serial number is random. |
 
 ## Key types / traits
@@ -21,17 +21,15 @@ kind; the crate owns only the key material and the cryptography.
 
 ## Dependencies
 - Depends on: `ssi` (P-256 generation, JWS signing, `did:key`), `rsa` (RSA generation, which `ssi` lacks),
-  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `rcgen` with its `x509-parser` feature and `p256` (certificates issued for the same P-256 keys that sign JWS; feature `x509`), `serde_json` with `preserve_order` (headers and claims keep the
+  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `rcgen` 0.14.10 or later (the first to write `key_usages` without another extension) with its `x509-parser` feature and `p256` (certificates issued for the same P-256 keys that sign JWS; feature `x509`), `serde` with `derive` (the typed certificate spec and JWE header), `serde_json` with `preserve_order` (headers and claims keep the
   order they are written in), `base64`
 - Used by: the SDK's `[dev-dependencies]` (unit tests under `src/`, the E2E suite under `tests/`),
   `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`, and the test builds of the wrappers: `wrappers/nodejs` and `wrappers/uniffi` (feature `test-fixtures`), `wrappers/wasm` (feature `test-utils`, without `x509`)
 
 ## Constraints
-- Every builder panics on input it cannot apply rather than dropping it: an `alg` the key cannot sign, a
-  disclosure that is not a JSON array, a duplicate `_sd` digest, an `sd_jwt_kb` input without the trailing `~`,
-  a JWE header field other than `alg` / `enc` / `kid` / `apu` / `apv`, and any certificate spec field or value
-  `x509` cannot apply (including `key_usages` alone, which `rcgen` writes only next to another extension).
-  Fixtures are test code, so there is no error type.
+- Every builder panics on input it cannot apply instead of dropping or rewriting it; the certificate spec and the
+  JWE header are typed `serde` structs with `deny_unknown_fields`, and `null` counts as absent. Fixtures are
+  test code, so there is no error type.
 - `authz` is a fresh RSA key per process with its RFC 7638 JWK thumbprint as `kid`; a call site writes
   `authz.key_id` into its own `RS256` header, and `jwks(&[&keys().authz])` is the JWK Set to serve wherever a
   test serves the realm's JWKS.

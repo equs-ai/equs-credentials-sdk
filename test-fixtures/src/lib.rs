@@ -12,10 +12,13 @@ use one_crypto::signer::ecdsa::ECDSASigner;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use secrecy::SecretSlice;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use ssi::jwk::Params;
+use standardized_types::jwa::EncryptionAlgorithm;
 use standardized_types::jwk::PublicJwk;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 pub use ssi::JWK;
@@ -94,14 +97,22 @@ pub fn digest(input: &str) -> String {
 
 /// Issuer-signed SD-JWT over `header` and `claims`, followed by `disclosures` and a trailing `~`.
 /// `_sd` holds the sorted digests of the disclosures plus any digests already in `claims`; a
-/// disclosure is its JSON array text, digested as given.
+/// disclosure is the JSON array text `[salt, name, value]` of a top-level claim, digested as given.
 pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
+    let mut names = HashSet::new();
     for disclosure in disclosures {
         let parts: Vec<Value> = serde_json::from_str(disclosure)
             .unwrap_or_else(|_| panic!("a disclosure is a JSON array, not {disclosure}"));
+        let [Value::String(_), Value::String(name), _] = parts.as_slice() else {
+            panic!("a disclosure is [salt, name, value], not {disclosure}")
+        };
         assert!(
-            matches!(parts.len(), 2 | 3),
-            "a disclosure is [salt, value] or [salt, name, value], not {disclosure}"
+            !matches!(name.as_str(), "_sd" | "...") && claims.get(name).is_none(),
+            "disclosure name `{name}` is reserved or already a plaintext claim"
+        );
+        assert!(
+            names.insert(name.clone()),
+            "duplicate disclosure name `{name}`"
         );
     }
     let encoded: Vec<String> = disclosures
@@ -109,15 +120,7 @@ pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -
         .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
         .collect();
     let mut claims = claims.clone();
-    let mut digests: Vec<String> = match &claims["_sd"] {
-        Value::Null => Vec::new(),
-        value => value
-            .as_array()
-            .expect("`_sd` must be an array")
-            .iter()
-            .map(|digest| digest.as_str().expect("`_sd` holds strings").to_string())
-            .collect(),
-    };
+    let mut digests = parse::<Option<Vec<String>>>("`_sd`", &claims["_sd"]).unwrap_or_default();
     digests.extend(encoded.iter().map(|d| digest(d)));
     digests.sort();
     assert!(
@@ -152,38 +155,34 @@ pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> Str
 /// Compact JWE of `payload` for the P-256 `recipient`: ECDH-ES under a fresh ephemeral key, as the
 /// SDK encrypts. `header` gives `kid`, `enc` and the raw `apu` / `apv`; `alg` must be `ECDH-ES`.
 pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
-    for field in header.as_object().expect("JWE header object").keys() {
-        assert!(
-            ["alg", "enc", "kid", "apu", "apv"].contains(&field.as_str()),
-            "unsupported JWE header field `{field}`"
-        );
-    }
-    assert_eq!(header["alg"], "ECDH-ES", "only ECDH-ES is supported");
+    let header: JweFields = parse("JWE header", header);
+    assert_eq!(header.alg, "ECDH-ES", "only ECDH-ES is supported");
     let ephemeral = JWK::generate_p256();
     let shared_secret =
         ECDSASigner::shared_secret_p256(&private_scalar(&ephemeral), &public_jwk(recipient))
             .expect("ECDH");
-    let text = |name: &str| match &header[name] {
-        Value::Null => None,
-        value => Some(
-            value
-                .as_str()
-                .unwrap_or_else(|| panic!("`{name}` must be a string"))
-                .to_string(),
-        ),
-    };
     build_jwe(
         payload,
         JweHeader {
-            key_id: text("kid").expect("`kid`"),
-            agreement_partyuinfo: text("apu"),
-            agreement_partyvinfo: text("apv"),
+            key_id: header.kid,
+            agreement_partyuinfo: header.apu,
+            agreement_partyvinfo: header.apv,
         },
         shared_secret,
         public_jwk(&ephemeral),
-        serde_json::from_value(header["enc"].clone()).expect("`enc`"),
+        header.enc,
     )
     .expect("JWE")
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JweFields {
+    alg: String,
+    enc: EncryptionAlgorithm,
+    kid: String,
+    apu: Option<String>,
+    apv: Option<String>,
 }
 
 fn private_scalar(key: &JWK) -> SecretSlice<u8> {
@@ -211,45 +210,9 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
         IsCa, KeyUsagePurpose, SerialNumber,
     };
-    const FIELDS: [&str; 8] = [
-        "subject",
-        "sans",
-        "not_before",
-        "not_after",
-        "ca",
-        "key_usages",
-        "extended_key_usages",
-        "authority_key_identifier",
-    ];
-    for field in spec.as_object().expect("certificate spec object").keys() {
-        assert!(
-            FIELDS.contains(&field.as_str()),
-            "unknown certificate spec field `{field}`"
-        );
-    }
-    let list = |name: &str| -> Vec<Value> {
-        match &spec[name] {
-            Value::Null => Vec::new(),
-            value => value
-                .as_array()
-                .unwrap_or_else(|| panic!("`{name}` must be an array"))
-                .clone(),
-        }
-    };
-    let strings = |name: &str| -> Vec<String> {
-        list(name)
-            .iter()
-            .map(|value| {
-                value
-                    .as_str()
-                    .unwrap_or_else(|| panic!("`{name}` holds strings only"))
-                    .to_string()
-            })
-            .collect()
-    };
-    let date = |name: &str| {
-        let text = spec[name].as_str().unwrap_or_default();
-        let bad = || format!("`{name}` must be a YYYY-MM-DD date, not {}", spec[name]);
+    let spec: CertSpec = parse("certificate spec", spec);
+    let date = |name: &str, text: &str| {
+        let bad = || format!("`{name}` must be a YYYY-MM-DD date, not {text}");
         let [year, month, day] = text.split('-').collect::<Vec<_>>()[..] else {
             panic!("{}", bad())
         };
@@ -259,81 +222,53 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             day.parse().unwrap_or_else(|_| panic!("{}", bad())),
         )
     };
-    let mut params = CertificateParams::new(strings("sans")).expect("SANs");
+    let mut params = CertificateParams::new(spec.sans.unwrap_or_default()).expect("SANs");
     params.distinguished_name = DistinguishedName::new();
-    for pair in list("subject") {
-        let Some([Value::String(kind), Value::String(value)]) = pair.as_array().map(Vec::as_slice)
-        else {
-            panic!("`subject` holds [type, value] string pairs, not {pair}")
+    for (kind, value) in spec.subject.unwrap_or_default() {
+        let ty = match kind {
+            DnKind::CN => DnType::CommonName,
+            DnKind::C => DnType::CountryName,
+            DnKind::O => DnType::OrganizationName,
+            DnKind::OU => DnType::OrganizationalUnitName,
+            DnKind::L => DnType::LocalityName,
+            DnKind::ST => DnType::StateOrProvinceName,
         };
-        let kind = match kind.as_str() {
-            "CN" => DnType::CommonName,
-            "C" => DnType::CountryName,
-            "O" => DnType::OrganizationName,
-            "OU" => DnType::OrganizationalUnitName,
-            "L" => DnType::LocalityName,
-            "ST" => DnType::StateOrProvinceName,
-            other => panic!("unknown DN type `{other}`"),
-        };
-        params.distinguished_name.push(kind, value.as_str());
+        assert!(
+            params.distinguished_name.get(&ty).is_none(),
+            "`subject` repeats `{kind:?}`"
+        );
+        params.distinguished_name.push(ty, value);
     }
-    if spec.get("not_before").is_some() {
-        params.not_before = date("not_before");
+    if let Some(text) = &spec.not_before {
+        params.not_before = date("not_before", text);
     }
-    if spec.get("not_after").is_some() {
-        params.not_after = date("not_after");
+    if let Some(text) = &spec.not_after {
+        params.not_after = date("not_after", text);
     }
-    params.is_ca = match &spec["ca"] {
-        Value::Bool(true) => IsCa::Ca(BasicConstraints::Unconstrained),
-        Value::Bool(false) => IsCa::ExplicitNoCa,
-        Value::Object(ca) => {
-            assert!(
-                ca.keys().all(|key| key == "path_len"),
-                "`ca` takes only `path_len`"
-            );
-            let path_len = ca["path_len"]
-                .as_u64()
-                .expect("`ca.path_len` must be a number");
-            IsCa::Ca(BasicConstraints::Constrained(
-                u8::try_from(path_len).expect("`ca.path_len` must be at most 255"),
-            ))
-        }
-        Value::Null => IsCa::NoCa,
-        other => panic!("`ca` must be true, false or {{\"path_len\": n}}, not {other}"),
+    params.is_ca = match spec.ca {
+        None => IsCa::NoCa,
+        Some(Value::Bool(true)) => IsCa::Ca(BasicConstraints::Unconstrained),
+        Some(Value::Bool(false)) => IsCa::ExplicitNoCa,
+        Some(ca) => IsCa::Ca(BasicConstraints::Constrained(
+            u8::try_from(parse::<PathLen>("`ca`", &ca).path_len)
+                .expect("`ca.path_len` must be at most 255"),
+        )),
     };
-    params.key_usages = strings("key_usages")
-        .iter()
-        .map(|usage| match usage.as_str() {
-            "digital_signature" => KeyUsagePurpose::DigitalSignature,
-            "key_encipherment" => KeyUsagePurpose::KeyEncipherment,
-            "key_cert_sign" => KeyUsagePurpose::KeyCertSign,
-            "crl_sign" => KeyUsagePurpose::CrlSign,
-            other => panic!("unknown key usage `{other}`"),
+    params.key_usages = (spec.key_usages.unwrap_or_default().into_iter())
+        .map(|usage| match usage {
+            KeyUsage::DigitalSignature => KeyUsagePurpose::DigitalSignature,
+            KeyUsage::KeyEncipherment => KeyUsagePurpose::KeyEncipherment,
+            KeyUsage::KeyCertSign => KeyUsagePurpose::KeyCertSign,
+            KeyUsage::CrlSign => KeyUsagePurpose::CrlSign,
         })
         .collect();
-    params.extended_key_usages = strings("extended_key_usages")
-        .iter()
-        .map(|usage| match usage.as_str() {
-            "server_auth" => ExtendedKeyUsagePurpose::ServerAuth,
-            "client_auth" => ExtendedKeyUsagePurpose::ClientAuth,
-            other => panic!("unknown extended key usage `{other}`"),
+    params.extended_key_usages = (spec.extended_key_usages.unwrap_or_default().into_iter())
+        .map(|usage| match usage {
+            ExtendedKeyUsage::ServerAuth => ExtendedKeyUsagePurpose::ServerAuth,
+            ExtendedKeyUsage::ClientAuth => ExtendedKeyUsagePurpose::ClientAuth,
         })
         .collect();
-    params.use_authority_key_identifier_extension = match &spec["authority_key_identifier"] {
-        Value::Null => false,
-        value => value
-            .as_bool()
-            .expect("`authority_key_identifier` must be a boolean"),
-    };
-    assert!(
-        params.key_usages.is_empty()
-            || params.use_authority_key_identifier_extension
-            || !params.subject_alt_names.is_empty()
-            || !params.extended_key_usages.is_empty()
-            || !matches!(params.is_ca, IsCa::NoCa),
-        "rcgen writes `key_usages` only next to `sans`, `extended_key_usages`, \
-         `authority_key_identifier` or `ca`"
-    );
+    params.use_authority_key_identifier_extension = spec.authority_key_identifier.unwrap_or(false);
     let mut serial = [0u8; 20];
     OsRng.fill_bytes(&mut serial);
     serial[0] &= 0x7f;
@@ -347,6 +282,57 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         ),
     };
     certificate.expect("certificate").pem()
+}
+
+#[cfg(feature = "x509")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CertSpec {
+    subject: Option<Vec<(DnKind, String)>>,
+    sans: Option<Vec<String>>,
+    not_before: Option<String>,
+    not_after: Option<String>,
+    ca: Option<Value>,
+    key_usages: Option<Vec<KeyUsage>>,
+    extended_key_usages: Option<Vec<ExtendedKeyUsage>>,
+    authority_key_identifier: Option<bool>,
+}
+
+#[cfg(feature = "x509")]
+#[derive(Debug, Deserialize)]
+#[allow(clippy::upper_case_acronyms)]
+enum DnKind {
+    CN,
+    C,
+    O,
+    OU,
+    L,
+    ST,
+}
+
+#[cfg(feature = "x509")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PathLen {
+    path_len: u64,
+}
+
+#[cfg(feature = "x509")]
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum KeyUsage {
+    DigitalSignature,
+    KeyEncipherment,
+    KeyCertSign,
+    CrlSign,
+}
+
+#[cfg(feature = "x509")]
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ExtendedKeyUsage {
+    ServerAuth,
+    ClientAuth,
 }
 
 #[cfg(feature = "x509")]
@@ -364,6 +350,11 @@ fn key_pair(key: &JWK) -> rcgen::KeyPair {
             .as_str(),
     )
     .expect("key pair")
+}
+
+/// `value` as `T`: a missing required field, an unknown field or a wrong type panics, naming `what`.
+fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
+    T::deserialize(value).unwrap_or_else(|err| panic!("{what}: {err}"))
 }
 
 fn b64(value: &Value) -> String {
@@ -676,14 +667,27 @@ mod tests {
 
     #[cfg(feature = "x509")]
     #[test]
-    #[should_panic(expected = "unknown certificate spec field `key_usage`")]
+    fn x509_writes_key_usages_without_another_extension() {
+        let cert = x509(
+            &json!({ "key_usages": ["digital_signature"] }),
+            &keys().issuer,
+            None,
+        );
+
+        let pem = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap().1;
+        assert!(pem.parse_x509().unwrap().key_usage().unwrap().is_some());
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    #[should_panic(expected = "certificate spec: unknown field `key_usage`")]
     fn x509_rejects_an_unknown_spec_field() {
         x509(&json!({ "key_usage": [] }), &keys().issuer, None);
     }
 
     #[cfg(feature = "x509")]
     #[test]
-    #[should_panic(expected = "`ca` must be true, false")]
+    #[should_panic(expected = "`ca`: invalid type: string \"true\"")]
     fn x509_rejects_a_ca_flag_of_the_wrong_type() {
         x509(&json!({ "ca": "true" }), &keys().issuer, None);
     }
@@ -708,14 +712,16 @@ mod tests {
     #[rstest]
     #[should_panic(expected = "`ca.path_len` must be at most 255")]
     #[case::path_len_out_of_range(json!({ "ca": { "path_len": 256 } }))]
-    #[should_panic(expected = "`ca` takes only `path_len`")]
+    #[should_panic(expected = "`ca`: unknown field `path_length`")]
     #[case::unknown_ca_field(json!({ "ca": { "path_length": 0 } }))]
     #[should_panic(expected = "`not_after` must be a YYYY-MM-DD date")]
     #[case::date_without_day(json!({ "not_after": "2046-01" }))]
-    #[should_panic(expected = "`subject` holds [type, value] string pairs")]
+    #[should_panic(expected = "certificate spec: invalid length 3")]
     #[case::subject_triple(json!({ "subject": [["CN", "x", "y"]] }))]
-    #[should_panic(expected = "rcgen writes `key_usages` only next to")]
-    #[case::key_usages_alone(json!({ "key_usages": ["digital_signature"] }))]
+    #[should_panic(expected = "`subject` repeats `OU`")]
+    #[case::repeated_subject_type(json!({ "subject": [["OU", "a"], ["CN", "x"], ["OU", "b"]] }))]
+    #[should_panic(expected = "`ca`: missing field `path_len`")]
+    #[case::ca_without_path_len(json!({ "ca": {} }))]
     #[cfg(feature = "x509")]
     fn x509_rejects_a_spec_it_cannot_apply(#[case] spec: Value) {
         x509(&spec, &keys().issuer, None);
@@ -724,11 +730,17 @@ mod tests {
     #[rstest]
     #[should_panic(expected = "a disclosure is a JSON array")]
     #[case::not_json(&["salt, name, value"], json!({}))]
-    #[should_panic(expected = "a disclosure is [salt, value] or [salt, name, value]")]
+    #[should_panic(expected = "a disclosure is [salt, name, value]")]
     #[case::four_parts(&[r#"["salt", "name", "value", "extra"]"#], json!({}))]
+    #[should_panic(expected = "a disclosure is [salt, name, value]")]
+    #[case::array_element(&[r#"["salt", "value"]"#], json!({}))]
+    #[should_panic(expected = "disclosure name `vct` is reserved or already a plaintext claim")]
+    #[case::plaintext_clash(&[r#"["salt", "vct", "x"]"#], json!({ "vct": "y" }))]
+    #[should_panic(expected = "duplicate disclosure name `name`")]
+    #[case::repeated_name(&[r#"["a", "name", "x"]"#, r#"["b", "name", "y"]"#], json!({}))]
     #[should_panic(expected = "duplicate `_sd` digest")]
     #[case::duplicate_digest(&[r#"["salt", "name", "John"]"#], json!({ "_sd": [digest(&BASE64_URL_SAFE_NO_PAD.encode(r#"["salt", "name", "John"]"#))] }))]
-    #[should_panic(expected = "`_sd` must be an array")]
+    #[should_panic(expected = "`_sd`: invalid type")]
     #[case::sd_not_an_array(&[], json!({ "_sd": "digest" }))]
     fn sd_jwt_rejects_what_it_cannot_apply(#[case] disclosures: &[&str], #[case] claims: Value) {
         sd_jwt(
@@ -754,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "unsupported JWE header field `typ`")]
+    #[should_panic(expected = "JWE header: unknown field `typ`")]
     fn jwe_rejects_a_header_field_it_would_drop() {
         jwe(
             &json!({ "alg": "ECDH-ES", "enc": "A256GCM", "kid": "k", "typ": "JWT" }),
