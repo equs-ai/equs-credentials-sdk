@@ -16,7 +16,7 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 | `jwk.rs` | `crypto::Key` impl for `ssi::JWK`; conversions between `ssi` / `jsonwebtoken` / `one-core` JWK types. |
 | `logs.rs` | `sanitize_log_msg` — strips non-alphanumeric characters and appends a base64 copy to prevent log injection. |
 | `serde.rs` | `Helpers` trait on `Claims` (`put_str`, `put_dt`); custom serde (de)serializers for `Duration` and `OffsetDateTime`; `accumulate_claim_names`. |
-| `test_utils.rs` | Test-only DID/key-handle factories (`create_did_and_key_metadata`, etc.), stub `MockKey`, `MockJweKms`, the fixture issuer's status-list token (`status_list_jwt`), trusted anchors keyed by Subject Key Identifier (`anchors`, `skid_of`), and the mdoc IACA and its DS chain (`iaca`, `mdl_chain`). |
+| `test_utils.rs` | Test-only DID/key-handle factories (`create_did_and_key_metadata`, etc.), stub `MockKey`, `MockJweKms`, the fixture issuer's status-list token (`status_list_jwt`), trusted anchors keyed by Subject Key Identifier (`anchors`, `skid_of`), and the mdoc IACA and its DS chain (`mdl_iaca`, `mdl_chain`). |
 | `wasm.rs` | `WasmNotSend` / `WasmNotSync` marker traits — `Send`/`Sync`-equivalent on native, no-op on wasm32. |
 | `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains up to a trusted anchor whose own PEM it holds (keyed by SKI), via one-core's `validate_chain_against_trust_anchors`, and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
 

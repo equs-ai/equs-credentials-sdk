@@ -255,7 +255,7 @@ impl From<CredentialClaimValue> for Claim {
 pub mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::nonce::Nonce;
-    use crate::utils::test_utils::{anchors, iaca, mdl_chain};
+    use crate::utils::test_utils::{anchors, mdl_chain, mdl_iaca};
     use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
@@ -284,7 +284,7 @@ pub mod tests {
     }
     /// Trusted certificates holding only a self-signed IACA unrelated to `sample_mso_mdoc_vp`.
     fn unrelated_iaca() -> HashMap<String, String> {
-        anchors(&[&iaca(&test_fixtures::JWK::generate_p256())])
+        anchors(&[&mdl_iaca(&test_fixtures::JWK::generate_p256())])
     }
 
     #[tokio::test]

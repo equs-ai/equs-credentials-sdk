@@ -367,41 +367,15 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
 /// booleans; digest IDs follow the order given, each item gets a fresh random salt, and an
 /// unknown field or another value type panics.
 pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
-    const FIELDS: [&str; 6] = [
-        "doc_type",
-        "name_spaces",
-        "valid_from",
-        "valid_until",
-        "client_id",
-        "nonce",
-    ];
-    for field in spec.as_object().expect("mdoc spec object").keys() {
-        assert!(
-            FIELDS.contains(&field.as_str()),
-            "unknown mdoc spec field `{field}`"
-        );
-    }
-    let text = |name: &str| -> String {
-        spec[name]
-            .as_str()
-            .unwrap_or_else(|| panic!("`{name}` must be a string"))
-            .to_string()
-    };
-    let doc_type = text("doc_type");
+    let spec: MdocSpec = parse("mdoc spec", spec);
+    let doc_type = spec.doc_type.as_str();
     let mut name_spaces = Vec::new();
     let mut value_digests = Vec::new();
-    for (name_space, elements) in spec["name_spaces"]
-        .as_object()
-        .expect("`name_spaces` must be an object")
-    {
+    for (name_space, elements) in &spec.name_spaces {
+        let elements: serde_json::Map<String, Value> = parse("a name space", elements);
         let mut items = Vec::new();
         let mut digests = Vec::new();
-        for (digest_id, (identifier, value)) in elements
-            .as_object()
-            .expect("a name space must be an object")
-            .iter()
-            .enumerate()
-        {
+        for (digest_id, (identifier, value)) in elements.iter().enumerate() {
             let mut random = [0u8; 32];
             OsRng.fill_bytes(&mut random);
             let item = embed(&cbor_map([
@@ -419,19 +393,19 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
         name_spaces.push((name_space.as_str().into(), Cbor::Array(items)));
         value_digests.push((name_space.as_str().into(), Cbor::Map(digests)));
     }
-    let date = |name: &str| Cbor::Tag(0, Box::new(text(name).into()));
+    let date = |text: &str| Cbor::Tag(0, Box::new(text.into()));
     let mso = cbor_map([
         ("version", "1.0".into()),
         ("digestAlgorithm", "SHA-256".into()),
         ("valueDigests", Cbor::Map(value_digests)),
         ("deviceKeyInfo", cbor_map([("deviceKey", cose_key(device))])),
-        ("docType", doc_type.as_str().into()),
+        ("docType", doc_type.into()),
         (
             "validityInfo",
             cbor_map([
-                ("signed", date("valid_from")),
-                ("validFrom", date("valid_from")),
-                ("validUntil", date("valid_until")),
+                ("signed", date(&spec.valid_from)),
+                ("validFrom", date(&spec.valid_from)),
+                ("validUntil", date(&spec.valid_until)),
             ]),
         ),
     ]);
@@ -445,8 +419,8 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let device_name_spaces = embed(&Cbor::Map(Vec::new()));
     let device_authentication = Cbor::Array(vec![
         "DeviceAuthentication".into(),
-        session_transcript(&text("client_id"), &text("nonce")),
-        doc_type.as_str().into(),
+        session_transcript(&spec.client_id, &spec.nonce),
+        doc_type.into(),
         device_name_spaces.clone(),
     ]);
     let device_signature = cose_sign1(
@@ -460,7 +434,7 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
         (
             "documents",
             Cbor::Array(vec![cbor_map([
-                ("docType", doc_type.as_str().into()),
+                ("docType", doc_type.into()),
                 (
                     "issuerSigned",
                     cbor_map([
@@ -483,6 +457,17 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
         ("status", 0.into()),
     ]);
     BASE64_URL_SAFE_NO_PAD.encode(cbor(&response))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MdocSpec {
+    doc_type: String,
+    name_spaces: serde_json::Map<String, Value>,
+    valid_from: String,
+    valid_until: String,
+    client_id: String,
+    nonce: String,
 }
 
 fn b64(value: &Value) -> String {
@@ -1193,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "unknown mdoc spec field `docType`")]
+    #[should_panic(expected = "mdoc spec: unknown field `docType`")]
     fn mdoc_rejects_an_unknown_spec_field() {
         let ds_key = JWK::generate_p256();
         mdoc(

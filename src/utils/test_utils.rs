@@ -235,7 +235,7 @@ pub fn skid_of(cert_pem: &str) -> String {
 }
 
 /// Self-signed IACA certificate (`CN=Test IACA, C=US`) for `key`.
-pub fn iaca(key: &JWK) -> String {
+pub fn mdl_iaca(key: &JWK) -> String {
     test_fixtures::x509(
         &serde_json::json!({
             "subject": [["CN", "Test IACA"], ["C", "US"]],
@@ -250,7 +250,7 @@ pub fn iaca(key: &JWK) -> String {
 /// IACA certificate, a DS certificate (`CN=Test DS, C=US`) it issued, and the DS key.
 pub fn mdl_chain() -> (String, String, JWK) {
     let iaca_key = JWK::generate_p256();
-    let iaca = iaca(&iaca_key);
+    let iaca = mdl_iaca(&iaca_key);
     let ds_key = JWK::generate_p256();
     let ds = test_fixtures::x509(
         &serde_json::json!({
