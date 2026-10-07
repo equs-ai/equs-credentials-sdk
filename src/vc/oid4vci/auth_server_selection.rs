@@ -48,7 +48,7 @@ impl AuthServerHint {
 pub(super) enum AuthServerChoice {
     Issuer,
     Server(IssuerUrl),
-    FirstSupportingAuthorizationCode(Vec<IssuerUrl>),
+    Servers(Vec<IssuerUrl>),
 }
 
 pub(super) fn select_authorization_server(
@@ -82,7 +82,7 @@ pub(super) fn select_authorization_server(
 
     match hint {
         AuthServerHint::AuthorizationCode(_) if servers.len() > 1 => {
-            AuthServerChoice::FirstSupportingAuthorizationCode(servers.to_vec())
+            AuthServerChoice::Servers(servers.to_vec())
         }
         _ => AuthServerChoice::Server(servers[0].clone()),
     }
@@ -276,7 +276,7 @@ mod tests {
         match choice {
             AuthServerChoice::Issuer => ISSUER_ITSELF.to_string(),
             AuthServerChoice::Server(server) => server.as_str().to_string(),
-            AuthServerChoice::FirstSupportingAuthorizationCode(servers) => {
+            AuthServerChoice::Servers(servers) => {
                 // Capability selection must try every listed server, in the listed order
                 let listed = [AUTH_URL, SECOND_AUTH_URL].map(issuer_url);
                 assert_eq!(servers.as_slice(), listed.as_slice());

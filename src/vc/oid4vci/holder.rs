@@ -158,7 +158,7 @@ where
                 AuthServerChoice::Server(server) => {
                     MetadataDiscovery::discover_metadata(http_client.as_ref(), &server).await?
                 }
-                AuthServerChoice::FirstSupportingAuthorizationCode(servers) => {
+                AuthServerChoice::Servers(servers) => {
                     discover_first_supporting_authorization_code(http_client.as_ref(), &servers)
                         .await?
                 }
