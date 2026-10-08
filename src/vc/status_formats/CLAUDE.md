@@ -18,5 +18,5 @@ Provides the abstract `API` trait and concrete implementations for token-based V
 - `SLMetadata` — metadata for status list JWT creation (URL, size, count).
 
 ## Dependencies
-- Depends on: `sd_jwt_rs`, `ssi_status::token_status_list`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
+- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
 - Used by: `core::StatusIssuerService`, `formats::sd_jwt_vc` (status check), `mod.rs` (top-level `VCStatus` re-export)

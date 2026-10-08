@@ -45,7 +45,7 @@ pub type SubmissionRequirementBase =
 pub type SubmissionRequirementPick =
     openid4vp::core::presentation_definition::SubmissionRequirementPick;
 pub type GroupId = openid4vp::core::input_descriptor::GroupId;
-pub type StatusSize = ssi_status::token_status_list::StatusSize;
+pub type StatusSize = ssi::status::token_status_list::StatusSize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct FieldFilter {

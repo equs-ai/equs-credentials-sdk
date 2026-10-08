@@ -33,9 +33,9 @@ use flate2::Compression;
 use oauth2::http;
 use oauth2::http::Method;
 use serde_json::Value;
-use ssi_status::token_status_list::BitString;
-use ssi_status::token_status_list::json::JsonStatusList;
-use ssi_status::token_status_list::json::Status;
+use ssi::status::token_status_list::BitString;
+use ssi::status::token_status_list::json::JsonStatusList;
+use ssi::status::token_status_list::json::Status;
 use strum_macros::Display;
 use url::Url;
 
