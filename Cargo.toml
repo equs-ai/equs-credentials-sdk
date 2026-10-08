@@ -101,12 +101,10 @@ ecdsa = { version = "0.16.9", optional = true }
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "=1.3.1", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
-libc = "0.2.172"
 
 # Transitive dependecies versioning
-generic-array = "=0.14.7"
+generic-array = "=0.14.7" # Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 hex = "0.4.3"
-log = "0.4.28"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
 ml-dsa = "=0.1.0-rc.9" # one-crypto (one-core-new@092a2de1) uses the pre-rc.11 KeyGen API; rc.11 removed it
 getrandom = "=0.4.2"
