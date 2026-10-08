@@ -196,7 +196,7 @@ class HolderVPTest {
                 holder = Oid4vpHolderBuilder(
                     inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
                     MockNonceHandler("some_nonce")
-                ).build()
+                ).withDelegation(true).build()
 
                 inMemVault.storeCredential(credential, metadata)
             }
@@ -323,18 +323,44 @@ class HolderVPTest {
         )
     }
 
-    private suspend fun declineAndReadResponse(item: TransactionDataItem): String {
+    private suspend fun declineAndReadResponse(item: TransactionDataItem, wallet: Oid4vpHolder = holder): String {
         val server = MockWebServer()
         server.start(9007)
         try {
             server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
-            holder.declineAuthorizationRequest(
+            wallet.declineAuthorizationRequest(
                 authRequest.copy(responseUri = "http://localhost:9007/response", transactionData = listOf(item))
             )
             return String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test
+    fun testDelegationIsOffByDefault() = runTest {
+        val wallet = Oid4vpHolderBuilder(
+            InMemKms(), InMemVault(), CLIENT_ID, ReqwestHttpClient.insecure(), MockNonceHandler("some_nonce")
+        ).build()
+        val item = TransactionDataItem(
+            type = "delegate",
+            credentialIds = listOf("Identity-1"),
+            transactionDataHashesAlg = null,
+            data = """{"format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}""",
+        )
+        val request = authRequest.copy(responseMode = "dc_api", responseUri = null, transactionData = listOf(item))
+
+        val error = assertThrows<Exception.Oid4vpHolder> {
+            runBlocking {
+                wallet.presentCredentialsAuto(
+                    request,
+                    AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = "https://agent.example.org"),
+                )
+            }
+        }
+        assertTrue(error.message.contains("delegation is not enabled"))
+        assertThrows<Exception.Oid4vpHolder> { runBlocking { wallet.findVcsForPresentation(request) } }
+        assertTrue(declineAndReadResponse(item, wallet).startsWith("error=access_denied"))
     }
 
     @Test

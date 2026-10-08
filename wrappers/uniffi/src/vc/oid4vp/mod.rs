@@ -108,20 +108,33 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
 
 /// Converts a request that is about to be answered with a presentation.
 ///
-/// Upstream parses a `delegate` item without its delegate fields, or with an unrecognized
-/// `format`, as an unknown type; presenting it would answer a delegation request with an
-/// ordinary presentation, so it is rejected here. Declining such a request still works.
-pub(crate) fn presentable_request(request: AuthorizationRequest) -> Result<ResolvedAuthRequest> {
+/// A `delegate` item is answered with a delegation grant, so it is rejected unless the holder
+/// was built with delegation allowed. Upstream also parses a `delegate` item without its
+/// delegate fields, or with an unrecognized `format`, as an unknown type; presenting that would
+/// answer a delegation request with an ordinary presentation, so it is rejected too. Declining
+/// either request still works.
+pub(crate) fn presentable_request(
+    request: AuthorizationRequest,
+    allow_delegation: bool,
+) -> Result<ResolvedAuthRequest> {
     let request: ResolvedAuthRequest = request.try_into()?;
-    let unrecognized_delegate = request
+    let delegate_items = request
         .transaction_data
         .iter()
         .flatten()
-        .any(|item| item.type_() == TRANSACTION_TYPE_DELEGATE && as_delegate(item).is_none());
-    if unrecognized_delegate {
-        return Err(Error::OID4VPHolder(
-            "invalid `delegate` transaction data item".to_string(),
-        ));
+        .filter(|item| item.type_() == TRANSACTION_TYPE_DELEGATE);
+    for item in delegate_items {
+        if !allow_delegation {
+            return Err(Error::OID4VPHolder(
+                "the request asks for a delegation, but delegation is not enabled for this holder"
+                    .to_string(),
+            ));
+        }
+        if as_delegate(item).is_none() {
+            return Err(Error::OID4VPHolder(
+                "invalid `delegate` transaction data item".to_string(),
+            ));
+        }
     }
     Ok(request)
 }

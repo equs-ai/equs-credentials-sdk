@@ -136,12 +136,43 @@ import Testing
 				== expectedHash(#","amount":100000000000000000000"#))
 	}
 
-	private func declineAndReadResponse(_ item: TransactionDataItem) async throws -> String? {
+	private func declineAndReadResponse(_ item: TransactionDataItem, holder: Oid4vpHolder? = nil) async throws -> String? {
 		self.http["/response"] = { _ in MockHttpRouter.ok("", contentType: "text/plain") }
 		var request = Oid4vpHolderTestConstants.authRequest
 		request.transactionData = [item]
-		_ = try await self.holder.declineAuthorizationRequest(authRequest: request)
+		_ = try await (holder ?? self.holder).declineAuthorizationRequest(authRequest: request)
 		return self.http.requests.last { MockHttpRouter.path(of: $0.url) == "/response" }?.body
+	}
+
+	@Test func delegationIsOffByDefault() async throws {
+		let holder = try await Oid4vpHolderBuilder(
+			kms: InMemKms(), vault: InMemVault(), clientId: Oid4vpHolderTestConstants.clientId,
+			httpClient: http, nonceHandler: MockNonceHandler(nonce: "some_nonce")
+		).build()
+		let item = TransactionDataItem(
+			type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+			data: #"{"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(Oid4vpHolderTestConstants.delegatePayloadDisclosure)"}"#)
+		var request = Oid4vpHolderTestConstants.authRequest
+		request.responseMode = "dc_api"
+		request.responseUri = nil
+		request.transactionData = [item]
+
+		do {
+			_ = try await holder.presentCredentialsAuto(
+				authRequest: request,
+				authResponseMetadata: AuthorizationResponseMetadata(
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: "https://agent.example.org"))
+			Issue.record("expected the delegation to be refused")
+		} catch EqusSdk.Error.Oid4vpHolder(let message) {
+			#expect(message.contains("delegation is not enabled"))
+		}
+		do {
+			_ = try await holder.findVcsForPresentation(authRequest: request)
+			Issue.record("expected the delegation to be refused")
+		} catch EqusSdk.Error.Oid4vpHolder(_) {
+		}
+		let body = try await declineAndReadResponse(item, holder: holder)
+		#expect(body?.hasPrefix("error=access_denied") == true)
 	}
 
 	@Test func declineWorksWithUnrecognizedDelegateItem() async throws {
@@ -455,7 +486,7 @@ import Testing
             kms: inMemKms, vault: inMemVault, clientId: Oid4vpHolderTestConstants.clientId,
             httpClient: http,
             nonceHandler: nonceHandler
-        ).build()
+        ).withDelegation(allow: true).build()
 
         return holder
     }
