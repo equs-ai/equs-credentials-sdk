@@ -278,11 +278,9 @@ dependencies = [
  "equs-credentials-sdk",
  "reqwest 0.12.12",
  "serde_json",
- "serde_urlencoded",
  "shared",
  "snafu 0.9.1",
  "tracing-subscriber",
- "uuid 1.23.1",
 ]
 
 [[package]]
@@ -618,7 +616,6 @@ name = "askar-nodejs"
 version = "0.1.0"
 dependencies = [
  "askar",
- "async-trait",
  "napi",
  "napi-build",
  "napi-derive",
@@ -2916,7 +2913,6 @@ dependencies = [
 name = "equs-common-macros"
 version = "0.1.0"
 dependencies = [
- "proc-macro2",
  "quote",
  "snafu 0.8.9",
  "syn 2.0.117",
@@ -2963,8 +2959,6 @@ dependencies = [
  "jsonpath-rust",
  "jsonwebtoken",
  "lazy_static",
- "libc",
- "log",
  "mime",
  "ml-dsa",
  "mockall",
@@ -4684,18 +4678,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "instant"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
-dependencies = [
- "cfg-if 1.0.4",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "inventory"
 version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4855,7 +4837,6 @@ dependencies = [
  "equs-test-fixtures",
  "keycloak",
  "reqwest 0.12.12",
- "serde",
  "serde_json",
  "tracing-subscriber",
 ]
@@ -5801,7 +5782,6 @@ dependencies = [
  "equs-test-fixtures",
  "futures",
  "rand 0.9.4",
- "serde",
  "serde_json",
  "tokio",
  "tracing-subscriber",
@@ -5940,7 +5920,6 @@ dependencies = [
  "either",
  "equs-credentials-sdk",
  "equs-test-fixtures",
- "log",
  "napi",
  "napi-build",
  "napi-derive",
@@ -5949,7 +5928,6 @@ dependencies = [
  "snafu 0.8.9",
  "strum_macros 0.27.2",
  "time",
- "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -10732,7 +10710,6 @@ dependencies = [
  "equs-credentials-sdk",
  "equs-test-fixtures",
  "getrandom 0.4.2",
- "instant",
  "js-sys",
  "oauth2",
  "serde",
