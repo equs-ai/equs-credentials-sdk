@@ -17,7 +17,7 @@ shared = { path = "../shared" }
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.117"
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["blocking"] }
 time = { version = "0.3.29", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 serde_urlencoded = "0.7.1"
