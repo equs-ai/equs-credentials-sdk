@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import EqusSdk
@@ -67,7 +68,7 @@ import Testing
 			expected: #"{"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(Oid4vpHolderTestConstants.delegatePayloadDisclosure)"}"#)
 		#expect(items[1].type == "payment")
 		let paymentData = try #require(items[1].data)
-		compareJsonValues(actual: paymentData, expected: #"{"amount":{"value":"42.00","currency":"EUR"}}"#)
+		compareJsonValues(actual: paymentData, expected: #"{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
 
 		let origin = "https://agent.example.org"
 		request.responseMode = "dc_api"
@@ -98,7 +99,10 @@ import Testing
 			NSDictionary(dictionary: Fixtures.jsonObject(Oid4vpHolderTestConstants.delegateJwk))))
 		#expect(delegatePayload["aud"] as? String == "origin:\(origin)")
 		#expect(delegatePayload["nonce"] as? String == request.nonce)
-		#expect(response.transactionDataHashes?.count == 2)
+		#expect(
+			response.transactionDataHashes
+				== [Oid4vpHolderTestConstants.delegateTransactionData, Oid4vpHolderTestConstants.paymentTransactionData]
+				.map(Oid4vpHolderTestConstants.transactionDataHash))
 	}
 
 	@Test func transactionDataPayloadIsHashed() async throws {
@@ -124,6 +128,39 @@ import Testing
 		let withoutPayload = try await hash(nil)
 		let withPayload = try await hash(#"{"amount":{"value":"42.00","currency":"EUR"}}"#)
 		#expect(withoutPayload != withPayload)
+	}
+
+	@Test func declineWorksWithUnrecognizedDelegateItem() async throws {
+		try await confirmation("Decline Response is not received") { confirmResponse in
+			self.http["/response"] = { request in
+				#expect(request.body?.hasPrefix("error=access_denied") == true)
+				confirmResponse()
+				return MockHttpRouter.ok("", contentType: "text/plain")
+			}
+
+			var request = Oid4vpHolderTestConstants.authRequest
+			request.transactionData = [
+				TransactionDataItem(
+					type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+					data: #"{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}"#)
+			]
+			let _ = try await self.holder.declineAuthorizationRequest(authRequest: request)
+		}
+	}
+
+	@Test func transactionDataErrorsDoNotEchoItemContents() async throws {
+		var request = Oid4vpHolderTestConstants.authRequest
+		request.transactionData = [
+			TransactionDataItem(
+				type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+				data: #"{"amount":123456789012345678901234567890}"#)
+		]
+		do {
+			_ = try await self.holder.findVcsForPresentation(authRequest: request)
+			Issue.record("expected the item to be rejected")
+		} catch EqusSdk.Error.Oid4vpHolder(let message) {
+			#expect(!message.contains("123456789012345678901234567890"))
+		}
 	}
 
 	@Test func invalidTransactionDataItemsAreRejected() async throws {
@@ -695,10 +732,19 @@ static let presentationDefinitionWithFakeConstraints = """
 		#"["test-salt-for-delegation",{"purchase_id":"p-42","cnf":{"jwk":\#(delegateJwk)}}]"#)
 	static let identityDcqlQuery =
 		#"{"credentials":[{"id":"Identity-1","format":"dc+sd-jwt","meta":{"vct_values":["https://credentials.example.com/identity_credential"]},"claims":[{"path":["name"]}]}]}"#
+	// Both items are written in the SDK's serialization order, so the hash of the received string
+	// is also the hash an SDK verifier computes for them.
 	static let delegateTransactionData = Fixtures.base64Url(
-		#"{"type":"delegate","credential_ids":["Identity-1"],"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(delegatePayloadDisclosure)"}"#)
+		#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"delegate","format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(delegatePayloadDisclosure)"}"#)
 	static let paymentTransactionData = Fixtures.base64Url(
-		#"{"type":"payment","credential_ids":["Identity-1"],"amount":{"value":"42.00","currency":"EUR"}}"#)
+		#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
+
+	static func transactionDataHash(_ encodedItem: String) -> String {
+		Data(SHA256.hash(data: Data(encodedItem.utf8))).base64EncodedString()
+			.replacingOccurrences(of: "+", with: "-")
+			.replacingOccurrences(of: "/", with: "_")
+			.replacingOccurrences(of: "=", with: "")
+	}
 	static let requestUriForDelegation =
 		"openid4vp://?client_id=\(encodedVerifierClientId)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request_delegate"
 	static let delegationAuthRequestJwt: String = try! fixtureJws(

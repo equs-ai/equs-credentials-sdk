@@ -2,7 +2,9 @@ use crate::common::{Error, Result};
 use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
 use crate::vc::VCStatus;
-use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult};
+use crate::vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult, presentable_request,
+};
 use equs_sdk::vc::Credential;
 use equs_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
 use std::collections::HashMap;
@@ -68,7 +70,7 @@ impl OID4VPHolder {
     ) -> Result<PresentationResult> {
         let result = self
             .0
-            .present_credentials_auto(&auth_request.try_into()?, &auth_response_metadata)
+            .present_credentials_auto(&presentable_request(auth_request)?, &auth_response_metadata)
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
@@ -88,7 +90,7 @@ impl OID4VPHolder {
     ) -> Result<HashMap<String, CredentialsFindResult>> {
         let vcs_for_presentation = self
             .0
-            .find_vcs_for_presentation(&auth_request.try_into()?)
+            .find_vcs_for_presentation(&presentable_request(auth_request)?)
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
@@ -139,7 +141,7 @@ impl OID4VPHolder {
         let result = self
             .0
             .present_credentials(
-                &auth_request.try_into()?,
+                &presentable_request(auth_request)?,
                 &credential_mapping,
                 &auth_response_metadata,
             )

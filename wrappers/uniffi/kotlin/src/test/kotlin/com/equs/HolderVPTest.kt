@@ -16,9 +16,11 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -148,11 +150,17 @@ val DELEGATE_PAYLOAD_DISCLOSURE: String by lazy {
 }
 const val IDENTITY_DCQL_QUERY =
     """{"credentials":[{"id":"Identity-1","format":"dc+sd-jwt","meta":{"vct_values":["https://credentials.example.com/identity_credential"]},"claims":[{"path":["name"]}]}]}"""
+// Both items are written in the SDK's serialization order, so the hash of the received string is
+// also the hash an SDK verifier computes for them.
 val DELEGATE_TRANSACTION_DATA: String by lazy {
-    Fixtures.base64Url("""{"type":"delegate","credential_ids":["Identity-1"],"format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}""")
+    Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"delegate","format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}""")
 }
 val PAYMENT_TRANSACTION_DATA: String =
-    Fixtures.base64Url("""{"type":"payment","credential_ids":["Identity-1"],"amount":{"value":"42.00","currency":"EUR"}}""")
+    Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}""")
+
+fun transactionDataHash(encodedItem: String): String =
+    Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(MessageDigest.getInstance("SHA-256").digest(encodedItem.toByteArray()))
 val REQUEST_URI_FOR_DELEGATION: String by lazy {
     "openid4vp://?client_id=$ENCODED_VERIFIER_CLIENT_ID&request_uri=http%3A%2F%2Flocalhost%3A9006"
 }
@@ -251,7 +259,7 @@ class HolderVPTest {
         )
         assertEquals("payment", paymentItem.type)
         assertEquals(
-            Json.parseToJsonElement("""{"amount":{"value":"42.00","currency":"EUR"}}"""),
+            Json.parseToJsonElement("""{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"""),
             Json.parseToJsonElement(paymentItem.data!!),
         )
 
@@ -274,7 +282,10 @@ class HolderVPTest {
         assertEquals(Json.parseToJsonElement(DELEGATE_JWK), delegatePayload["cnf"]!!.jsonObject["jwk"])
         assertEquals("origin:$origin", delegatePayload["aud"]!!.jsonPrimitive.content)
         assertEquals(authorizationRequest.nonce, delegatePayload["nonce"]!!.jsonPrimitive.content)
-        assertEquals(2, response.transactionDataHashes!!.size)
+        assertEquals(
+            listOf(DELEGATE_TRANSACTION_DATA, PAYMENT_TRANSACTION_DATA).map(::transactionDataHash),
+            response.transactionDataHashes,
+        )
     }
 
     @Test
@@ -300,6 +311,44 @@ class HolderVPTest {
         }
 
         assertNotEquals(hashFor(null), hashFor("""{"amount":{"value":"42.00","currency":"EUR"}}"""))
+    }
+
+    @Test
+    fun testDeclineWorksWithUnrecognizedDelegateItem() = runTest {
+        val server = MockWebServer()
+        server.start(9007)
+        server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
+        val request = authRequest.copy(
+            responseUri = "http://localhost:9007/response",
+            transactionData = listOf(
+                TransactionDataItem(
+                    type = "delegate",
+                    credentialIds = listOf("Identity-1"),
+                    transactionDataHashesAlg = null,
+                    data = """{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}""",
+                )
+            ),
+        )
+
+        holder.declineAuthorizationRequest(request)
+
+        val body = String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
+        server.shutdown()
+        assertTrue(body.startsWith("error=access_denied"))
+    }
+
+    @Test
+    fun testTransactionDataErrorsDoNotEchoItemContents() = runTest {
+        val item = TransactionDataItem(
+            type = "payment",
+            credentialIds = listOf("Identity-1"),
+            transactionDataHashesAlg = null,
+            data = """{"amount":123456789012345678901234567890}""",
+        )
+        val error = assertThrows<Exception.Oid4vpHolder> {
+            runBlocking { holder.findVcsForPresentation(authRequest.copy(transactionData = listOf(item))) }
+        }
+        assertFalse(error.message.contains("123456789012345678901234567890"))
     }
 
     @Test

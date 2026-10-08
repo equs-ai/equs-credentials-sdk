@@ -63,8 +63,9 @@ pub struct TransactionDataItem {
     pub type_: String,
     pub credential_ids: Vec<String>,
     pub transaction_data_hashes_alg: Option<Vec<String>>,
-    /// Every other field of the item as a JSON object, e.g. `format` and
-    /// `delegate_payload_disclosure` for a `delegate` item; `None` when there are none.
+    /// Every other field of the item as a JSON object in the item's key order, e.g. `format`
+    /// and `delegate_payload_disclosure` for a `delegate` item; `None` when there are none.
+    /// Pass it back unchanged: the item's transaction-data hash covers the key order.
     #[uniffi(default = None)]
     pub data: Option<JsonValue>,
 }
@@ -95,16 +96,30 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
         if let Some(algs) = value.transaction_data_hashes_alg {
             item.insert("transaction_data_hashes_alg".to_string(), algs.into());
         }
-        let item: CoreTransactionDataItem = serde_json::from_value(serde_json::Value::Object(item))
-            .map_err(|e| Error::OID4VPHolder(format!("invalid transaction data item: {e}")))?;
-        // A malformed `delegate` item parses as `Unknown` rather than failing.
-        if item.type_() == TRANSACTION_TYPE_DELEGATE && as_delegate(&item).is_none() {
-            return Err(Error::OID4VPHolder(
-                "invalid `delegate` transaction data item".to_string(),
-            ));
-        }
-        Ok(item)
+        // serde's message can quote the item's values, so it is not passed on.
+        serde_json::from_value(serde_json::Value::Object(item))
+            .map_err(|_| Error::OID4VPHolder("invalid transaction data item".to_string()))
     }
+}
+
+/// Converts a request that is about to be answered with a presentation.
+///
+/// Upstream parses a `delegate` item without its delegate fields, or with an unrecognized
+/// `format`, as an unknown type; presenting it would answer a delegation request with an
+/// ordinary presentation, so it is rejected here. Declining such a request still works.
+pub(crate) fn presentable_request(request: AuthorizationRequest) -> Result<ResolvedAuthRequest> {
+    let request: ResolvedAuthRequest = request.try_into()?;
+    let unrecognized_delegate = request
+        .transaction_data
+        .iter()
+        .flatten()
+        .any(|item| item.type_() == TRANSACTION_TYPE_DELEGATE && as_delegate(item).is_none());
+    if unrecognized_delegate {
+        return Err(Error::OID4VPHolder(
+            "invalid `delegate` transaction data item".to_string(),
+        ));
+    }
+    Ok(request)
 }
 
 impl TryFrom<CoreTransactionDataItem> for TransactionDataItem {
@@ -112,14 +127,19 @@ impl TryFrom<CoreTransactionDataItem> for TransactionDataItem {
 
     fn try_from(value: CoreTransactionDataItem) -> Result<Self> {
         let type_ = value.type_().to_owned();
-        let serde_json::Value::Object(mut data) = serde_json::to_value(&value.content)
-            .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?
+        let serde_json::Value::Object(content) = serde_json::to_value(&value.content)
+            .map_err(|_| Error::OID4VPHolder("invalid transaction data item".to_string()))?
         else {
             return Err(Error::OID4VPHolder(
                 "transaction data item content must be a JSON object".to_string(),
             ));
         };
-        data.remove("type");
+        // Filtering keeps the order of the remaining fields, which the item's hash covers;
+        // `Map::remove` would swap the last field into the removed slot.
+        let data: serde_json::Map<_, _> = content
+            .into_iter()
+            .filter(|(key, _)| key != "type")
+            .collect();
         Ok(Self {
             type_,
             credential_ids: value.credential_ids,
