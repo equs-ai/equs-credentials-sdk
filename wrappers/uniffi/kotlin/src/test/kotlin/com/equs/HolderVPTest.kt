@@ -6,6 +6,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterAll
@@ -13,10 +16,13 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 val presentationDefinitionJson = Json.parseToJsonElement(
     """{"presentation_definition": {"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]}}"""
@@ -136,6 +142,34 @@ val VC_WITH_STATUS: String by lazy {
     )
 }
 
+val DELEGATE_JWK: String by lazy { fixturePublicJwk(FixtureKey.VERIFIER) }
+val DELEGATE_PAYLOAD_DISCLOSURE: String by lazy {
+    Fixtures.base64Url("""["test-salt-for-delegation",{"purchase_id":"p-42","cnf":{"jwk":$DELEGATE_JWK}}]""")
+}
+const val IDENTITY_DCQL_QUERY =
+    """{"credentials":[{"id":"Identity-1","format":"dc+sd-jwt","meta":{"vct_values":["https://credentials.example.com/identity_credential"]},"claims":[{"path":["name"]}]}]}"""
+// Both items are written in the SDK's serialization order, so the hash of the received string is
+// also the hash an SDK verifier computes for them.
+val DELEGATE_TRANSACTION_DATA: String by lazy {
+    Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"delegate","format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}""")
+}
+val PAYMENT_TRANSACTION_DATA: String =
+    Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}""")
+
+fun transactionDataHash(encodedItem: String): String =
+    Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(MessageDigest.getInstance("SHA-256").digest(encodedItem.toByteArray()))
+val REQUEST_URI_FOR_DELEGATION: String by lazy {
+    "openid4vp://?client_id=$ENCODED_VERIFIER_CLIENT_ID&request_uri=http%3A%2F%2Flocalhost%3A9006"
+}
+val DELEGATION_AUTH_REQUEST_JWT: String by lazy {
+    fixtureJws(
+        """{"alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.VERIFIER)}","typ":"application/oauth-authz-req+jwt"}""",
+        """{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["$DELEGATE_TRANSACTION_DATA","$PAYMENT_TRANSACTION_DATA"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":$clientMetadata,"client_id":"$VERIFIER_CLIENT_ID","dcql_query":$IDENTITY_DCQL_QUERY,"response_uri":"http://localhost:9006/response"}""",
+        FixtureKey.VERIFIER,
+    )
+}
+
 //Note: The webserver sends the auth requests as queue object and whichever test thread is first gets the top of the queue.
 // This works when all the tests need the same request but for other tests that need different request, we created another server in a different port.
 
@@ -162,7 +196,7 @@ class HolderVPTest {
                 holder = Oid4vpHolderBuilder(
                     inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
                     MockNonceHandler("some_nonce")
-                ).build()
+                ).withDelegation(true).build()
 
                 inMemVault.storeCredential(credential, metadata)
             }
@@ -199,6 +233,175 @@ class HolderVPTest {
         assert(transactionData == authorizationRequest.transactionData)
         mockServer.shutdown()
 
+    }
+
+    @Test
+    fun testDelegateTransactionDataYieldsDelegationGrant() = runTest {
+        val server = MockWebServer()
+        server.start(9006)
+        val authorizationRequest = try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(DELEGATION_AUTH_REQUEST_JWT)
+                    .setHeader("content-type", "application/oauth-authz-req+jwt")
+            )
+            holder.getAuthorizationRequest(REQUEST_URI_FOR_DELEGATION)
+        } finally {
+            server.shutdown()
+        }
+
+        val (delegateItem, paymentItem) = authorizationRequest.transactionData!!
+        assertEquals("delegate", delegateItem.type)
+        assertEquals(listOf("Identity-1"), delegateItem.credentialIds)
+        assertEquals(
+            Json.parseToJsonElement("""{"format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}"""),
+            Json.parseToJsonElement(delegateItem.data!!),
+        )
+        assertEquals("payment", paymentItem.type)
+        assertEquals(
+            Json.parseToJsonElement("""{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"""),
+            Json.parseToJsonElement(paymentItem.data!!),
+        )
+
+        val origin = "https://agent.example.org"
+        val result = holder.presentCredentialsAuto(
+            authorizationRequest.copy(responseMode = "dc_api", responseUri = null),
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = origin),
+        ) as PresentationResult.AuthResponse
+        val response = (result.v1 as AuthorizationResponse.Plain).v1
+
+        val grant = Json.parseToJsonElement(response.vpToken).jsonObject["Identity-1"]!!
+            .jsonArray.single().jsonPrimitive.content
+        assertTrue(grant.endsWith("~"))
+        val delegatePayload = Fixtures.lastLinkPayload(grant)["delegate_payload"]!!.jsonArray.single().jsonObject
+        assertEquals("p-42", delegatePayload["purchase_id"]!!.jsonPrimitive.content)
+        assertEquals(Json.parseToJsonElement(DELEGATE_JWK), delegatePayload["cnf"]!!.jsonObject["jwk"])
+        assertEquals("origin:$origin", delegatePayload["aud"]!!.jsonPrimitive.content)
+        assertEquals(authorizationRequest.nonce, delegatePayload["nonce"]!!.jsonPrimitive.content)
+        assertEquals(
+            listOf(DELEGATE_TRANSACTION_DATA, PAYMENT_TRANSACTION_DATA).map(::transactionDataHash),
+            response.transactionDataHashes,
+        )
+    }
+
+    @Test
+    fun testTransactionDataHashCoversTheItemPayload() = runTest {
+        suspend fun hashFor(data: String?): String {
+            val request = authRequest.copy(
+                responseMode = "dc_api",
+                responseUri = null,
+                transactionData = listOf(
+                    TransactionDataItem(
+                        type = "payment",
+                        credentialIds = listOf("Identity-1"),
+                        transactionDataHashesAlg = null,
+                        data = data,
+                    )
+                ),
+            )
+            val result = holder.presentCredentialsAuto(
+                request,
+                AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = "https://example.verifier.org"),
+            ) as PresentationResult.AuthResponse
+            return (result.v1 as AuthorizationResponse.Plain).v1.transactionDataHashes!!.single()
+        }
+        // The item as the SDK serializes it for hashing: its own fields first, then `type` and `data`.
+        fun expectedHash(payload: String): String = transactionDataHash(
+            Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment"$payload}""")
+        )
+
+        assertEquals(expectedHash(""), hashFor(null))
+        assertEquals(expectedHash(""), hashFor("null"))
+        assertEquals(
+            expectedHash(""","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}"""),
+            hashFor("""{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"""),
+        )
+        assertEquals(
+            expectedHash(""","amount":100000000000000000000"""),
+            hashFor("""{"amount":100000000000000000000}"""),
+        )
+    }
+
+    private suspend fun declineAndReadResponse(item: TransactionDataItem, wallet: Oid4vpHolder = holder): String {
+        val server = MockWebServer()
+        server.start(9007)
+        try {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
+            wallet.declineAuthorizationRequest(
+                authRequest.copy(responseUri = "http://localhost:9007/response", transactionData = listOf(item))
+            )
+            return String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun testDelegationIsOffByDefault() = runTest {
+        val wallet = Oid4vpHolderBuilder(
+            InMemKms(), InMemVault(), CLIENT_ID, ReqwestHttpClient.insecure(), MockNonceHandler("some_nonce")
+        ).build()
+        val item = TransactionDataItem(
+            type = "delegate",
+            credentialIds = listOf("Identity-1"),
+            transactionDataHashesAlg = null,
+            data = """{"format":"dSD-JWT+KB","delegate_payload_disclosure":"$DELEGATE_PAYLOAD_DISCLOSURE"}""",
+        )
+        val request = authRequest.copy(responseMode = "dc_api", responseUri = null, transactionData = listOf(item))
+
+        val error = assertThrows<Exception.Oid4vpHolder> {
+            runBlocking {
+                wallet.presentCredentialsAuto(
+                    request,
+                    AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = "https://agent.example.org"),
+                )
+            }
+        }
+        assertTrue(error.message.contains("delegation is not enabled"))
+        assertThrows<Exception.Oid4vpHolder> { runBlocking { wallet.findVcsForPresentation(request) } }
+        assertTrue(declineAndReadResponse(item, wallet).startsWith("error=access_denied"))
+    }
+
+    @Test
+    fun testDeclineWorksWithUnrecognizedDelegateItem() = runTest {
+        val body = declineAndReadResponse(
+            TransactionDataItem(
+                type = "delegate",
+                credentialIds = listOf("Identity-1"),
+                transactionDataHashesAlg = null,
+                data = """{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}""",
+            )
+        )
+        assertTrue(body.startsWith("error=access_denied"))
+    }
+
+    @Test
+    fun testDeclineWorksWithLargeIntegerPayload() = runTest {
+        val body = declineAndReadResponse(
+            TransactionDataItem(
+                type = "payment",
+                credentialIds = listOf("Identity-1"),
+                transactionDataHashesAlg = null,
+                data = """{"amount":100000000000000000000}""",
+            )
+        )
+        assertTrue(body.startsWith("error=access_denied"))
+    }
+
+    @Test
+    fun testInvalidTransactionDataItemsAreRejected() = runTest {
+        val invalidItems = listOf(
+            TransactionDataItem(type = "payment", credentialIds = listOf("Identity-1"), transactionDataHashesAlg = null, data = "[]"),
+            TransactionDataItem(type = "payment", credentialIds = listOf("Identity-1"), transactionDataHashesAlg = null, data = """{"type":"other"}"""),
+            TransactionDataItem(type = "delegate", credentialIds = listOf("Identity-1"), transactionDataHashesAlg = null, data = """{"format":"dSD-JWT+KB"}"""),
+            TransactionDataItem(type = "payment", credentialIds = listOf("Identity-1"), transactionDataHashesAlg = listOf("md5"), data = null),
+        )
+        for (item in invalidItems) {
+            assertThrows<Exception.Oid4vpHolder> {
+                runBlocking { holder.findVcsForPresentation(authRequest.copy(transactionData = listOf(item))) }
+            }
+        }
     }
 
     @Test

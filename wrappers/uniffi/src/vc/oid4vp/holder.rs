@@ -2,7 +2,9 @@ use crate::common::{Error, Result};
 use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
 use crate::vc::VCStatus;
-use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult};
+use crate::vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult, presentable_request,
+};
 use equs_sdk::vc::Credential;
 use equs_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
 use std::collections::HashMap;
@@ -17,11 +19,17 @@ use std::collections::HashMap;
 /// @property findVcsForPresentation - {@link OID4VPHolder.findVcsForPresentation}
 /// @property presentCredentials - {@link OID4VPHolder.presentCredentials}
 #[derive(uniffi::Object)]
-pub struct OID4VPHolder(Box<dyn Holder>);
+pub struct OID4VPHolder {
+    holder: Box<dyn Holder>,
+    allow_delegation: bool,
+}
 
 impl OID4VPHolder {
-    pub fn new(holder: impl Holder + 'static) -> Self {
-        OID4VPHolder(Box::new(holder))
+    pub fn new(holder: impl Holder + 'static, allow_delegation: bool) -> Self {
+        OID4VPHolder {
+            holder: Box::new(holder),
+            allow_delegation,
+        }
     }
 }
 
@@ -37,7 +45,7 @@ impl OID4VPHolder {
         &self,
         request_uri: String,
     ) -> Result<AuthorizationRequest> {
-        self.0
+        self.holder
             .get_authorization_request(
                 &parse_url_arg(&request_uri).map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             )
@@ -67,8 +75,11 @@ impl OID4VPHolder {
         auth_response_metadata: AuthorizationResponseMetadata,
     ) -> Result<PresentationResult> {
         let result = self
-            .0
-            .present_credentials_auto(&auth_request.try_into()?, &auth_response_metadata)
+            .holder
+            .present_credentials_auto(
+                &presentable_request(auth_request, self.allow_delegation)?,
+                &auth_response_metadata,
+            )
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
@@ -87,8 +98,8 @@ impl OID4VPHolder {
         auth_request: AuthorizationRequest,
     ) -> Result<HashMap<String, CredentialsFindResult>> {
         let vcs_for_presentation = self
-            .0
-            .find_vcs_for_presentation(&auth_request.try_into()?)
+            .holder
+            .find_vcs_for_presentation(&presentable_request(auth_request, self.allow_delegation)?)
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
@@ -137,9 +148,9 @@ impl OID4VPHolder {
         auth_response_metadata: AuthorizationResponseMetadata,
     ) -> Result<PresentationResult> {
         let result = self
-            .0
+            .holder
             .present_credentials(
-                &auth_request.try_into()?,
+                &presentable_request(auth_request, self.allow_delegation)?,
                 &credential_mapping,
                 &auth_response_metadata,
             )
@@ -160,7 +171,7 @@ impl OID4VPHolder {
     ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
         let redirect_url = self
-            .0
+            .holder
             .decline_authorization_request(&auth_request)
             .await
             .map_err(|err| Error::OID4VPHolder(err.to_string()))?;
@@ -177,7 +188,7 @@ impl OID4VPHolder {
     /// @returns {VCStatus | null} - An optional credential status on success
     pub async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
         let status = self
-            .0
+            .holder
             .get_credential_status(credential)
             .await
             .map_err(|err| Error::OID4VPHolder(err.to_string()))?;

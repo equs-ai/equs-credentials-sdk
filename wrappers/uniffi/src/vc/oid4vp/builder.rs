@@ -8,13 +8,14 @@ use crate::nonce::{NonceHandler, WrappedNonceHandler};
 use crate::vault::{Vault, WrappedVault};
 use crate::vc::oid4vp::holder::OID4VPHolder;
 
-#[derive(uniffi::Object)]
+#[derive(uniffi::Object, Clone)]
 struct OID4VPHolderBuilder {
     kms: WrappedKms,
     vault: WrappedVault,
     client_id: String,
     http_client: WrappedHttpClient,
     nonce_handler: Option<WrappedNonceHandler>,
+    allow_delegation: bool,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -33,6 +34,17 @@ impl OID4VPHolderBuilder {
             client_id,
             http_client: WrappedHttpClient::new(http_client),
             nonce_handler: nonce_handler.map(WrappedNonceHandler::new),
+            allow_delegation: false,
+        }
+    }
+
+    /// Lets the holder answer `delegate` transaction-data items with a dSD-JWT delegation
+    /// grant (EXPERIMENTAL). Off by default: enable it only once the app shows the user what is
+    /// being delegated and to whom, since the grant hands the requester the user's authority.
+    pub fn with_delegation(&self, allow: bool) -> Self {
+        Self {
+            allow_delegation: allow,
+            ..self.clone()
         }
     }
 
@@ -52,6 +64,6 @@ impl OID4VPHolderBuilder {
             .await
             .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
 
-        Ok(OID4VPHolder::new(holder))
+        Ok(OID4VPHolder::new(holder, self.allow_delegation))
     }
 }

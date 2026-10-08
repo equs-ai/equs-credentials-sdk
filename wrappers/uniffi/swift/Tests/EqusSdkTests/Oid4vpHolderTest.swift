@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import EqusSdk
@@ -48,6 +49,165 @@ import Testing
             #expect(actual.transactionData?.first?.credentialIds.first == transactionData.credentialIds.first)
             #expect(actual.transactionData?.first?.transactionDataHashesAlg?.first == transactionData.transactionDataHashesAlg?.first)
     	}
+
+	@Test func delegateTransactionDataYieldsDelegationGrant() async throws {
+		self.http["/auth_request_delegate"] = { _ in
+			MockHttpRouter.ok(Oid4vpHolderTestConstants.delegationAuthRequestJwt, contentType: "application/oauth-authz-req+jwt")
+		}
+
+		var request = try await self.holder.getAuthorizationRequest(
+			requestUri: Oid4vpHolderTestConstants.requestUriForDelegation)
+
+		let items = try #require(request.transactionData)
+		#expect(items.count == 2)
+		#expect(items[0].type == "delegate")
+		#expect(items[0].credentialIds == ["Identity-1"])
+		let delegateData = try #require(items[0].data)
+		compareJsonValues(
+			actual: delegateData,
+			expected: #"{"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(Oid4vpHolderTestConstants.delegatePayloadDisclosure)"}"#)
+		#expect(items[1].type == "payment")
+		let paymentData = try #require(items[1].data)
+		compareJsonValues(actual: paymentData, expected: #"{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
+
+		let origin = "https://agent.example.org"
+		request.responseMode = "dc_api"
+		request.responseUri = nil
+		let result = try await self.holder.presentCredentialsAuto(
+			authRequest: request,
+			authResponseMetadata: AuthorizationResponseMetadata(
+				claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: origin)
+		)
+		guard case let .authResponse(.plain(response)) = result else {
+			Issue.record("expected a plain authorization response, got \(result)")
+			return
+		}
+
+		let grant = try #require((Fixtures.jsonObject(response.vpToken)["Identity-1"] as? [String])?.first)
+		#expect(grant.hasSuffix("~"))
+		let delegatePayloads = try #require(Fixtures.lastLinkPayload(grant)["delegate_payload"] as? [[String: Any]])
+		#expect(delegatePayloads.count == 1)
+		let delegatePayload = delegatePayloads[0]
+		#expect(delegatePayload["purchase_id"] as? String == "p-42")
+		let cnf = try #require(delegatePayload["cnf"] as? [String: Any])
+		let jwk = try #require(cnf["jwk"] as? [String: Any])
+		#expect(NSDictionary(dictionary: jwk).isEqual(
+			NSDictionary(dictionary: Fixtures.jsonObject(Oid4vpHolderTestConstants.delegateJwk))))
+		#expect(delegatePayload["aud"] as? String == "origin:\(origin)")
+		#expect(delegatePayload["nonce"] as? String == request.nonce)
+		#expect(
+			response.transactionDataHashes
+				== [Oid4vpHolderTestConstants.delegateTransactionData, Oid4vpHolderTestConstants.paymentTransactionData]
+				.map(Oid4vpHolderTestConstants.transactionDataHash))
+	}
+
+	@Test func transactionDataHashCoversTheItemPayload() async throws {
+		func hash(_ data: String?) async throws -> String {
+			var request = Oid4vpHolderTestConstants.authRequest
+			request.responseMode = "dc_api"
+			request.responseUri = nil
+			request.transactionData = [
+				TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: data)
+			]
+			let result = try await self.holder.presentCredentialsAuto(
+				authRequest: request,
+				authResponseMetadata: AuthorizationResponseMetadata(
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: "https://example.verifier.org"))
+			guard case let .authResponse(.plain(response)) = result else {
+				throw NSError(
+					domain: "Oid4vpHolderTests", code: 1,
+					userInfo: [NSLocalizedDescriptionKey: "expected a plain authorization response"])
+			}
+			return try #require(response.transactionDataHashes?.first)
+		}
+		// The item as the SDK serializes it for hashing: its own fields first, then `type` and `data`.
+		func expectedHash(_ payload: String) -> String {
+			Oid4vpHolderTestConstants.transactionDataHash(Fixtures.base64Url(
+				#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment"\#(payload)}"#))
+		}
+
+		#expect(try await hash(nil) == expectedHash(""))
+		#expect(try await hash("null") == expectedHash(""))
+		#expect(
+			try await hash(#"{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
+				== expectedHash(#","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}"#))
+		#expect(
+			try await hash(#"{"amount":100000000000000000000}"#)
+				== expectedHash(#","amount":100000000000000000000"#))
+	}
+
+	private func declineAndReadResponse(_ item: TransactionDataItem, holder: Oid4vpHolder? = nil) async throws -> String? {
+		self.http["/response"] = { _ in MockHttpRouter.ok("", contentType: "text/plain") }
+		var request = Oid4vpHolderTestConstants.authRequest
+		request.transactionData = [item]
+		_ = try await (holder ?? self.holder).declineAuthorizationRequest(authRequest: request)
+		return self.http.requests.last { MockHttpRouter.path(of: $0.url) == "/response" }?.body
+	}
+
+	@Test func delegationIsOffByDefault() async throws {
+		let holder = try await Oid4vpHolderBuilder(
+			kms: InMemKms(), vault: InMemVault(), clientId: Oid4vpHolderTestConstants.clientId,
+			httpClient: http, nonceHandler: MockNonceHandler(nonce: "some_nonce")
+		).build()
+		let item = TransactionDataItem(
+			type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+			data: #"{"format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(Oid4vpHolderTestConstants.delegatePayloadDisclosure)"}"#)
+		var request = Oid4vpHolderTestConstants.authRequest
+		request.responseMode = "dc_api"
+		request.responseUri = nil
+		request.transactionData = [item]
+
+		do {
+			_ = try await holder.presentCredentialsAuto(
+				authRequest: request,
+				authResponseMetadata: AuthorizationResponseMetadata(
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: "https://agent.example.org"))
+			Issue.record("expected the delegation to be refused")
+		} catch EqusSdk.Error.Oid4vpHolder(let message) {
+			#expect(message.contains("delegation is not enabled"))
+		}
+		do {
+			_ = try await holder.findVcsForPresentation(authRequest: request)
+			Issue.record("expected the delegation to be refused")
+		} catch EqusSdk.Error.Oid4vpHolder(_) {
+		}
+		let body = try await declineAndReadResponse(item, holder: holder)
+		#expect(body?.hasPrefix("error=access_denied") == true)
+	}
+
+	@Test func declineWorksWithUnrecognizedDelegateItem() async throws {
+		let body = try await declineAndReadResponse(
+			TransactionDataItem(
+				type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+				data: #"{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}"#))
+		#expect(body?.hasPrefix("error=access_denied") == true)
+	}
+
+	@Test func declineWorksWithLargeIntegerPayload() async throws {
+		let body = try await declineAndReadResponse(
+			TransactionDataItem(
+				type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+				data: #"{"amount":100000000000000000000}"#))
+		#expect(body?.hasPrefix("error=access_denied") == true)
+	}
+
+	@Test func invalidTransactionDataItemsAreRejected() async throws {
+		let invalidItems = [
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: "[]"),
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: #"{"type":"other"}"#),
+			TransactionDataItem(type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil, data: #"{"format":"dSD-JWT+KB"}"#),
+			TransactionDataItem(type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: ["md5"], data: nil),
+		]
+		for item in invalidItems {
+			var request = Oid4vpHolderTestConstants.authRequest
+			request.transactionData = [item]
+			do {
+				_ = try await self.holder.findVcsForPresentation(authRequest: request)
+				Issue.record("expected the \(item.type) item to be rejected")
+			} catch EqusSdk.Error.Oid4vpHolder(_) {
+			}
+		}
+	}
 
 	@Test func checkCustomNonceHandler() async throws {
 		self.http["/request"] = { request in
@@ -326,7 +486,7 @@ import Testing
             kms: inMemKms, vault: inMemVault, clientId: Oid4vpHolderTestConstants.clientId,
             httpClient: http,
             nonceHandler: nonceHandler
-        ).build()
+        ).withDelegation(allow: true).build()
 
         return holder
     }
@@ -595,6 +755,31 @@ static let presentationDefinitionWithFakeConstraints = """
 
 	static let transactionData = Fixtures.base64Url(
 		#"{"type":"type1","credential_ids":["Identity-1"],"transaction_data_hashes_alg":["sha-256"]}"#)
+	static let delegateJwk = Fixtures.publicJwk(.verifier)
+	static let delegatePayloadDisclosure = Fixtures.base64Url(
+		#"["test-salt-for-delegation",{"purchase_id":"p-42","cnf":{"jwk":\#(delegateJwk)}}]"#)
+	static let identityDcqlQuery =
+		#"{"credentials":[{"id":"Identity-1","format":"dc+sd-jwt","meta":{"vct_values":["https://credentials.example.com/identity_credential"]},"claims":[{"path":["name"]}]}]}"#
+	// Both items are written in the SDK's serialization order, so the hash of the received string
+	// is also the hash an SDK verifier computes for them.
+	static let delegateTransactionData = Fixtures.base64Url(
+		#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"delegate","format":"dSD-JWT+KB","delegate_payload_disclosure":"\#(delegatePayloadDisclosure)"}"#)
+	static let paymentTransactionData = Fixtures.base64Url(
+		#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
+
+	static func transactionDataHash(_ encodedItem: String) -> String {
+		Data(SHA256.hash(data: Data(encodedItem.utf8))).base64EncodedString()
+			.replacingOccurrences(of: "+", with: "-")
+			.replacingOccurrences(of: "/", with: "_")
+			.replacingOccurrences(of: "=", with: "")
+	}
+	static let requestUriForDelegation =
+		"openid4vp://?client_id=\(encodedVerifierClientId)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request_delegate"
+	static let delegationAuthRequestJwt: String = try! fixtureJws(
+		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
+		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["\#(delegateTransactionData)","\#(paymentTransactionData)"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":\#(clientMetadata),"client_id":"\#(verifierClientId)","dcql_query":\#(identityDcqlQuery),"response_uri":"http://localhost:9001/response"}"#,
+		role: .verifier
+	)
 	static let authRequestJwt: String = try! fixtureJws(
 		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
 		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["\#(transactionData)"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["EdDSA","ES256"],"kb-jwt_alg_values":["EdDSA","ES256"]}},"jwks":{"keys":[{"use":"enc","alg":"ES256","kid":"5QsdgXUGuH:P256:","kty":"EC","crv":"P-256","x":"Cb_uJhiPN7H9KXdQN4PQN0uWC6LmEwIz4j03wX1rBAw","y":"yEZ8-uX5hGhCuN9NrIz4ShNH0T1y4fQts5siiCH0Q7w"}]},"encrypted_response_enc_values_supported":["A128GCM","A128CBC-HS256"],"subject_syntax_types_supported":["did:key"]},"client_id":"\#(verifierClientId)","presentation_definition":{"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]},"response_uri":"http://localhost:9001/response"}"#,

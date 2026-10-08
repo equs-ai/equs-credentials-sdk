@@ -1,6 +1,7 @@
-use crate::common::{Error, Result, Url};
+use crate::common::{Error, JsonValue, Result, Url};
 use crate::vc::core::status_formats::StatusListFormat;
 use crate::vc::{Alg, VCFormat};
+pub use equs_sdk::vc::ChainBindingMode;
 use equs_sdk::vc::Presentation as EqusSdkPresentation;
 pub use equs_sdk::vc::StatusList;
 use equs_sdk::vc::VCStatusesData as EqusSdkVCStatusesData;
@@ -460,3 +461,53 @@ custom_type!(EqusSdkPresentation, Presentation, {
     },
     try_lift: |pd| pd.try_into().map_err(anyhow::Error::msg),
 });
+
+#[uniffi::remote(Enum)]
+pub enum ChainBindingMode {
+    SdHash,
+    IssuerJwtHash,
+}
+
+/// Parameters of one dSD-JWT delegation hop; see `equs_sdk::vc::DelegationParams`.
+#[derive(uniffi::Record)]
+pub struct DelegationParams {
+    /// The delegate payload alternatives for this hop; each is a JSON object.
+    pub delegate_payloads: Vec<JsonValue>,
+    /// Claims of the credential to forward, as a JSON object.
+    #[uniffi(default = None)]
+    pub claims_to_disclose: Option<JsonValue>,
+    /// Disclosure strings to drop from the wire when re-delegating.
+    #[uniffi(default = None)]
+    pub drop_disclosures: Option<Vec<String>>,
+    /// `None` means `SdHash`, the SDK default.
+    #[uniffi(default = None)]
+    pub binding: Option<ChainBindingMode>,
+    #[uniffi(default = None)]
+    pub aud: Option<String>,
+    #[uniffi(default = None)]
+    pub nonce: Option<String>,
+}
+
+impl TryFrom<DelegationParams> for equs_sdk::vc::DelegationParams {
+    type Error = Error;
+
+    fn try_from(value: DelegationParams) -> Result<Self> {
+        let claims_to_disclose = match value.claims_to_disclose {
+            None => None,
+            Some(serde_json::Value::Object(claims)) => Some(claims),
+            Some(_) => {
+                return Err(Error::Parse(
+                    "`claims_to_disclose` must be a JSON object".to_string(),
+                ));
+            }
+        };
+        Ok(Self {
+            delegate_payloads: value.delegate_payloads,
+            claims_to_disclose,
+            drop_disclosures: value.drop_disclosures.map(|v| v.into_iter().collect()),
+            binding: value.binding.unwrap_or_default(),
+            aud: value.aud,
+            nonce: value.nonce,
+        })
+    }
+}

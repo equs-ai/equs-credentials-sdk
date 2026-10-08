@@ -4,7 +4,8 @@ use crate::http::{HttpClient, WrappedHttpClient};
 use crate::kms::{Kms, WrappedKms};
 use crate::vault::{CredentialsFindResult, Vault, WrappedVault};
 use crate::vc::core::types::{
-    CredentialOffer, CredentialRequest, HolderBinder, HolderMetadata, PresentationInput,
+    CredentialOffer, CredentialRequest, DelegationParams, HolderBinder, HolderMetadata,
+    PresentationInput,
 };
 use crate::vc::{Credential, CredentialMetadata, VCStatus};
 use equs_sdk::nonce::Nonce;
@@ -98,6 +99,21 @@ impl VCCoreHolder {
         Ok(self
             .0
             .create_presentation(holder_binder, &presentation_input, &credential)
+            .await?)
+    }
+
+    /// Creates a dSD-JWT delegation grant from an SD-JWT credential entry by appending one
+    /// delegation link. EXPERIMENTAL: tracks draft-gco-oauth-delegate-sd-jwt.
+    ///
+    /// Returns the compact grant, ending with `~`.
+    pub async fn create_delegated_credential(
+        &self,
+        credential: CredentialEntry,
+        params: DelegationParams,
+    ) -> Result<String> {
+        Ok(self
+            .0
+            .create_delegated_credential(&credential, params.try_into()?)
             .await?)
     }
 
