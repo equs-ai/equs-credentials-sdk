@@ -4,7 +4,6 @@ import com.equs.credentials.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -254,11 +252,10 @@ class VcCoreTest {
         )
 
         assertTrue(grant.endsWith("~"))
-        val link = grant.split("~").last { it.isNotEmpty() }
-        val linkPayload = Json.parseToJsonElement(
-            String(Base64.getUrlDecoder().decode(link.split(".")[1]))
-        ).jsonObject
-        assertEquals(Json.parseToJsonElement("""[{"scope":"purchase"}]"""), linkPayload["delegate_payload"])
+        assertEquals(
+            Json.parseToJsonElement("""[{"scope":"purchase"}]"""),
+            Fixtures.lastLinkPayload(grant)["delegate_payload"],
+        )
     }
 
     @Test

@@ -303,11 +303,7 @@ class VcCoreTests {
         )
 
         #expect(grant.hasSuffix("~"))
-        let link = try #require(grant.split(separator: "~").last)
-        let linkPayload = try #require(
-            JSONSerialization.jsonObject(with: Fixtures.base64UrlDecode(String(link.split(separator: ".")[1])))
-                as? [String: Any])
-        let delegatePayloads = try #require(linkPayload["delegate_payload"] as? [[String: Any]])
+        let delegatePayloads = try #require(Fixtures.lastLinkPayload(grant)["delegate_payload"] as? [[String: Any]])
         #expect(delegatePayloads.count == 1)
         #expect(delegatePayloads[0]["scope"] as? String == "purchase")
     }

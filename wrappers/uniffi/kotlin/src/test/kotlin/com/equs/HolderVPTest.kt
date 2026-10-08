@@ -20,8 +20,6 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -241,14 +239,17 @@ class HolderVPTest {
     fun testDelegateTransactionDataYieldsDelegationGrant() = runTest {
         val server = MockWebServer()
         server.start(9006)
-        server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setBody(DELEGATION_AUTH_REQUEST_JWT)
-                .setHeader("content-type", "application/oauth-authz-req+jwt")
-        )
-        val authorizationRequest = holder.getAuthorizationRequest(REQUEST_URI_FOR_DELEGATION)
-        server.shutdown()
+        val authorizationRequest = try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(DELEGATION_AUTH_REQUEST_JWT)
+                    .setHeader("content-type", "application/oauth-authz-req+jwt")
+            )
+            holder.getAuthorizationRequest(REQUEST_URI_FOR_DELEGATION)
+        } finally {
+            server.shutdown()
+        }
 
         val (delegateItem, paymentItem) = authorizationRequest.transactionData!!
         assertEquals("delegate", delegateItem.type)
@@ -273,11 +274,7 @@ class HolderVPTest {
         val grant = Json.parseToJsonElement(response.vpToken).jsonObject["Identity-1"]!!
             .jsonArray.single().jsonPrimitive.content
         assertTrue(grant.endsWith("~"))
-        val link = grant.split("~").last { it.isNotEmpty() }
-        val linkPayload = Json.parseToJsonElement(
-            String(Base64.getUrlDecoder().decode(link.split(".")[1]))
-        ).jsonObject
-        val delegatePayload = linkPayload["delegate_payload"]!!.jsonArray.single().jsonObject
+        val delegatePayload = Fixtures.lastLinkPayload(grant)["delegate_payload"]!!.jsonArray.single().jsonObject
         assertEquals("p-42", delegatePayload["purchase_id"]!!.jsonPrimitive.content)
         assertEquals(Json.parseToJsonElement(DELEGATE_JWK), delegatePayload["cnf"]!!.jsonObject["jwk"])
         assertEquals("origin:$origin", delegatePayload["aud"]!!.jsonPrimitive.content)
@@ -289,7 +286,7 @@ class HolderVPTest {
     }
 
     @Test
-    fun testTransactionDataPayloadIsHashed() = runTest {
+    fun testTransactionDataHashCoversTheItemPayload() = runTest {
         suspend fun hashFor(data: String?): String {
             val request = authRequest.copy(
                 responseMode = "dc_api",
@@ -309,46 +306,61 @@ class HolderVPTest {
             ) as PresentationResult.AuthResponse
             return (result.v1 as AuthorizationResponse.Plain).v1.transactionDataHashes!!.single()
         }
+        // The item as the SDK serializes it for hashing: its own fields first, then `type` and `data`.
+        fun expectedHash(payload: String): String = transactionDataHash(
+            Fixtures.base64Url("""{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment"$payload}""")
+        )
 
-        assertNotEquals(hashFor(null), hashFor("""{"amount":{"value":"42.00","currency":"EUR"}}"""))
+        assertEquals(expectedHash(""), hashFor(null))
+        assertEquals(expectedHash(""), hashFor("null"))
+        assertEquals(
+            expectedHash(""","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}"""),
+            hashFor("""{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"""),
+        )
+        assertEquals(
+            expectedHash(""","amount":100000000000000000000"""),
+            hashFor("""{"amount":100000000000000000000}"""),
+        )
+    }
+
+    private suspend fun declineAndReadResponse(item: TransactionDataItem): String {
+        val server = MockWebServer()
+        server.start(9007)
+        try {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
+            holder.declineAuthorizationRequest(
+                authRequest.copy(responseUri = "http://localhost:9007/response", transactionData = listOf(item))
+            )
+            return String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test
     fun testDeclineWorksWithUnrecognizedDelegateItem() = runTest {
-        val server = MockWebServer()
-        server.start(9007)
-        server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
-        val request = authRequest.copy(
-            responseUri = "http://localhost:9007/response",
-            transactionData = listOf(
-                TransactionDataItem(
-                    type = "delegate",
-                    credentialIds = listOf("Identity-1"),
-                    transactionDataHashesAlg = null,
-                    data = """{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}""",
-                )
-            ),
+        val body = declineAndReadResponse(
+            TransactionDataItem(
+                type = "delegate",
+                credentialIds = listOf("Identity-1"),
+                transactionDataHashesAlg = null,
+                data = """{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}""",
+            )
         )
-
-        holder.declineAuthorizationRequest(request)
-
-        val body = String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
-        server.shutdown()
         assertTrue(body.startsWith("error=access_denied"))
     }
 
     @Test
-    fun testTransactionDataErrorsDoNotEchoItemContents() = runTest {
-        val item = TransactionDataItem(
-            type = "payment",
-            credentialIds = listOf("Identity-1"),
-            transactionDataHashesAlg = null,
-            data = """{"amount":123456789012345678901234567890}""",
+    fun testDeclineWorksWithLargeIntegerPayload() = runTest {
+        val body = declineAndReadResponse(
+            TransactionDataItem(
+                type = "payment",
+                credentialIds = listOf("Identity-1"),
+                transactionDataHashesAlg = null,
+                data = """{"amount":100000000000000000000}""",
+            )
         )
-        val error = assertThrows<Exception.Oid4vpHolder> {
-            runBlocking { holder.findVcsForPresentation(authRequest.copy(transactionData = listOf(item))) }
-        }
-        assertFalse(error.message.contains("123456789012345678901234567890"))
+        assertTrue(body.startsWith("error=access_denied"))
     }
 
     @Test

@@ -30,6 +30,13 @@ enum Fixtures {
 		try! JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
 	}
 
+	/// Payload of the last KB-SD-JWT link of a dSD-JWT grant.
+	static func lastLinkPayload(_ grant: String) -> [String: Any] {
+		let link = grant.split(separator: "~").last!
+		let payload = String(link.split(separator: ".")[1])
+		return try! JSONSerialization.jsonObject(with: base64UrlDecode(payload)) as! [String: Any]
+	}
+
 	static let identitySdJwt: String = try! fixtureSdJwt(
 		headerJson: #"{"typ":"vc+sd-jwt","alg":"ES256","kid":"\#(didKeyUrl(.issuer))"}"#,
 		claimsJson: #"{"vct":"https://credentials.example.com/identity_credential","sub":"\#(didKey(.holder))","nbf":1728882611,"_sd_alg":"sha-256","iss":"\#(didKey(.issuer))","iat":1728882611,"exp":1760418611,"cnf":{"jwk":\#(publicJwk(.holder))}}"#,

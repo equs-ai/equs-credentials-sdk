@@ -85,11 +85,7 @@ import Testing
 
 		let grant = try #require((Fixtures.jsonObject(response.vpToken)["Identity-1"] as? [String])?.first)
 		#expect(grant.hasSuffix("~"))
-		let link = try #require(grant.split(separator: "~").last)
-		let linkPayload = try #require(
-			JSONSerialization.jsonObject(with: Fixtures.base64UrlDecode(String(link.split(separator: ".")[1])))
-				as? [String: Any])
-		let delegatePayloads = try #require(linkPayload["delegate_payload"] as? [[String: Any]])
+		let delegatePayloads = try #require(Fixtures.lastLinkPayload(grant)["delegate_payload"] as? [[String: Any]])
 		#expect(delegatePayloads.count == 1)
 		let delegatePayload = delegatePayloads[0]
 		#expect(delegatePayload["purchase_id"] as? String == "p-42")
@@ -105,7 +101,7 @@ import Testing
 				.map(Oid4vpHolderTestConstants.transactionDataHash))
 	}
 
-	@Test func transactionDataPayloadIsHashed() async throws {
+	@Test func transactionDataHashCoversTheItemPayload() async throws {
 		func hash(_ data: String?) async throws -> String {
 			var request = Oid4vpHolderTestConstants.authRequest
 			request.responseMode = "dc_api"
@@ -124,43 +120,44 @@ import Testing
 			}
 			return try #require(response.transactionDataHashes?.first)
 		}
+		// The item as the SDK serializes it for hashing: its own fields first, then `type` and `data`.
+		func expectedHash(_ payload: String) -> String {
+			Oid4vpHolderTestConstants.transactionDataHash(Fixtures.base64Url(
+				#"{"credential_ids":["Identity-1"],"transaction_data_hashes_alg":null,"type":"payment"\#(payload)}"#))
+		}
 
-		let withoutPayload = try await hash(nil)
-		let withPayload = try await hash(#"{"amount":{"value":"42.00","currency":"EUR"}}"#)
-		#expect(withoutPayload != withPayload)
+		#expect(try await hash(nil) == expectedHash(""))
+		#expect(try await hash("null") == expectedHash(""))
+		#expect(
+			try await hash(#"{"payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}}"#)
+				== expectedHash(#","payee":"merchant-1","amount":{"value":"42.00","currency":"EUR"}"#))
+		#expect(
+			try await hash(#"{"amount":100000000000000000000}"#)
+				== expectedHash(#","amount":100000000000000000000"#))
+	}
+
+	private func declineAndReadResponse(_ item: TransactionDataItem) async throws -> String? {
+		self.http["/response"] = { _ in MockHttpRouter.ok("", contentType: "text/plain") }
+		var request = Oid4vpHolderTestConstants.authRequest
+		request.transactionData = [item]
+		_ = try await self.holder.declineAuthorizationRequest(authRequest: request)
+		return self.http.requests.last { MockHttpRouter.path(of: $0.url) == "/response" }?.body
 	}
 
 	@Test func declineWorksWithUnrecognizedDelegateItem() async throws {
-		try await confirmation("Decline Response is not received") { confirmResponse in
-			self.http["/response"] = { request in
-				#expect(request.body?.hasPrefix("error=access_denied") == true)
-				confirmResponse()
-				return MockHttpRouter.ok("", contentType: "text/plain")
-			}
-
-			var request = Oid4vpHolderTestConstants.authRequest
-			request.transactionData = [
-				TransactionDataItem(
-					type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
-					data: #"{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}"#)
-			]
-			let _ = try await self.holder.declineAuthorizationRequest(authRequest: request)
-		}
+		let body = try await declineAndReadResponse(
+			TransactionDataItem(
+				type: "delegate", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
+				data: #"{"format":"dSD-JWT+XYZ","delegate_payload_disclosure":"x"}"#))
+		#expect(body?.hasPrefix("error=access_denied") == true)
 	}
 
-	@Test func transactionDataErrorsDoNotEchoItemContents() async throws {
-		var request = Oid4vpHolderTestConstants.authRequest
-		request.transactionData = [
+	@Test func declineWorksWithLargeIntegerPayload() async throws {
+		let body = try await declineAndReadResponse(
 			TransactionDataItem(
 				type: "payment", credentialIds: ["Identity-1"], transactionDataHashesAlg: nil,
-				data: #"{"amount":123456789012345678901234567890}"#)
-		]
-		do {
-			_ = try await self.holder.findVcsForPresentation(authRequest: request)
-			Issue.record("expected the item to be rejected")
-		} catch EqusSdk.Error.Oid4vpHolder(let message) {
-			#expect(!message.contains("123456789012345678901234567890"))
-		}
+				data: #"{"amount":100000000000000000000}"#))
+		#expect(body?.hasPrefix("error=access_denied") == true)
 	}
 
 	@Test func invalidTransactionDataItemsAreRejected() async throws {

@@ -64,7 +64,8 @@ pub struct TransactionDataItem {
     pub credential_ids: Vec<String>,
     pub transaction_data_hashes_alg: Option<Vec<String>>,
     /// Every other field of the item as a JSON object in the item's key order, e.g. `format`
-    /// and `delegate_payload_disclosure` for a `delegate` item; `None` when there are none.
+    /// and `delegate_payload_disclosure` for a `delegate` item; `None` (or JSON `null`) when
+    /// there are none.
     /// Pass it back unchanged: the item's transaction-data hash covers the key order.
     #[uniffi(default = None)]
     pub data: Option<JsonValue>,
@@ -75,7 +76,7 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
 
     fn try_from(value: TransactionDataItem) -> Result<Self> {
         let mut item = match value.data {
-            None => serde_json::Map::new(),
+            None | Some(serde_json::Value::Null) => serde_json::Map::new(),
             Some(serde_json::Value::Object(data)) => data,
             Some(_) => {
                 return Err(Error::OID4VPHolder(
@@ -96,9 +97,12 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
         if let Some(algs) = value.transaction_data_hashes_alg {
             item.insert("transaction_data_hashes_alg".to_string(), algs.into());
         }
-        // serde's message can quote the item's values, so it is not passed on.
-        serde_json::from_value(serde_json::Value::Object(item))
-            .map_err(|_| Error::OID4VPHolder("invalid transaction data item".to_string()))
+        // Parsed from text, like the wire item: `from_value` cannot pass integers wider than
+        // 64 bits through serde's buffer for the flattened content. serde's message can quote
+        // the item's values, so it is not passed on.
+        let invalid = |_| Error::OID4VPHolder("invalid transaction data item".to_string());
+        let item = serde_json::to_string(&serde_json::Value::Object(item)).map_err(invalid)?;
+        serde_json::from_str(&item).map_err(invalid)
     }
 }
 

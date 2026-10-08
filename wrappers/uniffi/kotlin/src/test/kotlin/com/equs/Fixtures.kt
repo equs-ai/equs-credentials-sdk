@@ -6,6 +6,7 @@ import com.equs.credentials.fixtureDidKeyUrl
 import com.equs.credentials.fixturePublicJwk
 import com.equs.credentials.fixtureSdJwt
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.Base64
@@ -16,6 +17,12 @@ object Fixtures {
 
     fun base64Url(text: String): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(text.toByteArray())
+
+    /** Payload of the last KB-SD-JWT link of a dSD-JWT grant. */
+    fun lastLinkPayload(grant: String): JsonObject {
+        val link = grant.split("~").last { it.isNotEmpty() }
+        return Json.parseToJsonElement(String(Base64.getUrlDecoder().decode(link.split(".")[1]))).jsonObject
+    }
 
     val identitySdJwt: String by lazy {
         fixtureSdJwt(
