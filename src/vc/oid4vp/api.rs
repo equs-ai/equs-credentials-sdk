@@ -512,6 +512,30 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>), Error>;
+
+    /// Like [Self::verify_and_extract_presentation], also returning the issuer trust of every
+    /// presented credential.
+    ///
+    /// # Errors
+    ///
+    /// * [InternalError::IssuerNotTrusted] - in issuer-trust mode `Enforce`, a certificate-identified
+    ///   issuer is untrusted or no anchor is configured; carries every credential's issuer trust.
+    async fn verify_and_extract_presentation_with_issuer_trust(
+        &self,
+        authorization_response: &AuthorizationResponse,
+        session: &PresentationSession,
+        verification_metadata: &CredentialVerificationMetadata,
+    ) -> Result<VerifiedPresentationResponse, Error>;
+}
+
+/// A verified presentation response.
+#[derive(Debug, Clone)]
+pub struct VerifiedPresentationResponse {
+    pub claims: Claims,
+    /// Raw presentations, keyed by DCQL credential query id.
+    pub presentations: HashMap<String, Vec<crate::vc::Presentation>>,
+    /// Issuer trust of each presented credential.
+    pub issuer_trust: Vec<crate::vc::trust::issuer::IssuerTrust>,
 }
 
 impl From<SpruceErr> for Error {

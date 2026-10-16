@@ -8,6 +8,16 @@ export interface DcqlClaim {
 }
 
 /**
+ * A Trusted Authorities Query entry (OpenID4VP 1.0 §6.1.1). `aki` values are unpadded base64url
+ * Key Identifiers (see `deriveTrustedAuthorityAkis`); a credential must match one unless its query
+ * also has other types. `etsi_tl` and `openid_federation` are passed through, not evaluated.
+ */
+export interface DcqlTrustedAuthority {
+    type: "aki" | "etsi_tl" | "openid_federation" | (string & {}),
+    values: Array<string>,
+}
+
+/**
  * DcqlCredential is an object to describe a credential to fetch. Like what kind of claims it should have and in what format
  */
 export interface DcqlCredential {
@@ -17,6 +27,7 @@ export interface DcqlCredential {
     require_cryptographic_holder_binding?: boolean | null,
     claims?: Array<DcqlClaim>,
     claim_sets?: Array<Array<string>>,
+    trusted_authorities?: Array<DcqlTrustedAuthority>,
 }
 
 /**

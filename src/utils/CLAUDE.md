@@ -18,7 +18,9 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 | `serde.rs` | `Helpers` trait on `Claims` (`put_str`, `put_dt`); custom serde (de)serializers for `Duration` and `OffsetDateTime`; `accumulate_claim_names`. |
 | `test_utils.rs` | Test-only DID/key-handle factories (`create_did_and_key_metadata`, etc.), stub `MockKey`, `MockJweKms`, the fixture issuer's status-list token (`status_list_jwt`), trusted anchors keyed by Subject Key Identifier (`anchors`, `skid_of`), and the mdoc IACA and its DS chain (`mdl_iaca`, `mdl_chain`). |
 | `wasm.rs` | `WasmNotSend` / `WasmNotSync` marker traits — `Send`/`Sync`-equivalent on native, no-op on wasm32. |
-| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains up to a trusted anchor whose own PEM it holds (keyed by SKI), via one-core's `validate_chain_against_trust_anchors`, and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
+| `one_core_http.rs` | `OneCoreHttpClientAdapter` — adapts the SDK `HttpClient` to one-core's `HttpClient`, for did:webvh resolution and `export_trust_list_with_client`. A failure keeps its cause as one-core's `Transport`; a per-request timeout is not applied (the inner client's governs). Non-wasm only. |
+| `certificate_validator.rs` | `SharedCertificateValidator` — the process-wide one-core certificate validator every native verification and trust-list export uses, so a CRL is fetched once and served from one-core's CRL cache: 20 CRLs, each used for at most an hour and never past its `nextUpdate`, fetched again after 15 minutes and kept if that fails. CRLs are fetched with `ReqwestClient::for_revocation_data`: `http` or `https`, no redirects, at most 32 MiB and 30 s each. Non-wasm only. |
+| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains up to a trusted anchor whose own PEM it holds (keyed by SKI), via one-core's `validate_chain_against_trust_anchors`, and resolves issuer `DecodingKey` for SD-JWT-VC verification. Revocation is checked below the anchor only: the anchor is trusted for being held. With `AnchorPolicy::IntegrityOnly` it validates the chain's links, validity and the leaf's `digitalSignature`, still rejecting a self-signed leaf (`verify_chain_integrity`), and no CRL of a chain that reaches no held anchor is fetched, as none could be authenticated; a chain that does reach one is still checked for revocation below it, and a revoked, expired or unverifiable path fails (`is_rejected_path`). |
 
 ## Key types / traits
 - `MimeType` — enum of allowed MIME types with `as_str()`.
@@ -39,7 +41,7 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 - Used by: virtually every other SDK module.
 
 ## Constraints
-- `x509_truststore` is `#[cfg(not(target_arch = "wasm32"))]`.
+- `x509_truststore` and `one_core_http` are `#[cfg(not(target_arch = "wasm32"))]`.
 - `test_utils` is `#[cfg(test)]` only.
 - `jwk::from_public_jwk` (one-core `PublicJwk` → `ssi::JWK`) and `jwk::from_one_core_public_key_jwk_jsonwebtoken_jwk` (→ `jsonwebtoken` JWK, for `DecodingKey`) are `#[cfg(not(target_arch = "wasm32"))]`.
 - All other sub-modules are wasm-compatible.
