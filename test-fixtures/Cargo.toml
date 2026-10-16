@@ -13,7 +13,7 @@ name = "test_fixtures"
 [dependencies]
 base64 = "0.22.1"
 equs-one-core-crypto = "0.1.0"
-equs-one-core-standardized-types = "0.1.0"
+equs-one-core-standardized-types = "0.2.0"
 jsonwebtoken = "9.3.0"
 p256 = { version = "0.13.2", optional = true }
 pem = "3.0.6"
@@ -25,6 +25,7 @@ serde_json = { version = "1.0.120", features = ["preserve_order"] }
 sha2 = "0.10"
 ssi = "=0.16.0"
 time = { version = "0.3.47", features = ["formatting", "macros", "parsing"] }
+x509-parser = { version = "0.18", optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.85"
@@ -34,4 +35,4 @@ x509-parser = "0.18"
 
 [features]
 default = ["x509"]
-x509 = ["dep:p256", "dep:rcgen"]
+x509 = ["dep:p256", "dep:rcgen", "dep:x509-parser"]

@@ -12,6 +12,9 @@ use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::metadata::ensure_supported_vp_formats;
 use crate::vc::oid4vp::verifier::VerifierService;
+use crate::vc::trust::issuer::{
+    CredentialClassification, IssuerTrustConfig, IssuerTrustMode, RolelessAnchors, TrustAnchor,
+};
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
 use snafu::ensure;
@@ -56,6 +59,11 @@ where
 
     /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
     trusted_certs: Option<HashMap<String, String>>,
+    /// Issuer trust anchors with their source and role, in the order they are tried.
+    trust_anchors: Vec<TrustAnchor>,
+    issuer_trust_mode: IssuerTrustMode,
+    credential_classification: CredentialClassification,
+    roleless_anchors: RolelessAnchors,
     x5c_chain: Option<Vec<u8>>,
     _marker: PhantomData<KH>,
 }
@@ -101,6 +109,10 @@ where
             did_resolver: UniversalResolver::default(),
             client_metadata: None,
             trusted_certs: None,
+            trust_anchors: vec![],
+            issuer_trust_mode: IssuerTrustMode::Enforce,
+            credential_classification: CredentialClassification::default(),
+            roleless_anchors: RolelessAnchors::default(),
             x5c_chain: None,
             _marker: Default::default(),
         }
@@ -184,6 +196,10 @@ where
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
             trusted_certs: self.trusted_certs,
+            trust_anchors: self.trust_anchors,
+            issuer_trust_mode: self.issuer_trust_mode,
+            credential_classification: self.credential_classification,
+            roleless_anchors: self.roleless_anchors,
             x5c_chain: self.x5c_chain,
         }
     }
@@ -294,10 +310,89 @@ where
         };
 
         let mut trusted_certs = self.trusted_certs.unwrap_or_default();
-        trusted_certs.insert(skid, pem_string);
+        trusted_certs.insert(skid, pem_string.clone());
         self.trusted_certs = Some(trusted_certs);
+        self.trust_anchors.push(TrustAnchor::new(pem_string));
 
         Ok(self)
+    }
+
+    /// Adds an issuer trust anchor. Unlike [Self::add_trusted_root_certificate], it may be an
+    /// intermediate CA or a listed signing certificate. Anchors are tried in order.
+    ///
+    /// # Arguments
+    ///
+    /// * `pem_bytes` - a PEM-encoded certificate.
+    /// * `source_ref` - echoed in the issuer-trust result.
+    /// * `role` - the role the anchor is trusted for, echoed in the result.
+    /// * `service_type` - the granting trust-list service. Only issuing services, or no type,
+    ///   anchor issuers; other anchors only check status lists.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip(self, pem_bytes))]
+    pub fn add_trust_anchor(
+        mut self,
+        pem_bytes: &[u8],
+        source_ref: Option<String>,
+        role: Option<String>,
+        service_type: Option<String>,
+    ) -> Result<Self, Error> {
+        let (_, pem) = x509_parser::pem::parse_x509_pem(pem_bytes).map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot parse trust anchor from pem bytes: {e}"),
+            }
+            .build()
+        })?;
+        let cert = pem.parse_x509().map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot parse trust anchor certificate: {e}"),
+            }
+            .build()
+        })?;
+        let pem_string = {
+            use x509_cert::der::{Decode, EncodePem, pem::LineEnding};
+            x509_cert::Certificate::from_der(&pem.contents)
+                .and_then(|cert| cert.to_pem(LineEnding::LF))
+                .map_err(|e| {
+                    BuildSnafu {
+                        details: format!("Cannot re-encode trust anchor as PEM: {e}"),
+                    }
+                    .build()
+                })?
+        };
+        // status-list tokens are checked against the anchors keyed by SKI
+        if let Ok(Some(skid)) = one_core::mapper::x509::subject_key_identifier(&cert) {
+            self.trusted_certs
+                .get_or_insert_with(HashMap::new)
+                .insert(skid, pem_string.clone());
+        }
+        self.trust_anchors.push(TrustAnchor {
+            pem: pem_string,
+            source_ref,
+            role,
+            service_type,
+        });
+        Ok(self)
+    }
+
+    /// How an untrusted issuer affects a verification (default [IssuerTrustMode::Enforce]).
+    pub fn with_issuer_trust_mode(mut self, mode: IssuerTrustMode) -> Self {
+        self.issuer_trust_mode = mode;
+        self
+    }
+
+    /// Which credential types are PIDs, QEAAs and PuB-EAAs (default: the EUDI PID types).
+    pub fn with_credential_classification(
+        mut self,
+        classification: CredentialClassification,
+    ) -> Self {
+        self.credential_classification = classification;
+        self
+    }
+
+    /// Which categories anchors without a role may anchor (default [RolelessAnchors::AllCategories]).
+    pub fn with_roleless_anchors(mut self, roleless_anchors: RolelessAnchors) -> Self {
+        self.roleless_anchors = roleless_anchors;
+        self
     }
 
     /// Sets the X.509 certificate chain emitted in the `x5c` header of the
@@ -387,6 +482,12 @@ where
         );
         inner = inner.with_verification_params(vc::core::VerificationParams {
             trusted_certs: self.trusted_certs,
+            issuer_trust: Some(IssuerTrustConfig {
+                mode: self.issuer_trust_mode,
+                anchors: self.trust_anchors,
+                classification: self.credential_classification,
+                roleless_anchors: self.roleless_anchors,
+            }),
         });
 
         let verifier = VerifierService::new(

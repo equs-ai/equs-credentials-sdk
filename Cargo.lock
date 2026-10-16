@@ -2315,7 +2315,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -2993,14 +2993,14 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54b0671514f4da8f3b99bc0427f9bf9c06e7877647671470f61ea491fe9483e9"
+version = "0.2.0"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "aes-gcm",
  "anyhow",
  "asn1-rs 0.7.1",
  "async-trait",
+ "aws-lc-rs",
  "bincode",
  "bit-vec 0.8.0",
  "bon",
@@ -3038,10 +3038,12 @@ dependencies = [
  "one-dto-mapper",
  "ouroboros",
  "pem 3.0.6",
+ "quick-xml",
  "rand 0.8.6",
  "rcgen",
  "regex",
  "reqwest 0.13.3",
+ "roxmltree",
  "rumqttc-next",
  "rustls",
  "rustls-pki-types",
@@ -3076,9 +3078,8 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-crypto"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f63f89b2447a70d76d04af06fc7c8dfac01abc4ee45356be4d50e210a89e08fe"
+version = "0.1.1"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3113,9 +3114,8 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-dcql"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b91b175642d96ad6d999a5aff4e0677e9a47c6689717e1be9fa734e27cdfbbf"
+version = "0.2.0"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3126,9 +3126,8 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-portable"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85614c49d560af51a68cb45a55603c4a225c23af7b824a51b1fc4f7005adc549"
+version = "0.2.0"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3163,8 +3162,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3176,8 +3174,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "regex",
  "serde",
@@ -3188,13 +3185,14 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-standardized-types"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ac0ac3b192367782e1c970d2f26557f92dbd165ef9aa6a509f05bf80aa97b2d"
+version = "0.2.0"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c002c7741e29f283633f7da46b310b61dfc875c7#c002c7741e29f283633f7da46b310b61dfc875c7"
 dependencies = [
  "anyhow",
  "ct-codecs",
  "equs-one-core-proc-macros",
+ "one-dto-mapper",
+ "quick-xml",
  "secrecy",
  "serde",
  "serde_json",
@@ -3206,9 +3204,8 @@ dependencies = [
 
 [[package]]
 name = "equs-openid4vp"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "461dd7147df5764fd3df3b93c98ca533d0c9cebfab010f0ba239ccbf024ecbbf"
+version = "0.1.1"
+source = "git+https://github.com/equs-ai/openid4vp.git?rev=6d7b7b3e84422b3d4961ec973d964feb875185b2#6d7b7b3e84422b3d4961ec973d964feb875185b2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3438,7 +3435,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4672,7 +4669,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5839,6 +5836,7 @@ dependencies = [
  "snafu 0.8.9",
  "strum_macros 0.27.2",
  "time",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -5869,7 +5867,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6010,7 +6008,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http 1.3.1",
@@ -6715,6 +6713,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7243,6 +7251,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
 name = "rsa"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7440,7 +7454,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7507,7 +7521,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8317,7 +8331,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -8329,7 +8343,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f103c50866b8743da9429b8a581d81a27c2d3a9c4ac7df8f8571c1dd7896eda"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9703,7 +9717,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10836,7 +10850,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

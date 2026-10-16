@@ -15,9 +15,12 @@ use crate::vc::core::{
 use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
+use crate::vc::formats::{API, AnchorPolicy, HasCredential, IsExpired, VerifyOptions};
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
+use crate::vc::trust::issuer::{
+    IssuerTrustConfig, IssuerTrustMode, IssuerTrustOutcome, IssuerTrustVerification, TrustAnchor,
+};
 use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
@@ -32,6 +35,9 @@ use tracing::{Level, info, instrument};
 pub struct VerificationParams {
     // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
     pub trusted_certs: Option<HashMap<String, String>>,
+    /// Issuer-trust anchors and mode for [Verifier::verify_presentation_with_issuer_trust]. When
+    /// unset, `trusted_certs` are used as anchors in [IssuerTrustMode::Enforce].
+    pub issuer_trust: Option<IssuerTrustConfig>,
 }
 
 #[derive(Clone)]
@@ -59,6 +65,7 @@ impl Verifier for VerifierService {
                     VerifyOptions {
                         trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
+                        anchor_policy: AnchorPolicy::Require,
                     },
                     self.did_resolver.clone(),
                 )
@@ -95,17 +102,22 @@ impl Verifier for VerifierService {
             Presentation::MsoMdoc(vp) => {
                 use crate::vc::formats::mso_mdoc::MsoMdocAPI;
 
-                MsoMdocAPI::verify_vp(
+                let verified = MsoMdocAPI::verify_vp_with_issuer(
                     vp,
                     holder_binder,
                     VerifyOptions {
                         trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
+                        anchor_policy: AnchorPolicy::Require,
                     },
                     self.did_resolver.clone(),
                 )
                 .await
-                .context(VCSnafu)?
+                .context(VCSnafu)?;
+                self.check_mdoc_status(&verified.status, http_client, AnchorPolicy::Require)
+                    .await?;
+
+                verified.claims
             }
             _ => FormatNotSupportedSnafu {
                 format: presentation.format().to_string(),
@@ -114,6 +126,37 @@ impl Verifier for VerifierService {
         };
 
         Ok(cred_claims)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    async fn verify_presentation_with_issuer_trust(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<IssuerTrustVerification> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            // wasm resolves an issuer key from a DID only (no `x5c`, no mdoc)
+            let claims = self
+                .verify_presentation(holder_binder, presentation, http_client)
+                .await?;
+            let category = self
+                .issuer_trust_config()
+                .classification
+                .classify_claims(&claims);
+            return Ok(IssuerTrustVerification::without_chain(
+                claims,
+                IssuerTrustOutcome::without_chain(category),
+            ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.verify_with_issuer_trust(holder_binder, presentation, http_client)
+            .await
+    }
+
+    fn issuer_trust_mode(&self) -> IssuerTrustMode {
+        self.issuer_trust_config().mode
     }
 
     #[cfg(feature = "delegate-sd-jwt")]
@@ -163,7 +206,18 @@ impl Verifier for VerifierService {
         http_client: &dyn HttpClient,
     ) -> Result<Option<VCStatus>> {
         match presentation {
-            Presentation::SdJwtVp(vp) => self.obtain_sd_jwt_vc_status(vp, http_client).await,
+            Presentation::SdJwtVp(vp) => {
+                self.obtain_sd_jwt_vc_status(vp, http_client, AnchorPolicy::Require)
+                    .await
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            Presentation::MsoMdoc(vp) => {
+                use crate::vc::formats::mso_mdoc::MsoMdocAPI;
+
+                let status = MsoMdocAPI::status_unverified(vp).await.context(VCSnafu)?;
+                self.obtain_mdoc_status(&status, http_client, AnchorPolicy::Require)
+                    .await
+            }
             _ => CredentialStatusNotSupportedSnafu.fail(),
         }
     }
@@ -185,6 +239,156 @@ impl VerifierService {
         self
     }
 
+    /// The configured issuer trust, defaulting to `trusted_certs` as anchors under
+    /// [IssuerTrustMode::Enforce].
+    fn issuer_trust_config(&self) -> IssuerTrustConfig {
+        self.verification_params
+            .issuer_trust
+            .clone()
+            .unwrap_or_else(|| IssuerTrustConfig {
+                mode: IssuerTrustMode::Enforce,
+                anchors: self
+                    .verification_params
+                    .trusted_certs
+                    .iter()
+                    .flat_map(|certs| certs.values())
+                    .map(TrustAnchor::new)
+                    .collect(),
+                ..Default::default()
+            })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn issuer_anchors_by_ski(&self, anchors: &[TrustAnchor]) -> Option<HashMap<String, String>> {
+        let only_non_issuing = |pem: &str| {
+            let mut same = anchors.iter().filter(|anchor| anchor.pem == pem).peekable();
+            same.peek().is_some() && same.all(|anchor| !anchor.anchors_issuers())
+        };
+        self.verification_params
+            .trusted_certs
+            .as_ref()
+            .map(|certs| {
+                certs
+                    .iter()
+                    .filter(|(_, pem)| !only_non_issuing(pem))
+                    .map(|(ski, pem)| (ski.clone(), pem.clone()))
+                    .collect()
+            })
+    }
+
+    /// Verifies with an integrity-only issuer chain, then evaluates it against the anchors. The
+    /// status-list chain is anchored under `Enforce` and integrity-only under `Report`.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    async fn verify_with_issuer_trust(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<IssuerTrustVerification> {
+        use crate::utils::certificate_validator::SharedCertificateValidator;
+        use crate::vc::formats::mso_mdoc::MsoMdocAPI;
+        use crate::vc::trust::issuer::{
+            SdJwtIssuerKey, evaluate_chain_for_category, sd_jwt_issuer_key,
+        };
+        use crate::vc::trust::trusted_authorities::chain_authority_key_identifiers;
+
+        let config = self.issuer_trust_config();
+        let certificate_validator = SharedCertificateValidator::get();
+        let anchors_by_ski = self.issuer_anchors_by_ski(&config.anchors);
+        let integrity_only = VerifyOptions {
+            trusted_certs: anchors_by_ski,
+            selective_claims: None,
+            anchor_policy: AnchorPolicy::IntegrityOnly,
+        };
+
+        match presentation {
+            Presentation::SdJwtVp(vp) => {
+                let claims = SdJwtAPI::verify_vp(
+                    vp,
+                    holder_binder,
+                    integrity_only,
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?;
+
+                let category = config.classification.classify_claims(&claims);
+                let (outcome, issuer_chain_akis) = match sd_jwt_issuer_key(vp) {
+                    SdJwtIssuerKey::X5c(chain) => (
+                        evaluate_chain_for_category(
+                            &certificate_validator,
+                            &chain,
+                            &config,
+                            category,
+                        )
+                        .await
+                        .map_err(rejected_issuer_chain)
+                        .context(VCSnafu)?,
+                        Some(chain_authority_key_identifiers(&chain)),
+                    ),
+                    SdJwtIssuerKey::Other => (IssuerTrustOutcome::without_chain(category), None),
+                };
+
+                if let Some(policy) = status_anchor_policy(config.mode, &outcome) {
+                    self.check_expiry_and_status_with(&claims, presentation, http_client, policy)
+                        .await?;
+                }
+                Ok(IssuerTrustVerification::new(
+                    claims,
+                    outcome,
+                    issuer_chain_akis,
+                ))
+            }
+            Presentation::MsoMdoc(vp) => {
+                let verified = MsoMdocAPI::verify_vp_with_issuer(
+                    vp,
+                    holder_binder,
+                    integrity_only,
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?;
+                let category = config.classification.classify_claims(&verified.claims);
+                let (outcome, issuer_chain_akis) = match verified.issuer_chain {
+                    Some(chain) => (
+                        evaluate_chain_for_category(
+                            &certificate_validator,
+                            &chain,
+                            &config,
+                            category,
+                        )
+                        .await
+                        .map_err(rejected_issuer_chain)
+                        .context(VCSnafu)?,
+                        Some(chain_authority_key_identifiers(&chain)),
+                    ),
+                    None => (IssuerTrustOutcome::without_chain(category), None),
+                };
+
+                if let Some(policy) = status_anchor_policy(config.mode, &outcome) {
+                    self.check_mdoc_status(&verified.status, http_client, policy)
+                        .await?;
+                }
+                Ok(IssuerTrustVerification::new(
+                    verified.claims,
+                    outcome,
+                    issuer_chain_akis,
+                ))
+            }
+            _ => {
+                let claims = self
+                    .verify_presentation(holder_binder, presentation, http_client)
+                    .await?;
+                let category = config.classification.classify_claims(&claims);
+                Ok(IssuerTrustVerification::without_chain(
+                    claims,
+                    IssuerTrustOutcome::without_chain(category),
+                ))
+            }
+        }
+    }
+
     #[instrument(level = Level::TRACE, skip(self, http_client), err())]
     async fn check_expiry_and_status(
         &self,
@@ -192,29 +396,81 @@ impl VerifierService {
         presentation: &Presentation,
         http_client: &dyn HttpClient,
     ) -> Result<()> {
+        self.check_expiry_and_status_with(claims, presentation, http_client, AnchorPolicy::Require)
+            .await
+    }
+
+    #[instrument(level = Level::TRACE, skip(self, http_client), err())]
+    async fn check_expiry_and_status_with(
+        &self,
+        claims: &Claims,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<()> {
         if SdJwtAPI::is_expired(claims).context(ExpirationCheckSnafu)? {
             CredentialExpiredSnafu.fail()?
         };
 
-        match self
-            .obtain_credential_status(presentation, http_client)
-            .await?
-        {
-            None => {
-                info!("Verifiable Credential does not contain the status information");
+        let status = match presentation {
+            Presentation::SdJwtVp(vp) => {
+                self.obtain_sd_jwt_vc_status(vp, http_client, anchor_policy)
+                    .await?
             }
+            _ => CredentialStatusNotSupportedSnafu.fail()?,
+        };
+        ensure_valid(status)
+    }
 
-            Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
-                info!("The status of the verifiable credential is valid.");
-            }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip(self, status, http_client), err())]
+    async fn check_mdoc_status(
+        &self,
+        status: &crate::vc::formats::mso_mdoc::MdocStatus,
+        http_client: &dyn HttpClient,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<()> {
+        ensure_valid(
+            self.obtain_mdoc_status(status, http_client, anchor_policy)
+                .await?,
+        )
+    }
 
-            Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
-                details: format!("The status of the verifiable credential is '{status}'"),
+    /// The status of an mdoc's MSO `status_list` entry; any other declared mechanism fails.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip(self, status, http_client), err(), ret())]
+    async fn obtain_mdoc_status(
+        &self,
+        status: &crate::vc::formats::mso_mdoc::MdocStatus,
+        http_client: &dyn HttpClient,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<Option<VCStatus>> {
+        use crate::vc::formats::mso_mdoc::MdocStatus;
+
+        match status {
+            MdocStatus::None => Ok(None),
+            MdocStatus::Unsupported(mechanisms) => VCStatusSnafu {
+                details: format!("status mechanism not supported: {}", mechanisms.join(", ")),
             }
-            .fail()?,
+            .fail(),
+            MdocStatus::StatusList { uri, idx } => StatusListJwt::get_status_list_entry(
+                uri,
+                *idx,
+                http_client,
+                self.did_resolver.clone(),
+                None,
+                self.verification_params.trusted_certs.as_ref(),
+                anchor_policy,
+            )
+            .await
+            .map(|status| Some(VCStatus::StatusListToken(status)))
+            .map_err(|e| {
+                VCStatusSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            }),
         }
-
-        Ok(())
     }
 
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
@@ -222,15 +478,17 @@ impl VerifierService {
         &self,
         presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
         http_client: &dyn HttpClient,
+        anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        let status = StatusListJwt::get_vc_status_with_trusted_certs(
+        let status = StatusListJwt::get_vc_status_with_anchor_policy(
             &claims,
             http_client,
             self.did_resolver.clone(),
             None,
             self.verification_params.trusted_certs.as_ref(),
+            anchor_policy,
         )
         .await
         .map_err(|e| {
@@ -245,6 +503,51 @@ impl VerifierService {
             None => Ok(None),
         }
     }
+}
+
+/// Fails unless the credential has no status or a valid one.
+fn ensure_valid(status: Option<VCStatus>) -> Result<()> {
+    match status {
+        None => {
+            info!("Verifiable Credential does not contain the status information");
+        }
+
+        Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
+            info!("The status of the verifiable credential is valid.");
+        }
+
+        Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
+            details: format!("The status of the verifiable credential is '{status}'"),
+        }
+        .fail()?,
+    }
+
+    Ok(())
+}
+
+/// How the status list signer is checked: anchored under `Enforce`, integrity-only under `Report`,
+/// and not at all when `Enforce` has already rejected the issuer.
+#[cfg(not(target_arch = "wasm32"))]
+fn status_anchor_policy(
+    mode: IssuerTrustMode,
+    outcome: &IssuerTrustOutcome,
+) -> Option<AnchorPolicy> {
+    match mode {
+        IssuerTrustMode::Enforce if outcome.rejected_when_enforced() => None,
+        IssuerTrustMode::Enforce => Some(AnchorPolicy::Require),
+        IssuerTrustMode::Report => Some(AnchorPolicy::IntegrityOnly),
+    }
+}
+
+/// A path from an issuer chain to an anchor that is revoked or out of its validity period.
+#[cfg(not(target_arch = "wasm32"))]
+fn rejected_issuer_chain(
+    error: one_core::proto::certificate_validator::Error,
+) -> crate::vc::formats::Error {
+    crate::vc::formats::VerifyingSnafu {
+        details: format!("Issuer certificate chain is not valid: {error}"),
+    }
+    .build()
 }
 
 #[cfg(test)]
@@ -555,5 +858,380 @@ mod tests {
         let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
 
         status_list
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod mdoc_status {
+        use crate::did::universal::UniversalResolver;
+        use crate::http::{HttpResponse, HttpSnafu, MockHttpClient};
+        use crate::utils::http::test::{mock_http_fn, mock_http_fn_with_plain_text_resp};
+        use crate::utils::test_utils::{anchors, mdl_iaca};
+        use crate::vc::core::{VerificationParams, Verifier, VerifierService};
+        use crate::vc::formats::mso_mdoc;
+        use crate::vc::formats::mso_mdoc::tests::{sample_binder, sample_mso_mdoc_vp_with_status};
+        use crate::vc::status_formats::status_list_token_jwt;
+        use crate::vc::status_formats::status_list_token_jwt::tests::{
+            status_list_root_ca, x5c_status_list_token,
+        };
+        use crate::vc::trust::issuer::{
+            IssuerTrustConfig, IssuerTrustMode, IssuerTrustStatus, IssuerTrustVerification,
+            TrustAnchor,
+        };
+        use crate::vc::{Presentation, VCStatus};
+        use oauth2::http::Method;
+        use oauth2::http::header::CONTENT_TYPE;
+        use rstest::rstest;
+        use serde_json::{Value, json};
+        use std::str::FromStr;
+        use url::Url;
+
+        const STATUS_LIST_URI: &str = "https://status.example/mdoc/1";
+        const IDENTIFIER_LIST_URI: &str = "https://status.example/identifiers/1";
+        const VALID: usize = 0;
+        const INVALID: usize = 2;
+
+        fn status_list(idx: usize) -> Value {
+            json!({ "status_list": { "idx": idx, "uri": STATUS_LIST_URI } })
+        }
+
+        fn identifier_list() -> Value {
+            json!({ "id": "6482", "uri": IDENTIFIER_LIST_URI })
+        }
+
+        /// Serves the fixture status list token once at [STATUS_LIST_URI].
+        fn serving_status_list() -> MockHttpClient {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn_with_plain_text_resp(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                x5c_status_list_token(STATUS_LIST_URI, "statuslist+jwt", true),
+                1.into(),
+            );
+            http_client
+        }
+
+        /// A verifier whose issuer anchor is `iaca` (an mDL issuer) and whose trusted
+        /// certificates also hold the status list root unless `status_list_anchored` is false.
+        fn verifier(
+            iaca: &str,
+            mode: IssuerTrustMode,
+            status_list_anchored: bool,
+        ) -> VerifierService {
+            let mut trusted = vec![iaca];
+            if status_list_anchored {
+                trusted.push(status_list_root_ca());
+            }
+            VerifierService::new(mso_mdoc::tests::VERIFIER, UniversalResolver::default())
+                .with_verification_params(VerificationParams {
+                    trusted_certs: Some(anchors(&trusted)),
+                    issuer_trust: Some(IssuerTrustConfig {
+                        mode,
+                        anchors: vec![TrustAnchor {
+                            pem: iaca.to_string(),
+                            source_ref: None,
+                            role: Some("eaa_provider".to_string()),
+                            service_type: None,
+                        }],
+                        ..Default::default()
+                    }),
+                })
+        }
+
+        async fn verify(
+            status: Value,
+            mode: IssuerTrustMode,
+            status_list_anchored: bool,
+            http_client: MockHttpClient,
+        ) -> crate::vc::core::Result<IssuerTrustVerification> {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status);
+            verifier(&iaca, mode, status_list_anchored)
+                .verify_presentation_with_issuer_trust(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &http_client,
+                )
+                .await
+        }
+
+        fn assert_fails_with<T: std::fmt::Debug>(
+            result: crate::vc::core::Result<T>,
+            expected: &str,
+        ) {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(expected), "unexpected error: {error}");
+        }
+
+        #[tokio::test]
+        async fn valid_mdoc_status_is_trusted_under_enforce() {
+            let verified = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                serving_status_list(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn revoked_mdoc_is_rejected(#[case] mode: IssuerTrustMode) {
+            let result = verify(status_list(INVALID), mode, true, serving_status_list()).await;
+
+            assert_fails_with(
+                result,
+                "The status of the verifiable credential is 'Invalid'",
+            );
+        }
+
+        #[tokio::test]
+        async fn status_list_signer_under_no_anchor_fails_under_enforce() {
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                false,
+                serving_status_list(),
+            )
+            .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn status_list_signer_under_no_anchor_passes_under_report() {
+            let verified = verify(
+                status_list(VALID),
+                IssuerTrustMode::Report,
+                false,
+                serving_status_list(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn unreachable_status_list_is_rejected(#[case] mode: IssuerTrustMode) {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                |_| {
+                    HttpSnafu {
+                        details: "connection refused",
+                    }
+                    .fail()
+                },
+                1.into(),
+            );
+
+            let result = verify(status_list(VALID), mode, true, http_client).await;
+
+            assert_fails_with(result, "Could not fetch status list");
+        }
+
+        #[tokio::test]
+        async fn status_list_served_only_as_cwt_is_not_supported() {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                |_| {
+                    let mut response = HttpResponse::new(vec![0xd2, 0x84]);
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, "application/statuslist+cwt".parse().unwrap());
+                    Ok(response)
+                },
+                1.into(),
+            );
+
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                http_client,
+            )
+            .await;
+
+            assert_fails_with(
+                result,
+                "status list format not supported: application/statuslist+cwt",
+            );
+        }
+
+        #[tokio::test]
+        async fn identifier_list_beside_a_status_list_is_not_fetched() {
+            let mut status = status_list(VALID);
+            status["identifier_list"] = identifier_list();
+
+            // the mock serves the status list only: a fetch of the identifier list would panic
+            let verified = verify(
+                status,
+                IssuerTrustMode::Enforce,
+                true,
+                serving_status_list(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn identifier_list_only_is_rejected(#[case] mode: IssuerTrustMode) {
+            let result = verify(
+                json!({ "identifier_list": identifier_list() }),
+                mode,
+                true,
+                MockHttpClient::new(),
+            )
+            .await;
+
+            assert_fails_with(result, "status mechanism not supported: identifier_list");
+        }
+
+        #[tokio::test]
+        async fn rejected_issuer_under_enforce_fetches_no_status() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(status_list(INVALID));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            // no status list is served: a fetch would panic
+            let verified = verifier(&unrelated_iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation_with_issuer_trust(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
+        }
+
+        #[tokio::test]
+        async fn index_beyond_the_status_list_is_rejected() {
+            let result = verify(
+                status_list(100_000),
+                IssuerTrustMode::Enforce,
+                true,
+                serving_status_list(),
+            )
+            .await;
+
+            assert_fails_with(result, "failed to get index 100000");
+        }
+
+        #[rstest]
+        #[case::empty(json!({}))]
+        #[case::null_status_list(json!({ "status_list": null }))]
+        #[tokio::test]
+        async fn status_naming_no_mechanism_is_rejected(#[case] status: Value) {
+            let result = verify(status, IssuerTrustMode::Report, true, MockHttpClient::new()).await;
+
+            let error = format!("{:?}", result.unwrap_err());
+            assert!(error.contains("MSO status"), "unexpected error: {error}");
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_rejects_identifier_list_only() {
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(json!({ "identifier_list": identifier_list() }));
+
+            let result = verifier(&iaca, IssuerTrustMode::Enforce, true)
+                .obtain_credential_status(
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await;
+
+            assert_fails_with(result, "status mechanism not supported: identifier_list");
+        }
+
+        #[tokio::test]
+        async fn mdoc_without_status_verifies_without_a_fetch() {
+            let (vp, iaca) = mso_mdoc::tests::sample_mso_mdoc_vp_with_iaca();
+
+            let verified = verifier(&iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation_with_issuer_trust(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[tokio::test]
+        async fn verify_presentation_rejects_a_revoked_mdoc() {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(INVALID));
+
+            let result = verifier(&iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await;
+
+            assert_fails_with(
+                result,
+                "The status of the verifiable credential is 'Invalid'",
+            );
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_reads_the_mdoc_status() {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(INVALID));
+
+            let status = verifier(&iaca, IssuerTrustMode::Enforce, true)
+                .obtain_credential_status(
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                status,
+                Some(VCStatus::StatusListToken(
+                    status_list_token_jwt::VCStatus::Invalid
+                ))
+            );
+        }
     }
 }

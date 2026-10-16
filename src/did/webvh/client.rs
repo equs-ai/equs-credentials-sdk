@@ -3,12 +3,8 @@
 use crate::did::universal::DIDResolver;
 use crate::did::{ResolutionError, ResolutionOutput};
 use crate::http::HttpClient;
+use crate::utils::one_core_http::OneCoreHttpClientAdapter;
 use async_trait::async_trait;
-use oauth2::http::{Method as OauthHttpMethod, Request as OauthHttpRequest};
-use one_core::proto::http_client::HttpClient as OneCoreHttpClient;
-use one_core::proto::http_client::{
-    Error as OneCoreHttpError, Headers, Method, Request, RequestBuilder, Response, StatusCode,
-};
 use one_core::provider::did_method::DidMethod;
 use one_core::provider::did_method::dto::DidDocumentDTO;
 use one_core::provider::did_method::provider::DidMethodProviderImpl;
@@ -19,94 +15,9 @@ use shared_types::DidValue;
 use ssi::dids::document::Represented;
 use ssi::dids::resolution::{Options, Output};
 use std::sync::Arc;
-use time::Duration;
 
 const WEBVH_METHOD_NAME: &str = "webvh";
 const DID_RESOLUTION_FORMAT: &str = "application/did+ld+json";
-
-/// Adapts [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
-///
-/// This is an internal implementation detail; callers interact only with [`HttpClient`].
-#[derive(Clone)]
-struct OneCoreHttpClientAdapter {
-    inner: Arc<dyn HttpClient>,
-}
-
-#[async_trait]
-impl OneCoreHttpClient for OneCoreHttpClientAdapter {
-    fn get(&self, url: &str) -> RequestBuilder {
-        RequestBuilder::new(Arc::new(self.clone()), Method::Get, url)
-    }
-
-    fn post(&self, url: &str) -> RequestBuilder {
-        RequestBuilder::new(Arc::new(self.clone()), Method::Post, url)
-    }
-
-    fn put(&self, url: &str) -> RequestBuilder {
-        RequestBuilder::new(Arc::new(self.clone()), Method::Put, url)
-    }
-
-    fn patch(&self, url: &str) -> RequestBuilder {
-        RequestBuilder::new(Arc::new(self.clone()), Method::Patch, url)
-    }
-
-    async fn send(
-        &self,
-        url: &str,
-        body: Option<Vec<u8>>,
-        headers: Option<Headers>,
-        method: Method,
-        _timeout: Option<Duration>,
-    ) -> Result<Response, OneCoreHttpError> {
-        let http_method = match method {
-            Method::Get => OauthHttpMethod::GET,
-            Method::Post => OauthHttpMethod::POST,
-            Method::Put => OauthHttpMethod::PUT,
-            Method::Patch => OauthHttpMethod::PATCH,
-        };
-
-        let mut builder = OauthHttpRequest::builder().method(http_method).uri(url);
-
-        if let Some(ref headers) = headers {
-            for (name, value) in headers {
-                builder = builder.header(name.as_str(), value.as_str());
-            }
-        }
-
-        let request = builder
-            .body(body.clone().unwrap_or_default())
-            .map_err(|_| OneCoreHttpError::StatusCodeError(StatusCode(0)))?;
-
-        let equs_sdk_response = self
-            .inner
-            .async_call(request)
-            .await
-            .map_err(|_| OneCoreHttpError::StatusCodeError(StatusCode(0)))?;
-
-        let resp_headers: Headers = equs_sdk_response
-            .headers()
-            .iter()
-            .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
-            .collect();
-        let resp_body = equs_sdk_response.body().to_vec();
-
-        let req = Request {
-            body,
-            headers: headers.unwrap_or_default(),
-            method,
-            url: url.to_string(),
-            timeout: Some(Duration::minutes(10)),
-        };
-
-        Response {
-            body: resp_body,
-            headers: resp_headers,
-            status: StatusCode(equs_sdk_response.status().as_u16()),
-            request: req,
-        }
-        .error_for_status()
-    }
-}
 
 /// No-op [`KeyProvider`] used when only DID resolution (not creation) is needed.
 struct NoopKeyProvider;
@@ -136,7 +47,7 @@ impl DIDWebVh {
     ///
     /// Useful in tests to set `max_did_log_entry_check` or `resolve_to_insecure_http`.
     pub fn with_params(http_client: Arc<dyn HttpClient>, params: Params) -> Self {
-        let adapter = Arc::new(OneCoreHttpClientAdapter { inner: http_client });
+        let adapter = Arc::new(OneCoreHttpClientAdapter::new(http_client));
         let did_method_provider = Arc::new(DidMethodProviderImpl::default());
         let resolver = OneCoreDidWebVh::new(
             params,
@@ -365,7 +276,7 @@ mod tests {
     // ── Negative tests ───────────────────────────────────────────────────────
 
     #[tokio::test]
-    #[should_panic(expected = "HTTP status code is error: 0")]
+    #[should_panic(expected = "HTTP transport error: HTTP error: connection refused")]
     async fn didwebvh_resolution_fails_on_http_error() {
         let resolver = DIDWebVh::new(Arc::new(FailingHttpClient));
         let did = ssi::dids::DID::new(
