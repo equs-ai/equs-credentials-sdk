@@ -144,8 +144,10 @@ git push origin tag android/v<version>
 The published version is the tag; `X.Y.Z-rc.N` is accepted. A Maven Central version can never be
 replaced or deleted, so a bad tag costs a version number.
 
-To rehearse a release, add `DRY_RUN: "1"` to the `env` of the five publish workflows: every tag then runs the full pipeline but publishes nothing
-(`cargo publish --dry-run`, `npm publish --dry-run`, no Maven Central upload); the release and its manifests are still created.
+To release on GitHub only, set the repository variable `DRY_RUN` to `true` (Settings → Secrets and variables → Actions → Variables): every tag then
+runs the full pipeline but touches no public registry (`cargo publish --dry-run`, `npm publish --dry-run`, no Maven Central upload, no
+already-published check); the GitHub release is still created with its manifests, the AAR, the iOS zip, the npm tarballs and the `.crate`.
+Delete the variable, or set it to anything else, to publish again.
 
 ### Everything at once
 
@@ -161,8 +163,9 @@ git push origin tag v<version>
 ```
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
-the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
+the run checks both before anything publishes. `v<version>-rc.N` (with `Cargo.toml` at `<version>-rc.N`)
+publishes every package at that version, the npm packages under the `rc` dist-tag, and makes the release a
+GitHub prerelease. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
 
 If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
 tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:
