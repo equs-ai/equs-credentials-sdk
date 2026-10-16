@@ -21,6 +21,7 @@ env:
   NODE_VERSION: "20.18.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
   REGISTRY_URL_NPM: https://registry.npmjs.org/
   npm_config_access: public
 
