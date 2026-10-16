@@ -163,8 +163,9 @@ git push origin tag v<version>
 ```
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
-the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
+the run checks both before anything publishes. `v<version>-rc.N` (with `Cargo.toml` at `<version>-rc.N`)
+publishes every package at that version, the npm packages under the `rc` dist-tag, and makes the release a
+GitHub prerelease. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
 
 If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
 tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:

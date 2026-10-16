@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z" >&2; exit 1; }
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z or vX.Y.Z-rc.N" >&2; exit 1; }
           crate=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{gsub(/["[:space:]]/,"");sub(/^version=/,"");print;exit}' Cargo.toml)
           [ "$version" = "$crate" ] || { echo "tag '$GITHUB_REF_NAME' does not match Cargo.toml version '$crate'" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -167,6 +167,8 @@ jobs:
             cp "$d/release-manifest.yaml" "${d##*/}.yaml"
           done
           ls release-manifest-*.yaml
+          prerelease=()
+          [[ "$TAG" == *-rc.* ]] && prerelease=(--prerelease)
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" "${prerelease[@]}"
           gh release upload "$TAG" release-manifest-*.yaml android/* ios/* npm/* crate/* --repo "$REPO" --clobber
