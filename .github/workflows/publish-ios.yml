@@ -1,0 +1,150 @@
+name: Publish iOS wrapper
+
+on:
+  push:
+    tags: ['ios/v[0-9]*.[0-9]*.[0-9]*']
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-ios
+  cancel-in-progress: false
+
+env:
+  RUST_VERSION: "1.97.0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 1G
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/npm-version
+        id: version
+        with:
+          prefix: ios
+          version: ${{ inputs.version }}
+
+      - name: Check the release has no iOS assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! assets=$(gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name' 2>gh-err.txt); then
+            grep -q 'release not found' gh-err.txt || { cat gh-err.txt >&2; exit 1; }
+          fi
+          if grep '^equs-credentials-sdk-ios-' <<<"${assets:-}"; then
+            echo "release $TAG already has iOS assets; replacing them would break every pinned checksum" >&2
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: publish-ios
+
+      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+
+      - name: Build the XCFramework
+        shell: bash
+        working-directory: wrappers/uniffi
+        run: make ios-generate-framework
+
+      - name: Package
+        shell: bash
+        working-directory: wrappers/uniffi/swift/ios/framework
+        run: |
+          set -euo pipefail
+          base="$GITHUB_WORKSPACE/equs-credentials-sdk-ios-$CI_COMMIT_TAG.xcframework"
+          plist=EqusSdk.xcframework/Info.plist
+          for id in ios-arm64 ios-arm64_x86_64-simulator; do
+            plutil -extract AvailableLibraries json -o - "$plist" |
+              jq -e --arg id "$id" 'any(.[]; .LibraryIdentifier == $id)' >/dev/null ||
+              { echo "$plist has no $id library" >&2; exit 1; }
+            test -n "$(find "EqusSdk.xcframework/$id" -name '*.swiftinterface')" ||
+              { echo "$id has no swiftinterface" >&2; exit 1; }
+          done
+          zip -qry "$base.zip" EqusSdk.xcframework
+          swift package compute-checksum "$base.zip" > "$base.checksum"
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios
+          path: equs-credentials-sdk-ios-*
+          if-no-files-found: error
+
+      - shell: bash
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          base="equs-credentials-sdk-ios-$CI_COMMIT_TAG.xcframework"
+          fence='```'
+          printf '### Built equs-credentials-sdk-ios %s\n\n%sswift\n.binaryTarget(\n    name: "EqusSdk",\n    url: "https://github.com/%s/releases/download/%s/%s.zip",\n    checksum: "%s"\n)\n%s\n' \
+            "$CI_COMMIT_TAG" "$fence" "$REPO" "$TAG" "$base" "$(cat "$base.checksum")" "$fence" >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    needs: [ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ios
+          path: ios
+
+      - name: Render manifest
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ needs.ios.outputs.version }}
+        run: |
+          bash scripts/file_release_manifest.sh equs-credentials-sdk-ios release-manifest.yaml \
+            "ios/equs-credentials-sdk-ios-$RELEASE_VERSION.xcframework.zip"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-ios
+          path: release-manifest.yaml
+          if-no-files-found: error
+
+      - if: ${{ !inputs.version }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.ios.outputs.version }}
+        run: |
+          set -euo pipefail
+          prerelease=()
+          [[ "$RELEASE_VERSION" == *-rc.* ]] && prerelease=(--prerelease)
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" "${prerelease[@]}"
+          gh release upload "$TAG" release-manifest.yaml ios/* --repo "$REPO" --clobber

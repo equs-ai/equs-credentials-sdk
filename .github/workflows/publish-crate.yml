@@ -1,0 +1,85 @@
+name: Publish crate
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-crate
+  cancel-in-progress: false
+
+env:
+  RUST_VERSION: "1.97.0"
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    container:
+      image: rust:1.97.0-bookworm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: publish-crate
+          tooling: 'false'
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z" >&2; exit 1; }
+          version=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{gsub(/["[:space:]]/,"");sub(/^version=/,"");print;exit}' Cargo.toml)
+          [ "$tag" = "$version" ] || { echo "tag '$GITHUB_REF_NAME' does not match Cargo.toml version '$version'" >&2; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Package
+        shell: bash
+        run: cargo package --locked -p equs-credentials-sdk
+
+      - name: Publish
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          cargo publish --locked --no-verify ${DRY_RUN:+--dry-run} -p equs-credentials-sdk
+
+      - name: Render manifest
+        if: always()
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y jq
+          bash scripts/release_manifest.sh equs-credentials-sdk release-manifest.yaml
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-crate
+          path: release-manifest.yaml
+          if-no-files-found: error
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: crate-package
+          path: target/package/*.crate
+          if-no-files-found: warn
+
+      - shell: bash
+        run: printf "### Published\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+

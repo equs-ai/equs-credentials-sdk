@@ -1,0 +1,154 @@
+[workspace]
+members = [
+    "demos/oid4vc/shared",
+    "demos/oid4vc/issuer",
+    "demos/oid4vc/verifier",
+    "demos/oid4vc/holder",
+    "demos/oid4vc/agent",
+    "demos/multi-thread",
+    "plugins/askar",
+    "plugins/askar/wrappers/nodejs",
+    "wrappers/nodejs",
+    "wrappers/wasm",
+    "wrappers/uniffi",
+    "equs-common-macros",
+    "test-fixtures",
+]
+
+[package]
+name = "equs-credentials-sdk"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.97.0"
+license = "Apache-2.0"
+readme = "README.md"
+description = "Rust SDK implementing multiple decentralized identity protocols"
+repository = "https://github.com/equs-ai/equs-credentials-sdk"
+publish = true
+include = [
+    "/src/**/*.rs",
+    "!/src/**/tests.rs",
+    "!/src/**/test_utils.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+    "/THIRD-PARTY-NOTICE",
+]
+
+[lib]
+name = "equs_sdk"
+
+[dependencies]
+equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
+# Internally maintained forked dependencies
+oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
+openid4vp = { package = "equs-openid4vp", version = "0.1.0" }
+sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.1" }
+didcomm = { package = "equs-didcomm", version = "0.1.0" }
+did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
+did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
+did_parser_nom = { package = "equs-vcx-did-parser-nom", version = "0.1.0" }
+one-core-portable = { package = "equs-one-core-portable", version = "0.1.0" }
+
+secrecy = "0.10.3"
+ed25519-compact = "2.1.1"
+oauth2 = "5.0.0-rc.1"
+serde_json = "1.0.120"
+ssi = "=0.16.0"
+ssi-bbs = "=0.2.0"
+ssi-claims = { version = "=0.7.0", features = ["bbs"] }
+time = { version = "0.3.47", features = ["serde", "wasm-bindgen"] }
+serde = { version = "1.0.220", features = ["derive"] }
+serde_urlencoded = "0.7.1"
+serde_json_path = "0.7.1"
+iref = "3.2.2"
+futures = "0.3.30"
+base64 = "0.22.1"
+jsonwebtoken = "9.3.0"
+async-trait = "0.1.85"
+strum_macros = "0.26.4"
+strum = { version = "0.26.3", features = ["derive"] }
+reqwest = { version = "=0.12.12", features = ["rustls-tls"] }
+uuid = { version = "1.10.0", features = ["v4"] }
+url = "=2.5.4"
+anyhow = "1.0.86"
+tracing = { version = "0.1.40", features = ["attributes", "release_max_level_debug"] }
+snafu = "0.8.4"
+regex = "1.11.0"
+mime = "0.3.17"
+chrono = "0.4.38"
+openidconnect = "4.0.0-rc.1"
+zeroize = "1.8.1"
+zkryptium = "0.2.2"
+flate2 = "1.0.35"
+async-lock = "3.4.0"
+async-channel = "2.3.1"
+lazy_static = "1.5.0"
+jsonpath-rust = "0.7.5"
+bs58 = "0.5.1"
+p256 = "0.13.2"
+
+
+# InMEM dependencies
+# crypto/kms dependencies
+ed25519-dalek = { version = "2.1.1", optional = true }
+bip32 = "0.5.2"
+askar-crypto = { version = "=0.3.3", optional = true }
+# service
+rand = { version = "0.9.2", optional = true }
+ecdsa = { version = "0.16.9", optional = true }
+hyper = { version = "0.14.32", features = ["server", "http1", "tcp", "runtime"], optional = true }
+http = { version = "=1.3.1", optional = true }
+tokio = { version = "1.25.0", features = ["macros"], optional = true }
+
+# Transitive dependecies versioning
+generic-array = "=0.14.7" # Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
+hex = "0.4.3"
+crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
+ml-dsa = "=0.1.0-rc.9" # one-crypto (one-core-new@092a2de1) uses the pre-rc.11 KeyGen API; rc.11 removed it
+getrandom = "=0.4.2"
+
+#[target.'cfg(target_arch = "wasm32")'.dependencies]
+## remember to update one-core version for not-wasm targets
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+didcomm = { package = "equs-didcomm", version = "0.1.0", features = ["uniffi"] }
+reqwest-middleware = { version = "0.4.0", default-features = false }
+reqwest-tracing = { version = "0.5.5", default-features = false }
+one-core = { package = "equs-one-core", version = "0.1.1" }
+shared-types = { package = "equs-one-core-shared-types", version = "0.1.0" }
+x509-parser = { version = "0.18", features = ["verify"] }
+x509-cert = { version = "0.2", features = ["pem"] }
+
+[dev-dependencies]
+equs-test-fixtures = { path = "./test-fixtures" }
+mockall = "0.13.0"
+# todo remove
+mockito = "=1.5.0"
+httpmock = "0.8.0-alpha.1"
+rstest = "0.22.0"
+rcgen = "0.14"
+# InMEM dependencies
+ed25519-dalek = "2.1.1"
+bip32 = "0.5.2"
+ecdsa = "0.16.9"
+
+[features]
+in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
+didcomm-http-transport = ["dep:http", "dep:hyper", "dep:tokio"]
+test-utils = []
+delegate-sd-jwt = ["sd-jwt-rs/delegate"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+incremental = true
+
+[profile.release-bindgen]
+inherits = "release"
+strip = "none"
+
+[profile.dev.package.num-bigint-dig]
+opt-level = 3

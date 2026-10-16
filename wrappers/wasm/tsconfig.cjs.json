@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "baseUrl": "./",
+    "outDir": "pkg",
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "module": "CommonJS",
+    "strict": false,
+    "lib": ["ESNext"],
+    "preserveConstEnums": false,
+    "removeComments": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ESNext"
+  },
+  "include": ["types"],
+  "exclude": ["node_modules", "test"]
+}

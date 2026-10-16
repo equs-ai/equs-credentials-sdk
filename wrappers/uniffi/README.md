@@ -1,0 +1,254 @@
+# EQUS Credentials SDK UniFFI wrappers
+
+This crate exposes EQUS Credentials SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
+targets built and published here.
+
+## Building
+
+Build the UniFFI binary for your target platform using the commands below.
+
+**Debug build:**
+
+```bash
+  make kotlin-debug-build
+```
+
+**Release build:**
+
+```bash
+  make kotlin-release-build
+```
+
+## Testing
+
+### Kotlin
+
+The Kotlin tests are located in the `kotlin` directory, which is a standard Gradle project with tests under
+`src/test/kotlin`.
+
+**Run Kotlin tests:**
+
+In order to run these tests, you will need to have the JDK installed.
+
+```bash
+  make kotlin-test
+```
+
+The test build enables the library's `test-fixtures` feature, which adds the `fixture*` functions the
+suite calls to generate its keys, tokens and certificates at run time; no release target enables it.
+
+## dSD-JWT delegation (AP2)
+
+EXPERIMENTAL: tracks draft-gco-oauth-delegate-sd-jwt.
+
+The wrappers cover the **delegating Holder**: the user's wallet, which answers an OID4VP request carrying a `delegate`
+transaction-data item with a dSD-JWT grant bound to the requester's key. They do not cover the **Delegate Holder**
+(the agent that verifies, stores and re-presents the grant) or the **Verifier** (the agent requesting the grant, or the
+merchant): there is no OID4VP verifier on mobile.
+
+Delegation is off by default. A holder built without `allowDelegation = true` rejects a request with a `delegate` item in
+`presentCredentials`, `presentCredentialsAuto` and `findVcsForPresentation`; `declineAuthorizationRequest` still works.
+
+```kotlin
+val holder = Oid4vpHolderBuilder(kms, vault, clientId, httpClient, nonceHandler, allowDelegation = true).build()
+```
+
+```swift
+let holder = try await Oid4vpHolderBuilder(
+    kms: kms, vault: vault, clientId: clientId, httpClient: httpClient, nonceHandler: nonceHandler,
+    allowDelegation: true
+).build()
+```
+
+Show the user what is delegated before presenting. A `delegate` item in `AuthorizationRequest.transactionData` has
+`content` `TransactionDataItemTypeContent.DelegateSdJwt`, whose `delegatePayloadDisclosure` is the base64url of
+`[salt, {cnf, ...claims}]`: the requester's key and claims such as a `purchase_id`. Every other item type arrives as
+`TransactionDataItemTypeContent.Unknown`, with its fields as a JSON object.
+
+`VCCoreHolder.createDelegatedCredential(credential, DelegationParams(...))` creates a grant from a stored SD-JWT without
+an OID4VP request.
+
+# Android
+
+### Use a release
+
+Published on Maven Central as `ai.equs:equs-credentials-sdk-android` (min SDK 24):
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("ai.equs:equs-credentials-sdk-android:<version>")
+}
+```
+
+### 1. Setup Android SDK and NDK
+
+Using Command-line:
+
+```bash
+  brew install --cask android-commandlinetools
+```
+
+```bash
+  sdkmanager "ndk;29.0.13599879"
+```
+
+### 2. Set Environment Variables
+
+Add these lines to your `~/.zshrc` or `~/.bash_profile`:
+
+```bash
+  export ANDROID_HOME=$HOME/Library/Android/sdk
+  export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.13599879  # Use your NDK version instead of '29.0.13599879'
+  export PATH=$PATH:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools
+  export PATH=$PATH:$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin # Use your platform folder darwin arm64
+```
+
+Reload your shell:
+
+```bash
+  source ~/.bash_profile  # or ~/.zshrc
+```
+
+Check that you are able to see the C libraries for each of the architecture-Android version combinations
+
+```bash
+  find $ANDROID_NDK_HOME/toolchains/llvm -name "*-linux-android*-clang" | sort -r
+```
+
+You should see the similar output as below:
+
+```
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android35-clang
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android34-clang
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android33-clang
+...
+```
+
+### 3. Bind linkers to android targets
+
+Open (or create) your main `$HOME/.cargo/config` file. Add each of the target linkers:
+
+```toml
+[target.armv7-linux-androideabi]
+linker = "armv7a-linux-androideabi24-clang"
+ar = "llvm-ar"
+
+[target.x86_64-linux-android]
+linker = "x86_64-linux-android24-clang"
+ar = "llvm-ar"
+
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android24-clang"
+ar = "llvm-ar"
+
+[target.i686-linux-android]
+linker = "i686-linux-android24-clang"
+ar = "llvm-ar"
+```
+
+### 4. Install Rust Android Targets
+
+```bash
+  rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+```
+
+### 5. Build Android Archive (`.aar`)
+
+Depending on your need, you should build **dev** or **release** android archives.
+Release build lacks some features that are not expected to be used in production code.
+
+#### 5.1. Build dev Android Archive
+
+```bash
+  make android-aar-dev
+```
+
+#### 5.2. Build release Android Archive
+
+```bash
+  make android-aar
+```
+
+Either target saves the archive to `./kotlin/android/build/outputs/aar/android-release.aar`.
+
+# iOS
+
+iOS builds target iOS 17. Change that in [`.cargo/config.toml`](./.cargo/config.toml).
+
+### Use a release
+
+Each [GitHub release](https://github.com/equs-ai/equs-credentials-sdk/releases) carries
+`equs-credentials-sdk-ios-<version>.xcframework.zip`: a dynamic `EqusSdk.xcframework` with the Swift
+bindings compiled in. Add it as a binary target, taking the checksum from the release's `.checksum`
+asset:
+
+```swift
+.binaryTarget(
+    name: "EqusSdk",
+    url: "https://github.com/equs-ai/equs-credentials-sdk/releases/download/<tag>/equs-credentials-sdk-ios-<version>.xcframework.zip",
+    checksum: "<checksum>"
+),
+```
+
+`<tag>` is the release's tag, `v<version>` or `ios/v<version>`. In an Xcode project, drag the
+unzipped `EqusSdk.xcframework` in and set it to **Embed & Sign**. Either way, `import EqusSdk`.
+
+To build it locally, run `make ios-generate-framework` (release) or `make ios-generate-framework-dev`
+(debug); the output is `swift/ios/framework[-debug]/EqusSdk.xcframework`.
+
+### 1. Setup Xcode Command-Line Tools
+
+Install Xcode from the App Store (or from [developer.apple.com](https://developer.apple.com/download/all/)),
+then the command-line tools:
+
+```bash
+  xcode-select --install
+  xcodebuild -runFirstLaunch
+```
+
+#### Update your paths
+
+Add next line to your shell profile `~/.zshrc` or `~/.bash_profile` or any other
+
+```
+  export PATH=$PATH:/Developer/Applications/Xcode.app/Contents/MacOS/
+```
+
+Make sure you refresh your profile
+
+```bash
+  source ~/.bash_profile  # or ~/.zshrc
+```
+
+### 2. Install Rust iOS and macOS Targets
+
+```bash
+  rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+```
+
+### 3. Generate the XCFramework and Swift Bindings
+
+```bash
+  make ios-generate-xcframework-dev
+```
+
+## Testing
+
+The Swift tests are located in the `swift` directory, which is a Swift Package with tests under `Tests/EqusSdkTests/`.
+
+**Run Swift tests:**
+
+In order to run these tests, you will need to have the iOS simulator installed.
+
+```bash
+  make ios-test
+```
+
+Like the Kotlin tests, this builds the XCFramework with the `test-fixtures` feature
+(`make ios-generate-xcframework-test`); `make ios-generate-xcframework-dev` and the release targets do not.
+
+

@@ -1,0 +1,126 @@
+name: Build caches
+description: Named cache presets shared by every job.
+
+inputs:
+  restore:
+    description: Space-separated preset names to restore.
+    required: false
+    default: ''
+  save:
+    description: Space-separated preset names to save.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - if: contains(inputs.restore, 'target-prod')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: target
+        key: target-prod-${{ hashFiles('Cargo.lock') }}
+        restore-keys: target-prod-
+
+    - if: contains(inputs.save, 'target-prod')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: target
+        key: target-prod-${{ hashFiles('Cargo.lock') }}
+
+    - if: contains(inputs.restore, 'wrapper-nodejs')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/nodejs/node_modules
+          wrappers/nodejs/dist
+          wrappers/nodejs/*.node
+          wrappers/nodejs/binary.js
+          wrappers/nodejs/binary.d.ts
+          wrappers/nodejs/index.js
+          wrappers/nodejs/index.d.ts
+        key: wrapper-nodejs-${{ github.sha }}
+
+    - if: contains(inputs.restore, 'wrapper-wasm')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/wasm/node_modules
+          wrappers/wasm/pkg
+          wrappers/wasm/dist
+        key: wrapper-wasm-${{ github.sha }}
+
+    - if: contains(inputs.restore, 'wrapper-kotlin')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          target/debug/libequssdk.so
+          wrappers/uniffi/kotlin/src/main/kotlin
+        key: wrapper-kotlin-${{ github.sha }}
+
+    - if: contains(inputs.restore, 'wrapper-swift')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/uniffi/swift/ios/debug
+          wrappers/uniffi/swift/Sources
+        key: wrapper-swift-${{ github.sha }}
+
+    - if: contains(inputs.restore, 'wrapper-askar')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          plugins/askar/wrappers/nodejs/node_modules
+          plugins/askar/wrappers/nodejs/build
+          plugins/askar/wrappers/nodejs/*.node
+          plugins/askar/wrappers/nodejs/binary.js
+          plugins/askar/wrappers/nodejs/binary.d.ts
+        key: wrapper-askar-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-nodejs')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/nodejs/node_modules
+          wrappers/nodejs/dist
+          wrappers/nodejs/*.node
+          wrappers/nodejs/binary.js
+          wrappers/nodejs/binary.d.ts
+          wrappers/nodejs/index.js
+          wrappers/nodejs/index.d.ts
+        key: wrapper-nodejs-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-wasm')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/wasm/node_modules
+          wrappers/wasm/pkg
+          wrappers/wasm/dist
+        key: wrapper-wasm-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-kotlin')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          target/debug/libequssdk.so
+          wrappers/uniffi/kotlin/src/main/kotlin
+        key: wrapper-kotlin-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-swift')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wrappers/uniffi/swift/ios/debug
+          wrappers/uniffi/swift/Sources
+        key: wrapper-swift-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-askar')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          plugins/askar/wrappers/nodejs/node_modules
+          plugins/askar/wrappers/nodejs/build
+          plugins/askar/wrappers/nodejs/*.node
+          plugins/askar/wrappers/nodejs/binary.js
+          plugins/askar/wrappers/nodejs/binary.d.ts
+        key: wrapper-askar-${{ github.sha }}

@@ -1,0 +1,23 @@
+[package]
+name = "verifier"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[features]
+# Enables the dSD-JWT delegation demo. The Merchant must verify the delegation chain, and
+# `sd-jwt-rs` gates chain-aware verification behind its `delegate` feature — reached here via
+# `equs-credentials-sdk/delegate-sd-jwt` — so this must forward to the SDK feature (a local `[]` toggle
+# would leave the verifier unable to verify the dSD-JWT+KB grant).
+delegate-sd-jwt = ["equs-credentials-sdk/delegate-sd-jwt"]
+
+[dependencies]
+equs-credentials-sdk = { path = "../../..", features = ["in-memory"]}
+shared = { path = "../shared" }
+
+actix-web = { version = "4.8.0", default-features = false, features = ["macros"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["blocking"] }
+tracing-subscriber = "0.3.18"
+uuid = { version = "1.10.0", features = ["v4"] }

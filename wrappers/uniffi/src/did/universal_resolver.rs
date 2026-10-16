@@ -1,0 +1,83 @@
+use crate::common::{Error, Result};
+use crate::did::{DIDResolution, DIDResolver, VerificationMethod, WrappedDIDResolver};
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver as EqusSdkSpruceDIDResolver};
+use std::str::FromStr;
+use std::sync::Arc;
+
+/// An Universal `DID` resolver.
+///
+/// # Supported methods
+///
+/// `did:key`
+/// `did:peer`
+/// `did:web`
+#[derive(uniffi::Object)]
+pub struct UniversalDIDResolver(UniversalResolver);
+
+impl UniversalDIDResolver {
+    pub(crate) fn inner(&self) -> &UniversalResolver {
+        &self.0
+    }
+}
+
+#[uniffi::export]
+impl UniversalDIDResolver {
+    /// Creates a new Universal `DID` resolver.
+    #[uniffi::constructor]
+    pub fn new(resolvers: Option<Vec<Arc<dyn DIDResolver>>>) -> Result<UniversalDIDResolver> {
+        let mut universal_resolver = UniversalResolver::default();
+
+        if let Some(resolvers) = resolvers {
+            for resolver in resolvers {
+                universal_resolver
+                    .add_resolver(WrappedDIDResolver::new(resolver))
+                    .map_err(|e| Error::DIDResolver(e.to_string()))?;
+            }
+        }
+
+        Ok(UniversalDIDResolver(universal_resolver))
+    }
+
+    /// Resolves a DID and extracts one of the verification methods it defines.
+    ///
+    /// This will return the first verification method found, although users
+    /// should not expect the DID documents to always list verification methods
+    /// in the same order.
+    pub async fn resolve_verification_method(
+        &self,
+        did: String,
+    ) -> Result<Option<VerificationMethod>> {
+        let did = DIDBuf::from_str(&did).map_err(|err| Error::DIDResolution {
+            details: format!("{err:?}"),
+        })?;
+
+        self.0
+            .resolve_into_any_verification_method(&did)
+            .await
+            .map_err(|err| Error::DIDResolution {
+                details: format!("{err:?}"),
+            })?
+            .map(|vm| vm.try_into())
+            .transpose()
+    }
+
+    /// Resolves a DID.
+    ///
+    /// Fetches the DID document referenced by the input DID.
+    ///
+    /// See: <https://www.w3.org/TR/did-core/#did-resolution>
+    pub async fn resolve(&self, did: String) -> Result<DIDResolution> {
+        let did = DIDBuf::from_str(&did).map_err(|err| Error::DIDResolution {
+            details: format!("{err:?}"),
+        })?;
+
+        self.0
+            .resolve(&did)
+            .await
+            .map_err(|err| Error::DIDResolution {
+                details: format!("{err:?}"),
+            })
+            .and_then(TryInto::try_into)
+    }
+}

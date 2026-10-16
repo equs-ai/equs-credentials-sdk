@@ -1,0 +1,52 @@
+# Wrappers — Summary
+
+## What this domain does
+Exposes the EQUS Credentials SDK Rust library to three foreign language targets via thin FFI/binding layers. Each wrapper translates the SDK's async Rust types to the idioms of its target ecosystem. No business logic lives here — wrappers only adapt types, handle errors, and re-export the SDK's public API surface.
+
+## Sub-areas
+
+| Area | Path | Context file |
+|------|------|--------------|
+| Node.js wrapper root | `wrappers/nodejs/src/` | [context](../wrappers/nodejs/src/CLAUDE.md) |
+| Node.js — DID | `wrappers/nodejs/src/did/` | [context](../wrappers/nodejs/src/did/CLAUDE.md) |
+| Node.js — DIDComm | `wrappers/nodejs/src/didcomm/` | [context](../wrappers/nodejs/src/didcomm/CLAUDE.md) |
+| Node.js — In-memory | `wrappers/nodejs/src/inmem/` | [context](../wrappers/nodejs/src/inmem/CLAUDE.md) |
+| Node.js — VC | `wrappers/nodejs/src/vc/` | [context](../wrappers/nodejs/src/vc/CLAUDE.md) |
+| Node.js — VC Core | `wrappers/nodejs/src/vc/core/` | [context](../wrappers/nodejs/src/vc/core/CLAUDE.md) |
+| Node.js — OID4VCI | `wrappers/nodejs/src/vc/oid4vci/` | [context](../wrappers/nodejs/src/vc/oid4vci/CLAUDE.md) |
+| Node.js — OID4VP | `wrappers/nodejs/src/vc/oid4vp/` | [context](../wrappers/nodejs/src/vc/oid4vp/CLAUDE.md) |
+| Node.js — Status formats | `wrappers/nodejs/src/vc/status_formats/` | [context](../wrappers/nodejs/src/vc/status_formats/CLAUDE.md) |
+| UniFFI wrapper root | `wrappers/uniffi/src/` | [context](../wrappers/uniffi/src/CLAUDE.md) |
+| UniFFI — DID | `wrappers/uniffi/src/did/` | [context](../wrappers/uniffi/src/did/CLAUDE.md) |
+| UniFFI — In-memory | `wrappers/uniffi/src/inmem/` | [context](../wrappers/uniffi/src/inmem/CLAUDE.md) |
+| UniFFI — VC | `wrappers/uniffi/src/vc/` | [context](../wrappers/uniffi/src/vc/CLAUDE.md) |
+| UniFFI — VC Core | `wrappers/uniffi/src/vc/core/` | [context](../wrappers/uniffi/src/vc/core/CLAUDE.md) |
+| UniFFI — OID4VCI | `wrappers/uniffi/src/vc/oid4vci/` | [context](../wrappers/uniffi/src/vc/oid4vci/CLAUDE.md) |
+| UniFFI — OID4VP | `wrappers/uniffi/src/vc/oid4vp/` | [context](../wrappers/uniffi/src/vc/oid4vp/CLAUDE.md) |
+| WASM wrapper root | `wrappers/wasm/src/` | [context](../wrappers/wasm/src/CLAUDE.md) |
+| WASM — DID | `wrappers/wasm/src/did/` | [context](../wrappers/wasm/src/did/CLAUDE.md) |
+| WASM — In-memory | `wrappers/wasm/src/inmem/` | [context](../wrappers/wasm/src/inmem/CLAUDE.md) |
+| WASM — VC | `wrappers/wasm/src/vc/` | [context](../wrappers/wasm/src/vc/CLAUDE.md) |
+| WASM — VC Core | `wrappers/wasm/src/vc/core/` | [context](../wrappers/wasm/src/vc/core/CLAUDE.md) |
+| WASM — OID4VCI | `wrappers/wasm/src/vc/oid4vci/` | [context](../wrappers/wasm/src/vc/oid4vci/CLAUDE.md) |
+| WASM — OID4VP | `wrappers/wasm/src/vc/oid4vp/` | [context](../wrappers/wasm/src/vc/oid4vp/CLAUDE.md) |
+| Askar plugin — Node.js | `plugins/askar/wrappers/nodejs/src/` | [context](../plugins/askar/wrappers/nodejs/src/CLAUDE.md) |
+
+## Cross-domain relationships
+- Depends on: all of `src/` (the core SDK), `one-core-portable`
+- Used by: downstream consumers — Node.js applications, Android/iOS apps (via UniFFI), browser/WASM apps
+
+## Key decisions / constraints
+- **Node.js** uses NAPI-RS (`#[napi]` macros); async methods become JS Promises via `napi::bindgen_prelude::AsyncTask`.
+- **UniFFI** uses `#[uniffi::export]`; targets Kotlin (Android) and Swift (iOS); foreign trait implementations use the `with_foreign` pattern; `JsonValue` is a custom_type bridging `serde_json::Value` to a JSON string.
+- **UniFFI Kotlin bindings** are generated from the unstripped `release-bindgen` profile: `uniffi-bindgen --library` reads metadata from the ELF symbol table, which `strip = true` removes, so a stripped `.so` yields no Kotlin and an AAR with an empty `classes.jar`. Each Android target is built once under `release-bindgen`; the copies in `jniLibs` are stripped with the NDK's `llvm-strip --strip-all`. The Android publish jobs fail if no `.kt` files were generated.
+- **Android publication** is `ai.equs:equs-credentials-sdk-android`, built from AGP's `release` component (POM lists the dependencies, sources jar, empty javadoc jar, signed when `signingKey` is set). Publishing rebuilds the AAR, so `jniLibs` must still hold the `.so` files: the publish jobs run `android-generate-bindings android-copy-libs`, never `android-aar`, which deletes them. `.github/workflows/publish-android.yml` stages it to `android/build/staging` and uploads that to the Maven Central Portal.
+- **UniFFI Swift releases** ship as a GitHub release asset, not through a registry: a dynamic `EqusSdk.xcframework` with the bindings compiled in (library evolution, `.swiftinterface` per slice), plus its SwiftPM checksum. `wrappers/uniffi/scripts/build_ios_framework.sh` builds it from the static-library XCFramework; it imports `equssdkFFI` as `@_implementationOnly` and makes UniFFI's `public` `FfiConverter*` declarations internal, since they expose `RustBuffer`. It also marks every public enum `@frozen`: under library evolution a non-frozen enum forces consumers into `@unknown default`. `.github/workflows/publish-ios.yml` publishes it.
+- **UniFFI test fixtures (feature `test-fixtures`, off by default):** `wrappers/uniffi/src/test_fixtures.rs` exports thin `fixture*` shims over `equs-test-fixtures` (a `FixtureKey` enum picks the key, JSON in and out) so the Kotlin and Swift suites generate their tokens and certificates at run time instead of committing them. The Makefile enables it only for the test chains — `kotlin-generate_kotlin_debug` behind `kotlin-test` and `ios-generate-xcframework-test` behind `ios-test`, which CI's `kotlin-wrapper` and `ios-xcframework` jobs call — while `kotlin-debug-build`, `ios-generate-xcframework-dev` (GitLab's dev iOS publish), the Android AAR and every release target build without it.
+- **WASM** uses `wasm-bindgen` (`#[wasm_bindgen]`); async methods use `wasm_bindgen_futures::future_to_promise`; all types must be `!Send` compatible (`?Send` on async traits).
+- **Runtime test fixtures:** no JS test suite commits a signed token, encrypted response or certificate. The Node.js wrapper's `test-fixtures` cargo feature (`wrappers/nodejs/src/test_fixtures.rs`, on only in `npm run build:debug`) exports thin shims over `equs-test-fixtures` — `fixturePublicJwk`, `fixtureDidKey`, `fixtureDidKeyUrl`, `fixtureJws`, `fixtureSdJwt`, `fixtureSdJwtKb`, `fixtureJwe`, `fixtureJwks`, `fixtureX509` — that take JSON as strings and the key as a `FixtureKey` enum. `wrappers/nodejs/test` and `plugins/askar/wrappers/nodejs/test` import them from the wrapper; `wrappers/test/js_common` imports them from `"equs-credentials-sdk"`, the same specifier it resolves the SDK through for both the Node.js and the WASM package, so the WASM test build has to export the same names and `FixtureKey`, and `js_common/test/test_fixtures.test.ts` checks the exports on both builds. Headers, claims, disclosure texts and certificate fields are written at the call site; every `kid`, `iss`, `sub`, `aud` and `cnf` is derived from the role's key. Signing is deterministic, so a fixture is computed once per file; a JWE or certificate is fresh per call.
+- The WASM wrapper does **not** expose DIDComm — that module is non-wasm only.
+- Each wrapper provides its own `HttpClient` implementation (Node.js: callback-based; UniFFI: `with_foreign`; WASM: `ReqwestHttpClient` with wasm-compatible backend).
+- **Test fixtures in the JavaScript test builds:** the WASM wrapper's `test-utils` feature (on in `npm run build:dev` / `build:dev:cjs`, off in the release `build`) links `equs-test-fixtures` with default features off and exports its builders as the free functions `fixturePublicJwk`, `fixtureDidKey`, `fixtureDidKeyUrl`, `fixtureJws`, `fixtureSdJwt`, `fixtureSdJwtKb`, `fixtureJwe` and `fixtureJwks` (`wrappers/wasm/src/test_fixtures.rs`): JSON as text, the key as the `FixtureKey` enum, the same JavaScript names as the Node.js wrapper, so `wrappers/test/js_common` imports them from `equs-credentials-sdk` unchanged on both targets.
+- **Delegate SD-JWT (gated `delegate-sd-jwt`, off by default in the SDK):** delegation is handled inside the existing `Holder::present_credentials(_auto)` (no new Holder method); the feature adds only `Verifier::verify_and_extract_presentation` (verify + return raw presentations so a Delegate Holder can store a dSD-JWT grant) to the trait surface. The Node.js wrapper enables it by default and exposes `buildDelegateTransactionData`, `verifyAndExtractPresentation` and `VcCoreHolder.createDelegatedCredential`. The UniFFI wrapper always builds with it and covers the **delegating Holder** — the user's wallet, which answers a `delegate` item with a grant: a holder built with `OID4VPHolderBuilder`'s `allow_delegation = true` (off by default, so an existing app never hands out a grant behind its ordinary consent screen) does so in `present_credentials(_auto)`, which works because `TransactionDataItem` crosses the FFI as the SDK's own type (remote record and enums), and `VCCoreHolder.create_delegated_credential` makes one from a stored SD-JWT given a `DelegationParams` record. It does not cover the **Delegate Holder** (the Agent, which verifies, stores and re-presents the grant) or the **Verifier** (the Agent requesting the grant, or the Merchant): UniFFI has no OID4VP verifier. The WASM wrapper does not enable the feature.
+

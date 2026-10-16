@@ -1,0 +1,29 @@
+name: npm version
+description: Resolves the npm release version and dist-tag from the tag or the version input.
+
+inputs:
+  prefix:
+    required: true
+  version:
+    required: false
+    default: ''
+
+outputs:
+  version:
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        PREFIX: ${{ inputs.prefix }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version="${INPUT_VERSION:-${GITHUB_REF_NAME#"$PREFIX"/v}}"
+        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not $PREFIX/vX.Y.Z or $PREFIX/vX.Y.Z-rc.N" >&2; exit 1; }
+        [[ "$version" == *-rc.* ]] && dist_tag=rc || dist_tag=latest
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        { echo "CI_COMMIT_TAG=$version"; echo "NPM_DIST_TAG=$dist_tag"; } >> "$GITHUB_ENV"

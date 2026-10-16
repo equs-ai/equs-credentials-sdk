@@ -1,0 +1,211 @@
+# Publish a New Release
+
+A release is driven by a **git tag**. Pushing a tag named exactly `X.Y.Z` starts the release stage of the
+pipeline, which builds and publishes every wrapper package.
+
+Do the steps in order: the version bump has to be on `main` *before* the tag is created, because the
+publish scripts read the version from the manifests, not from the tag name.
+
+## 1. Pre-flight checks
+
+1. The pipeline on `main` is green. The tag pipeline runs **only** the release stage — no build, lint or
+   test jobs — so `main` is the last point at which anything is verified.
+2. The demo application runs successfully and passes all flows.
+3. The latest commit on `main` contains every change meant to be in the release.
+4. `Cargo.toml` is bumped to the release version (step 2); the wrapper manifests ideally match.
+
+## 2. Bump the version
+
+Published versions come **from the tag**: every publish job sets the artifact version to
+`CI_COMMIT_TAG`, so the tag and the published version cannot disagree. `Cargo.toml` is the exception —
+it is not derived from the tag. The remaining declarations affect only local builds, where
+`CI_COMMIT_TAG` is unset; keeping them in step is hygiene, not a publishing requirement.
+
+| Target | File | Declaration |
+| --- | --- | --- |
+| Rust workspace | [`Cargo.toml`](../../Cargo.toml) | `version = "X.Y.Z"` |
+| Node.js wrapper | [`wrappers/nodejs/package.json`](../../wrappers/nodejs/package.json) | `"version"` |
+| WASM wrapper | [`wrappers/wasm/package.json`](../../wrappers/wasm/package.json) | `"version"` |
+| Askar plugin (Node.js) | [`plugins/askar/wrappers/nodejs/package.json`](../../plugins/askar/wrappers/nodejs/package.json) | `"version"` |
+| Android (Kotlin) | [`wrappers/uniffi/kotlin/android/build.gradle.kts`](../../wrappers/uniffi/kotlin/android/build.gradle.kts) | `val baseVersion` |
+| iOS (Swift) | [`wrappers/uniffi/scripts/build_and_publish_ios.sh`](../../wrappers/uniffi/scripts/build_and_publish_ios.sh) | `VERSION=` |
+
+After bumping:
+
+1. Run `cargo build` so `Cargo.lock` picks up the new workspace version.
+2. Commit `Cargo.toml`, `Cargo.lock` and the five wrapper files together.
+3. Merge to `main` and wait for that pipeline to go green.
+
+Only `Cargo.toml` is load-bearing for a release; the rest can be corrected later without republishing.
+
+## 3. Write the release notes
+
+Put them in a scratch file — `NOTES.md` — using the [format below](#release-notes-format). The next step
+records them in the tag itself, so they travel with the repository and need no external system to be
+readable.
+
+## 4. Create and push the tag
+
+Replace `<version>` with the release version (e.g. `1.11.0`):
+
+```shell
+git switch main
+git pull
+git tag -a <version> -F NOTES.md
+git push origin tag <version>
+```
+
+Read the notes back at any time:
+
+```shell
+git tag -n99 <version>     # notes for one tag
+git show <version>         # notes plus the commit it points at
+```
+
+Rules for the tag name:
+
+- Exactly `X.Y.Z` — no `v` prefix, no suffix. Only this shape triggers the production publish jobs, which
+  move the `latest` npm dist-tag.
+- `X.Y.Z-<suffix>` (e.g. `1.14.0-rc.1`) triggers the **dev** jobs instead — see
+  [Dev builds](#dev-builds). The two shapes are disjoint.
+- Never re-point a tag that has already been released. Re-running a release pipeline over versions that
+  already exist in the registry does not fail cleanly: most npm publishes appear to succeed but land as
+  orphan `0.0.0-<uuid>` rows, and a few hard-reject. To exercise release CI, use an unused patch version
+  and delete both the tag and the resulting package rows afterwards.
+
+## 5. What the tag pipeline publishes
+
+Each wrapper has a production job, published under the `latest` tag:
+
+| Job | Artifact | Registry |
+| --- | --- | --- |
+| `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
+| `publish_wasm_wrapper` | `@equs-ai/equs-credentials-sdk-wasm` | npm |
+| `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk-askar-storage` + per-platform binaries | npm |
+| `publish_android_wrapper` | `equs-credentials-sdk-android` AAR | Maven |
+| `publish_ios_wrapper` | `equs-credentials-sdk-ios` XCFramework zip + checksum | package registry |
+| `release_artifacts_job` | `SBOM.auto.out`, `AUDIT.auto.out`, `API.auto.tar.gz` (rustdoc) | pipeline artifacts |
+
+The release is done once that stage finishes green.
+
+### Dev builds
+
+Five of the seven production jobs have a `*_dev` counterpart publishing under the `dev` npm
+dist-tag: `publish_nodejs_target_dev`, `publish_nodejs_wrapper_dev`, `publish_wasm_dev_wrapper`,
+`publish_ios_wrapper_dev` and `publish_android_wrapper_dev`. Dev builds are debug builds. The askar
+plugin has no dev job — it declares no cargo features, so a dev build would differ from production
+only in optimization level.
+
+They run on a prerelease tag — `X.Y.Z-<suffix>`, hyphen mandatory:
+
+```shell
+git tag -a 1.14.0-rc.1 -m "dev build"
+git push origin tag 1.14.0-rc.1
+```
+
+A plain `X.Y.Z` tag creates no dev job. Dev jobs run automatically, and a failure fails the pipeline.
+
+The published dev version **is the tag** (`1.14.0-rc.1`), not `X.Y.Z-dev`, so each prerelease tag
+produces a distinct version and repeat dev builds never collide. Run locally without `CI_COMMIT_TAG`
+and the old `X.Y.Z-dev` naming still applies.
+
+## npmjs
+
+The Node.js wrapper, the askar plugin (each with its three platform packages) and the WASM wrapper are also published to
+[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflows
+[`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) and
+[`publish-wasm.yml`](../../.github/workflows/publish-wasm.yml) and
+[`publish-askar-nodejs.yml`](../../.github/workflows/publish-askar-nodejs.yml). Each runs on its own tag, pushed to the GitHub
+remote:
+
+```shell
+git tag -a nodejs/v<version> -F NOTES.md
+git tag -a wasm/v<version> -F NOTES.md
+git tag -a askar-nodejs/v<version> -F NOTES.md
+git push origin tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
+```
+
+The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc.N`
+(e.g. `nodejs/v1.14.0-rc.1`) publishes under `rc` and leaves `latest` alone. Both are release builds —
+no dev builds go to npmjs, and any other suffix is rejected.
+An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
+
+## Maven Central
+
+The Android AAR is also published to Maven Central as
+`ai.equs:equs-credentials-sdk-android` by
+[`publish-android.yml`](../../.github/workflows/publish-android.yml), on its own tag:
+
+```shell
+git tag -a android/v<version> -F NOTES.md
+git push origin tag android/v<version>
+```
+
+The published version is the tag; `X.Y.Z-rc.N` is accepted. A Maven Central version can never be
+replaced or deleted, so a bad tag costs a version number.
+
+To rehearse a release, add `DRY_RUN: "1"` to the `env` of the five publish workflows: every tag then runs the full pipeline but publishes nothing
+(`cargo publish --dry-run`, `npm publish --dry-run`, no Maven Central upload); the release and its manifests are still created.
+
+### Everything at once
+
+The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
+`equs-credentials-sdk` to crates.io, all three npm packages above under `latest` and the Android AAR to
+Maven Central, all at the same version, attaches the [iOS XCFramework](#ios-on-github-releases), and attaches
+one manifest per package to the `vX.Y.Z` release
+(`release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`).
+
+```shell
+git tag -a v<version> -F NOTES.md
+git push origin tag v<version>
+```
+
+`<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
+the run checks both before anything publishes. rc tags are not accepted here; use the per-package
+tags for those. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
+
+If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
+tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:
+
+- **Crate failed:** nothing was published. Fix it, then delete and re-push `v<version>` on the fixed commit.
+- **A wrapper failed after the crate shipped:** fix it and publish that wrapper with its own tag at
+  the same version (`nodejs/v<version>`, `askar-nodejs/v<version>`, `wasm/v<version>`,
+  `android/v<version>` or `ios/v<version>`). Its manifest goes on that tag's release.
+
+## iOS on GitHub releases
+
+[`publish-ios.yml`](../../.github/workflows/publish-ios.yml) builds a dynamic `EqusSdk.xcframework`,
+with the Swift bindings compiled in, and attaches it to the GitHub release. There is no registry. It
+runs on `ios/v<version>` or as part of `v<version>`. An `-rc.N` tag is released as a GitHub
+prerelease:
+
+```shell
+git tag -a ios/v<version> -F NOTES.md
+git push origin tag ios/v<version>
+```
+
+| Asset | Use |
+| --- | --- |
+| `equs-credentials-sdk-ios-<version>.xcframework.zip` | `EqusSdk.xcframework`, for `.binaryTarget(url:checksum:)` or dragging into Xcode |
+| `equs-credentials-sdk-ios-<version>.xcframework.checksum` | The SwiftPM checksum of the zip above |
+
+The run's summary prints the `binaryTarget` declaration with the URL and checksum.
+Consumers pin that checksum, so an uploaded zip must never change: the run fails before building
+if the release already has iOS assets. To replace a bad build, delete the assets by hand and accept
+that everyone pinned to them breaks, or cut a new version.
+
+## Release notes format
+
+One line per change:
+
+```text
+[feat|fix|chore] {Description}: [{Issue number}]({Issue link})
+```
+
+Example:
+
+```text
+- [feat] Add feature: #123.
+- [fix] Fix bug: #124.
+- [chore] Security Logging adjustments: #125
+```

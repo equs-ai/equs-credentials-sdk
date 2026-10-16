@@ -1,0 +1,93 @@
+variables:
+  REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+
+.nodejs_job_configs: &nodejs_job_configs
+  image: node:${NODE_VERSION}
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - export RUSTC_WRAPPER=""
+
+.nodejs_to_registry_template: &nodejs_to_registry_template
+  <<: *nodejs_job_configs
+  stage: release
+  rules:
+    - when: never
+
+publish_nodejs_target:
+  <<: *nodejs_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $RELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/nodejs
+      chmod +x scripts/build_and_publish_target.sh
+      NPM_TOKEN=${CI_JOB_TOKEN} TARGET=${TARGET} ALIAS=${ALIAS} ENVIRONMENT=production scripts/build_and_publish_target.sh
+  parallel:
+    matrix:
+      - TAGS: "linux"
+        ALIAS: "linux-x64-gnu"
+        TARGET: "x86_64-unknown-linux-gnu"
+      - TAGS: "macos"
+        ALIAS: "darwin-arm64"
+        TARGET: "aarch64-apple-darwin"
+      - TAGS: "macos"
+        ALIAS: "darwin-x64"
+        TARGET: "x86_64-apple-darwin"
+  tags:
+    - $TAGS
+  variables:
+    ALIAS: $ALIAS
+    TARGET: $TARGET
+
+publish_nodejs_target_dev:
+  <<: *nodejs_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/nodejs
+      chmod +x scripts/build_and_publish_target.sh
+      NPM_TOKEN=${CI_JOB_TOKEN} TARGET=${TARGET} ALIAS=${ALIAS} ENVIRONMENT=development scripts/build_and_publish_target.sh
+  parallel:
+    matrix:
+      - TAGS: "linux"
+        ALIAS: "linux-x64-gnu"
+        TARGET: "x86_64-unknown-linux-gnu"
+      - TAGS: "macos"
+        ALIAS: "darwin-arm64"
+        TARGET: "aarch64-apple-darwin"
+      - TAGS: "macos"
+        ALIAS: "darwin-x64"
+        TARGET: "x86_64-apple-darwin"
+  tags:
+    - $TAGS
+  variables:
+    ALIAS: $ALIAS
+    TARGET: $TARGET
+
+publish_nodejs_wrapper:
+  <<: *nodejs_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $RELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/nodejs
+      npm pkg set scripts.postinstall="npm i --ignore-scripts"
+      chmod +x scripts/build_and_publish_wrapper.sh
+      NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
+
+publish_nodejs_wrapper_dev:
+  <<: *nodejs_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/nodejs
+      npm pkg set scripts.postinstall="npm i --ignore-scripts"
+      chmod +x scripts/build_and_publish_wrapper.sh
+      NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=development scripts/build_and_publish_wrapper.sh

@@ -1,0 +1,55 @@
+@startuml
+'https://plantuml.com/component-diagram
+'left to right direction
+
+package "Applications" as App #LightBlue  {
+   [KMS Impl] as KMSApp
+   [Vault Impl] as VaultApp
+   [App Logic] as AppL
+}
+
+package "EQUS Credentials SDK" as EqusSdk {
+
+     package "Pluggable" #LightGray {
+         [KMS Interface] as KMS #Green
+         [Vault Interface\n(store/find VCs)] as Vault #Green
+     }
+
+    package "Public API" as API #LightGray {
+         package "VC Exchange" as VC1 {
+            [OID4VC] as VCOID #Green
+            [Aries/WACI] as AriesWACI #Green
+         }
+         [DIDComm Protocols] as DIDCommP #Green
+
+         [DID] as DID #Green
+    }
+
+    package "Internal" as Int #Gray {
+
+        [VC Core] as VCCore #Green
+        [VC Formats] as VCF #Green
+        VCCore --> VCF
+
+        [Protocol Engine] as PE #Green
+        [DIDComm] as DIDComm #Green
+        [Utils] #Green
+    }
+
+}
+
+'API ---> Int
+VCOID ---> VCCore
+AriesWACI ---> VCCore
+AriesWACI ---> PE
+DIDCommP ---> PE
+PE --> DIDComm
+
+VaultApp --|> Vault
+KMSApp --|> KMS
+AppL --> API
+
+'note right of EqusSdk: Green - already implemented;\nOrange - later versions
+
+
+@enduml

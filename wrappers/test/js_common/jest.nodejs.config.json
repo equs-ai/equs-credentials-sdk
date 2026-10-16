@@ -1,0 +1,21 @@
+{
+  "bail": false,
+  "verbose": true,
+  "moduleFileExtensions": ["js", "ts", "d.ts"],
+  "preset": "ts-jest",
+  "transform": {
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        "tsconfig": "tsconfig.wasm.json",
+        "useESM": false
+      }
+    ]
+  },
+  "testPathIgnorePatterns": ["/node_modules/", "/build/"],
+  "modulePaths": ["<rootDir>/"],
+  "setupFiles": [],
+  "clearMocks": true,
+  "collectCoverage": true,
+  "rootDir": "."
+}

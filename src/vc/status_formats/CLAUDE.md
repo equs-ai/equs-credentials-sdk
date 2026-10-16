@@ -1,0 +1,22 @@
+# status_formats — Context
+
+## Purpose
+Provides the abstract `API` trait and concrete implementations for token-based VC revocation status lists, currently supporting the JWT Token Status List (draft-ietf-oauth-status-list) format.
+
+## Files
+
+| File | Role |
+|------|------|
+| mod.rs | `API` trait (create status list, get VC status), `StatusListFormat` enum, shared `Error` type. |
+| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. |
+
+## Key types / traits
+- `API<CS, ST, SL, MD>` — generic async trait for status list creation and VC status retrieval. `get_vc_status` trusts no X.509 anchors; `StatusListJwt::get_vc_status_with_trusted_certs` is the same call with trusted anchors (used by `core::VerifierService`).
+- `StatusListFormat` — `StatusListTokenJwt(SLMetadata)` or `StatusListTokenCwt`.
+- `VCStatus` — `Valid | Invalid | Suspended | AppSpecific(u8)`.
+- `VCStatuses` — `HashMap<usize, u8>` status index map used when creating a status list.
+- `SLMetadata` — metadata for status list JWT creation (URL, size, count).
+
+## Dependencies
+- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
+- Used by: `core::StatusIssuerService`, `formats::sd_jwt_vc` (status check), `mod.rs` (top-level `VCStatus` re-export)

@@ -1,0 +1,74 @@
+name: Install Rust toolchain and tooling
+description: Reclaim host disk, install the pinned toolchain, restore caches, install cargo-binstall and sccache.
+
+inputs:
+  rust-version:
+    description: Toolchain to install.
+    required: true
+  cache-key:
+    description: Cache key suffix, unique per job.
+    required: true
+  components:
+    description: Space-separated rustup components.
+    required: false
+    default: ''
+  tooling:
+    description: Install cargo-binstall and sccache.
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Report disk
+      shell: bash
+      run: df -h / | tail -1
+
+    - name: Install rustup
+      shell: bash
+      run: |
+        set -euo pipefail
+        version='${{ inputs.rust-version }}'
+        if command -v rustup >/dev/null 2>&1; then
+          rustup toolchain install "$version" --profile minimal
+          rustup default "$version"
+        else
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain "$version"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Trust the workspace and export cache paths
+      shell: bash
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> "$GITHUB_ENV"
+        echo "npm_config_cache=$GITHUB_WORKSPACE/.npm" >> "$GITHUB_ENV"
+        echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+
+    - name: Restore sccache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .sccache
+        key: sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: sccache-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Restore npm cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .npm
+        key: npm-${{ hashFiles('wrappers/nodejs/package-lock.json', 'wrappers/wasm/package-lock.json', 'wrappers/test/js_common/package-lock.json', 'plugins/askar/wrappers/nodejs/package-lock.json', 'demos/nodejs/oid4vc/package-lock.json', 'demos/wasm/oid4vc/package-lock.json') }}
+        restore-keys: npm-
+
+    - name: Install cargo-binstall and sccache
+      if: inputs.tooling == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash .github/scripts/install-binstall.sh
+        RUSTC_WRAPPER="" cargo binstall -y sccache
+
+    - name: Add rustup components
+      if: inputs.components != ''
+      shell: bash
+      run: rustup component add ${{ inputs.components }}

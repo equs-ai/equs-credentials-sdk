@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "declaration": true,
+    "esModuleInterop": true,
+    "emitDeclarationOnly": false,
+    "module": "commonjs",
+    "lib": ["ESNext"],
+    "removeComments": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ESNext"
+  }
+}

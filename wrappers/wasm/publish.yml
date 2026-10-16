@@ -1,0 +1,53 @@
+variables:
+  REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+
+.wasm_job_configs: &wasm_job_configs
+  image: node:${NODE_VERSION}
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - apt-get update && apt-get install -y clang
+    - source "$HOME/.cargo/env"
+    - export RUSTC_WRAPPER=""
+
+.wasm_to_registry_template: &wasm_to_registry_template
+  <<: *wasm_job_configs
+  stage: release
+  rules:
+    - when: never
+
+publish_wasm_wrapper:
+  <<: *wasm_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $RELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/wasm
+      rustup target add wasm32-unknown-unknown
+      cargo install wasm-pack
+      npm i
+      npm run build
+      printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${CI_JOB_TOKEN}" >> "${HOME}/.npmrc"
+      chmod 600 "${HOME}/.npmrc"
+      cp .npmignore pkg/.npmignore
+      cd pkg
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag latest
+
+
+publish_wasm_dev_wrapper:
+  <<: *wasm_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
+  script:
+    - |
+      cd wrappers/wasm
+      rustup target add wasm32-unknown-unknown
+      cargo install wasm-pack
+      npm i
+      npm run build:dev
+      printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${CI_JOB_TOKEN}" >> "${HOME}/.npmrc"
+      chmod 600 "${HOME}/.npmrc"
+      cp .npmignore pkg/.npmignore
+      cd pkg
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag dev

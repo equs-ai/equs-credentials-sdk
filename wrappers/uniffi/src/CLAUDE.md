@@ -1,0 +1,42 @@
+# uniffi/src — Context
+
+## Purpose
+Root of the UniFFI Kotlin/Swift wrapper crate. Calls `uniffi::setup_scaffolding!()` and declares all top-level modules that together expose the EQUS Credentials SDK library to Android (Kotlin) and iOS (Swift) consumers. Top-level files handle cross-cutting concerns: a unified `Error` enum, shared primitive custom types (`JsonValue`, `JsonMap`, `Duration`, `OffsetDateTime`), HTTP client bridging, key-handle and KMS foreign-trait interfaces, nonce handling, vault access, and utility functions. Sub-areas `did/`, `inmem/`, and `vc/` are documented in their own context files.
+
+## Files / Sub-areas
+
+| File/Dir | Role |
+|----------|------|
+| `lib.rs` | Crate root. Declares all modules (`common`, `crypto`, `did`, `http`, `inmem`, `key_handle`, `kms`, `nonce`, `test_fixtures` behind the `test-fixtures` feature, `utils`, `vault`, `vc`). Calls `uniffi::setup_scaffolding!()` to generate the UniFFI binding scaffolding. |
+| `common.rs` | `Error` enum covering all sub-system errors (OID4VPHolder, OID4VCIInternal, OID4VCIProtocol, DIDResolution, DIDResolver, Vault, Kms, KeyHandle, Http variants, Parse). Also defines `JsonValue` custom_type (serde ↔ String), `JsonMap` custom_type (a JSON object ↔ String, for `TransactionDataItemTypeContent::Unknown`) — malformed text in either fails as a typed `Error::Parse` that does not quote the input, rather than UniFFI's internal error, `Duration` custom_type (i64 seconds), `OffsetDateTime` custom_type (i64 unix timestamp), and `deserialize_space_delimited_vec` helper. |
+| `crypto.rs` | `KeyMetadata` remote Record (`did_url: String`, `kid: String`). `Nonce` custom_type (String alias). |
+| `http.rs` | `HttpMethod` enum, `HttpRequest`/`HttpResponse` UniFFI records, `HttpClient` foreign trait (`with_foreign`), `WrappedHttpClient` adapter, `ReqwestHttpClient` UniFFI object (secure + insecure TLS constructors). |
+| `key_handle.rs` | `KeyHandle` foreign trait (`pub_key`, `jwk`, `alg`, `sign`, `verify`) allowing Kotlin/Swift key-handle implementations. `WrappedKeyHandle` record holding `Arc<dyn KeyHandle>` that implements the SDK's `Key`, `Signer`, `Verifier`, and `KeyHandle` traits. |
+| `kms.rs` | `KeyType` remote enum. `Kms` foreign trait (`create`, `get`, `get_by_public_key`). `WrappedKms` adapter bridging the foreign `Kms` to the SDK's internal KMS trait. |
+| `nonce.rs` | `NonceHandler` foreign trait and `WrappedNonceHandler` adapter. |
+| `test_fixtures.rs` | Feature `test-fixtures` only. `#[uniffi::export]` shims over `equs-test-fixtures` for the Kotlin and Swift test suites: `fixture_public_jwk`, `fixture_did_key`, `fixture_did_key_url`, `fixture_jws`, `fixture_sd_jwt`, `fixture_sd_jwt_kb`, `fixture_jwe`, `fixture_jwks`, `fixture_x509`. JSON travels as strings; the key is a `FixtureKey` (`Authz`, `Issuer`, `Holder`, `Verifier`, `Secret`). Bad JSON is `Error::Parse`; what the crate itself rejects panics there and surfaces as UniFFI's internal error. |
+| `utils.rs` | `resolve_metadata` exported async function (resolves `CredentialMetadata` from a `Credential`). `parse_claims` exported async function. `parse_url_arg` internal helper. Debug-only `DidAndKeyMetadata` record and `create_did_and_key_metadata` helper (gated with `#[cfg(debug_assertions)]`). |
+| `vault.rs` | `Vault` foreign trait, `WrappedVault` adapter, `CredentialEntry` remote Record, `FindVCsFailReason` remote enum, `CredentialsFindResult` record, `VaultFetchOptions` record. |
+| `did/` | DID method utilities and `UniversalDIDResolver` — see [did/CLAUDE.md](did/CLAUDE.md) |
+| `inmem/` | In-memory KMS, vault, and key-handle concrete implementations — see [inmem/CLAUDE.md](inmem/CLAUDE.md) |
+| `vc/` | VC type bridging, OID4VCI, and OID4VP sub-areas — see [vc/CLAUDE.md](vc/CLAUDE.md) |
+
+## Key types / traits
+- `Error` — central UniFFI error enum; all exported functions return `Result<T, Error>`.
+- `JsonValue` — `serde_json::Value` bridged as a JSON string; used wherever dynamic JSON is exchanged across the FFI boundary.
+- `HttpClient` — UniFFI `with_foreign` trait; enables Kotlin/Swift to provide custom HTTP implementations.
+- `KeyHandle` / `WrappedKeyHandle` — UniFFI `with_foreign` trait + Rust-side adapter for cryptographic key handles.
+- `Kms` / `WrappedKms` — UniFFI `with_foreign` trait + adapter for key management system implementations.
+- `Vault` / `WrappedVault` — UniFFI `with_foreign` trait + adapter for credential storage implementations.
+- `NonceHandler` / `WrappedNonceHandler` — UniFFI `with_foreign` trait + adapter for nonce lifecycle management.
+- `ReqwestHttpClient` — Concrete HTTP client backed by `reqwest`; provided as a default for callers that do not supply a custom one.
+
+## Dependencies
+- Depends on: `equs_sdk` (all core modules; built with `in-memory` and `delegate-sd-jwt`), `uniffi`, `serde_json`, `reqwest`, `tokio`; `equs-test-fixtures` behind the optional `test-fixtures` feature
+- Used by: Kotlin (Android) and Swift (iOS) bindings generated by UniFFI; consumed via the generated `.kt` / `.swift` scaffolding files
+
+## Constraints
+- All async functions use `async_runtime = tokio`.
+- `with_foreign` traits require Kotlin/Swift implementations to be thread-safe (UniFFI enforces `Send + Sync`).
+- Debug-only helpers (`#[cfg(debug_assertions)]`) in `utils.rs` and other modules must not appear in release builds.
+- `test-fixtures` is switched on only by the Makefile's test chains: `kotlin-generate_kotlin_debug` (behind `kotlin-test`; CI's `kotlin-wrapper` job) and `ios-generate-xcframework-test` (behind `ios-test`; CI's `ios-xcframework` job). `kotlin-debug-build` and `ios-generate-xcframework-dev` on their own, the Android targets and every release and publish target build without it, so no shipped library carries the `fixture*` functions. The Kotlin (`kotlin/src/test`) and Swift (`swift/Tests`) suites build every token and certificate through them at test time from recorded headers, claims and disclosures; only key-derived values (`kid`, `did:key` `iss` / `sub` / `client_id`, `cnf.jwk`, the `authz` thumbprint) differ per process, so a test derives those through the same functions instead of hard-coding them, and the `Fixtures` helper in each suite holds what several files share.

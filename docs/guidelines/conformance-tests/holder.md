@@ -1,0 +1,38 @@
+# Conformance testing of Holder (Wallet)
+
+## Testing Holder for Verifiable Presentations
+
+Documentation for VP Holder
+is [here](https://openid.net/certification/conformance-testing-for-openid-for-verifiable-presentations/)
+
+### 1) Holder with Redirect URI (draft 24)
+
+- Test Plan -> OpenID for Verifiable Presentations ID3(plus draft 24): Test a wallet (...)
+- Credential Format -> sd_jwt_vc
+- Client Id Prefix -> redirect_uri
+- Request Method -> request_uri_unsigned (only unsigned for redirect_uri)
+- Response Mode -> direct_post
+
+Run the demo with the cross-device flow. When the holder asks for the **presentation request URI**, insert the value of
+the Browser Interaction's QR code:
+![img.png](holder-vp-browser-interaction-qr-code.png)
+That is the only interaction in this test.
+
+### 2) Holder with did (draft 24)
+
+- Test Plan -> OpenID for Verifiable Presentations ID3(plus draft 24): Test a wallet (...)
+- Credential Format -> sd_jwt_vc
+- Client Id Prefix -> did
+- Request Method -> request_uri_signed (only signed for did)
+- Response Mode -> direct_post
+- Client_id -> It should be a proper did key and the same as jwks key 'kid'.
+  The specification states that if scheme is `did` then scheme is not prefixed to the id. `did:key:1`. 
+  Conformance tests may format the client id in a wrong format `did:did:key:1`. If you face this situation - cut the unnecessary part.
+- Provide jwks keys where 'kid' must be a did key and the main part (left of '#') should be the same as the client_id
+
+
+Run the demo with the cross-device flow. When the holder asks for the **presentation request URI**, insert the value of
+the Browser Interaction's QR code:
+![img.png](holder-vp-browser-interaction-qr-code.png)
+
+In some cases it is required to upload a screenshot of a browser with an error to finish the test.

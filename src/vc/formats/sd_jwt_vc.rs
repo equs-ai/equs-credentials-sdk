@@ -1,0 +1,1650 @@
+use crate::vc::claims::Claim;
+use async_trait::async_trait;
+use jsonwebtoken::{DecodingKey, Header};
+#[cfg(not(target_arch = "wasm32"))]
+use one_core::proto::certificate_validator::CertificateValidatorImpl;
+use sd_jwt_rs::resolver::KeyResolver;
+#[cfg(feature = "delegate-sd-jwt")]
+use sd_jwt_rs::utils::decode_dsd_jwt;
+#[cfg(not(feature = "delegate-sd-jwt"))]
+use sd_jwt_rs::utils::decode_sd_jwt;
+use sd_jwt_rs::{
+    ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
+    SDJWTVerifier,
+};
+use serde_json::{Map, Value};
+use snafu::ResultExt;
+use ssi::jwk::{JWK, JWKResolver};
+use std::collections::HashMap;
+use time::OffsetDateTime;
+use tracing::{Level, instrument, trace};
+use url::Url;
+
+use crate::crypto::{Key, Signer};
+use crate::did::universal::UniversalResolver;
+use crate::did::{DIDResolver, DIDURL};
+use crate::http::HttpClient;
+use crate::utils;
+use crate::utils::b64;
+use crate::utils::serde::Helpers;
+use crate::utils::serde::get_time_based_claim;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::x509_truststore::Truststore;
+use crate::vc::core::{
+    DisclosureStrategy, HolderBinder, PresentationInput, PresentationRestriction,
+    PresentationRestrictionValue, UnsignedSdJwtCredential,
+};
+use crate::vc::formats::vc::SD_JWT_VC;
+use crate::vc::formats::{
+    API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, IsExpired,
+    IsValid, JWSSnafu, JsonSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
+    ProofValidationSnafu, SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
+};
+use crate::vc::formats::{GetDateTimeClaim, Result};
+
+pub(crate) const VCT_CLAIM: &str = "vct";
+pub(crate) const EXP_CLAIM: &str = "exp";
+pub(crate) const NBF_CLAIM: &str = "nbf";
+pub(crate) const IAT_CLAIM: &str = "iat";
+const ISS_CLAIM: &str = "iss";
+const SUB_CLAIM: &str = "sub";
+const CNF_CLAIM: &str = "cnf";
+const STATUS_CLAIM: &str = "status";
+const ALWAYS_REVEALED_CLAIMS: [&str; 6] = [
+    ISS_CLAIM,
+    NBF_CLAIM,
+    EXP_CLAIM,
+    CNF_CLAIM,
+    VCT_CLAIM,
+    STATUS_CLAIM,
+];
+
+pub type SdJwtRsError = sd_jwt_rs::error::Error;
+
+pub use crate::vc::claims::Claims;
+use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
+use crate::vc::status_formats::API as StatusFormatAPI;
+use crate::vc::status_formats::status_list_token_jwt::{StatusListJwt, VCStatus};
+
+pub type Credential = String;
+pub type Presentation = String;
+
+pub struct SignerWrapper<S: Signer> {
+    pub(crate) signer: S, // TODO: make it private again
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    fn algorithm(&self) -> &str {
+        let alg = self.signer.alg();
+        alg.into()
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
+        let signed = self.signer.sign(message).await;
+        signed
+            .map(|v| b64::encode(&v))
+            .map_err(|e| SdJwtRsError::SigningError(e.to_string()))
+    }
+}
+
+pub struct DidKeyResolver<R: JWKResolver>(R);
+
+impl<R: JWKResolver> DidKeyResolver<R> {
+    #[instrument(level = Level::TRACE, skip_all)]
+    pub fn new(did_resolver: R) -> DidKeyResolver<R> {
+        DidKeyResolver(did_resolver)
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl Default for DidKeyResolver<UniversalResolver> {
+    #[instrument(level = Level::TRACE, skip_all)]
+    fn default() -> Self {
+        DidKeyResolver::new(UniversalResolver::default())
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl KeyResolver for DidKeyResolver<UniversalResolver> {
+    #[instrument(level = Level::TRACE, skip(self), err())]
+    async fn resolve(&self, did: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+        let vm = self
+            .0
+            .resolve_into_any_verification_method(ssi::dids::DID::new(did).map_err(|e| {
+                SdJwtRsError::Unspecified(format!("could not resolve verification method: {e}"))
+            })?)
+            .await
+            .map_err(|e| SdJwtRsError::Unspecified(e.to_string()))?
+            .ok_or_else(|| SdJwtRsError::Unspecified("empty verification method".to_string()))?;
+
+        let jwk = self
+            .0
+            .fetch_public_jwk(Some(vm.id.as_str()))
+            .await
+            .map_err(|e| SdJwtRsError::Unspecified("could not resolve public jwk".to_string()))?;
+        let jwk = utils::jwk::from_spruce_jwk(&jwk)
+            .ok_or_else(|| SdJwtRsError::Unspecified(format!("Unsupported key: {:?}", jwk)))?;
+
+        DecodingKey::from_jwk(&jwk).map_err(|e| SdJwtRsError::DeserializationError(e.to_string()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct DelegatingKeyResolver {
+    did_key_resolver: DidKeyResolver<UniversalResolver>,
+    x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DelegatingKeyResolver {
+    pub fn new(
+        did_key_resolver: DidKeyResolver<UniversalResolver>,
+        x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+    ) -> Self {
+        Self {
+            did_key_resolver,
+            x5c_key_resolver,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait]
+impl KeyResolver for DelegatingKeyResolver {
+    async fn resolve(&self, iss: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+        let credential_issuer_identifier = CredentialIssuerIdentifier::from(iss);
+        match credential_issuer_identifier {
+            CredentialIssuerIdentifier::OID4VCI(url) => {
+                self.x5c_key_resolver.resolve(&url, header).await
+            }
+            CredentialIssuerIdentifier::DID(did) => {
+                self.did_key_resolver.resolve(&did, header).await
+            }
+            CredentialIssuerIdentifier::Other(iss) => Err(SdJwtRsError::Unspecified(format!(
+                "Unsupported issuer identifier: {iss}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CredentialStatus {
+    pub status_list_credential_url: Url,
+    pub status_list_index: u32,
+}
+
+// Metadata
+#[derive(Debug, Default)]
+pub struct VCMetadata {
+    pub vct: String,
+    pub lifetime: Option<time::Duration>,
+    pub disclosures: Vec<String>,
+    pub credential_status: Option<CredentialStatus>,
+}
+
+#[derive(Debug)]
+pub struct VPMetadata {
+    // TODO: should we change it to Claims?
+    pub disclosures: Map<String, Value>,
+    pub holder_binder: Option<HolderBinder>,
+}
+
+/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// **Does not** perform credential validation.
+///
+/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    decode_sd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact).map_err(|err| {
+        ParsingSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })
+}
+
+/// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
+/// **Does not** perform credential validation.
+///
+/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT it additionally layers
+/// each chain link's `delegate_payload` on top of the issuer claims, in chain order, so
+/// delegate-injected claims become visible to credential discovery /
+/// DCQL value-matching.
+#[cfg(feature = "delegate-sd-jwt")]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    let components = decode_dsd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact)
+        .map_err(|err| {
+            ParsingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+    let mut components = components.into_iter();
+    let mut base = components
+        .next()
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    let base_obj = base.as_object_mut().ok_or_else(|| {
+        ParsingSnafu {
+            details: "issuer SD-JWT claims are not a JSON object".to_string(),
+        }
+        .build()
+    })?;
+
+    for payload in components {
+        // Layer single-object delegate payloads; skip multi-alternative arrays.
+        if let Value::Object(obj) = payload {
+            for (key, value) in obj {
+                base_obj.insert(key, value);
+            }
+        }
+    }
+
+    Ok(base)
+}
+
+impl HasClaims<Claims> for Credential {
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    fn parse_claims(&self) -> Result<Claims> {
+        let mut value = decode_credential_claims(&self.to_string())?;
+
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove(CNF_CLAIM);
+        }
+
+        let claims = value.try_into().context(ClaimsSnafu)?;
+        Ok(claims)
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    fn has_type(&self, type_: PresentationRestrictionValue) -> Result<bool> {
+        let claims = self.parse_claims()?;
+
+        if let Some(Claim::String(vct)) = claims.get("vct") {
+            let vct_value = serde_json::to_value(vct).context(JsonSnafu)?;
+            let result = type_
+                .validate_claim_for_string_or_pattern(vct_value)
+                .map_err(|e| {
+                    ParsingSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(result)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+impl HasCredential<Credential> for Presentation {
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    fn get_credential(&self) -> Result<Credential> {
+        // NOTE: returns basic VC w/o disclosures
+        let stripped = SdJwtAPI::strip_disclosures(self)?;
+        Ok(stripped.to_owned())
+    }
+}
+
+#[derive(Debug)]
+pub struct SdJwtAPI;
+
+impl SdJwtAPI {
+    #[instrument(level = Level::TRACE, ret())]
+    fn prepare_claims(
+        mut claims: Claims,
+        iss_did_url: &DIDURL,
+        hld_did_url: &DIDURL,
+        metadata: &VCMetadata,
+    ) -> Claims {
+        claims.put_str(VCT_CLAIM, &metadata.vct);
+        claims.put_str(ISS_CLAIM, iss_did_url.did());
+        claims.put_str(SUB_CLAIM, hld_did_url.did());
+
+        let iat =
+            get_time_based_claim(&claims, IAT_CLAIM).unwrap_or_else(time::OffsetDateTime::now_utc);
+        let nbf =
+            get_time_based_claim(&claims, NBF_CLAIM).unwrap_or_else(time::OffsetDateTime::now_utc);
+        claims.put_dt(IAT_CLAIM, iat);
+        claims.put_dt(NBF_CLAIM, nbf);
+
+        let exp = Self::get_date_time_claim(EXP_CLAIM, &claims).or(metadata
+            .lifetime
+            .map(|lifetime| OffsetDateTime::now_utc() + lifetime));
+        if let Some(exp) = exp {
+            claims.put_dt(EXP_CLAIM, exp);
+        }
+
+        claims
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    fn set_cred_status_info(mut claims: Claims, metadata: &VCMetadata) -> Claims {
+        let Some(ref cred_status) = metadata.credential_status else {
+            return claims;
+        };
+
+        let mut status_list: HashMap<String, Claim> = HashMap::new();
+
+        status_list.insert(
+            "idx".to_string(),
+            Claim::UInt(cred_status.status_list_index.into()),
+        );
+        status_list.insert(
+            "uri".to_string(),
+            Claim::String(cred_status.status_list_credential_url.to_string()),
+        );
+
+        let status_list = Claim::Object(status_list);
+
+        let mut status: HashMap<String, Claim> = HashMap::new();
+        status.insert("status_list".to_string(), status_list);
+        let status = Claim::Object(status);
+
+        claims.insert("status".to_string(), status);
+
+        claims
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    fn extra_headers(iss_did_url: &DIDURL) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        headers.insert("typ".to_string(), SD_JWT_VC.to_string());
+        headers.insert("kid".to_string(), iss_did_url.to_string());
+
+        headers
+    }
+
+    /// Filter `metadata.disclosures` against [ALWAYS_REVEALED_CLAIMS] and collapse an
+    /// empty result to [DisclosureStrategy::AllLevels].
+    #[instrument(level = Level::TRACE, ret())]
+    pub(crate) fn resolve_disclosure_strategy(metadata: &VCMetadata) -> DisclosureStrategy {
+        let filtered: Vec<String> = metadata
+            .disclosures
+            .iter()
+            .filter(|d| {
+                if let Some(claim) = d.strip_prefix("$.") {
+                    return !ALWAYS_REVEALED_CLAIMS.contains(&claim);
+                }
+                true
+            })
+            .cloned()
+            .collect();
+
+        if filtered.is_empty() {
+            DisclosureStrategy::AllLevels
+        } else {
+            DisclosureStrategy::Custom(filtered)
+        }
+    }
+
+    #[instrument(level = Level::TRACE, skip(hld_key), err(), ret())]
+    pub(crate) fn prepare_credential<K: Key>(
+        claims: Claims,
+        iss_did_url: &DIDURL,
+        hld_did_url: &DIDURL,
+        hld_key: &K,
+        metadata: &VCMetadata,
+        issuer_key_id: String,
+    ) -> Result<UnsignedSdJwtCredential> {
+        let claims = Self::prepare_claims(claims, iss_did_url, hld_did_url, metadata);
+        let claims = Self::set_cred_status_info(claims, metadata);
+        let extra_headers = Self::extra_headers(iss_did_url);
+
+        let holder_key = hld_key.jwk().ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
+
+        let claims_value: Value = claims.try_into().context(ClaimsSnafu)?;
+        let claims_map = match claims_value {
+            Value::Object(m) => m,
+            _ => {
+                return ParsingSnafu {
+                    details: "prepared SD-JWT claims must serialize to a JSON object",
+                }
+                .fail();
+            }
+        };
+
+        Ok(UnsignedSdJwtCredential {
+            claims: claims_map,
+            disclosure_strategy: Self::resolve_disclosure_strategy(metadata),
+            holder_key,
+            extra_headers,
+            issuer_key_id,
+        })
+    }
+
+    #[instrument(level = Level::TRACE, skip(unsigned, signer), err(), ret())]
+    pub(crate) async fn sign_credential<S: Signer>(
+        unsigned: UnsignedSdJwtCredential,
+        signer: S,
+    ) -> Result<Credential> {
+        let UnsignedSdJwtCredential {
+            claims,
+            disclosure_strategy,
+            holder_key,
+            extra_headers,
+            issuer_key_id: _,
+        } = unsigned;
+
+        let jwk = utils::jwk::from_spruce_jwk(&holder_key).ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
+
+        let disclosure_paths: Vec<String> = match disclosure_strategy {
+            DisclosureStrategy::AllLevels => Vec::new(),
+            DisclosureStrategy::Custom(paths) => paths,
+        };
+        let disclosure_refs: Vec<&str> = disclosure_paths.iter().map(String::as_str).collect();
+        let sd_strategy = if disclosure_refs.is_empty() {
+            ClaimsForSelectiveDisclosureStrategy::AllLevels
+        } else {
+            ClaimsForSelectiveDisclosureStrategy::Custom(disclosure_refs)
+        };
+
+        let sgn_wrapper = SignerWrapper { signer };
+        let mut issuer = SDJWTIssuer::new(sgn_wrapper);
+
+        issuer
+            .issue_sd_jwt(
+                Value::Object(claims),
+                sd_strategy,
+                Some(jwk),
+                false,
+                SDJWTSerializationFormat::Compact,
+                Some(extra_headers),
+            )
+            .await
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
+    }
+
+    #[instrument(level = Level::TRACE, err(), ret())]
+    pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
+        let mut parts = vc.split('~');
+
+        parts.next().ok_or_else(|| {
+            ParsingSnafu {
+                details: "Strip disclosure failed for 'dc+sd_jwt' credential",
+            }
+            .build()
+        })
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
+        let stripped = Self::strip_disclosures(vc)?;
+
+        ssi::claims::jws::decode_verify(stripped, jwk).context(JWSSnafu)?;
+
+        Ok(())
+    }
+
+    /// Resolves the key that signed `jwt`: a DID URL `kid`, else an `x5c` chain that validates up
+    /// to one of `trusted_certs`, else a `kid` or `iss` DID.
+    #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
+    async fn get_jwk_from_jwt(
+        jwt: &str,
+        did_resolver: UniversalResolver,
+        trusted_certs: Option<&HashMap<String, String>>,
+    ) -> Result<JWK> {
+        let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(x5c) = &header.x509_certificate_chain
+            && header
+                .key_id
+                .as_ref()
+                .is_none_or(|kid| DIDURL::new(kid).is_err())
+        {
+            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs).await;
+        }
+
+        let vm = match header.key_id {
+            Some(did_url) => did_resolver
+                .fetch_public_jwk(Some(&did_url))
+                .await
+                .map_err(|e| {
+                    ParsingSnafu {
+                        details: format!("could not resolve verification method: {e}"),
+                    }
+                    .build()
+                })?,
+            _ => {
+                let claims: Claims = serde_json::from_slice(&payload).map_err(|err| {
+                    ParsingSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
+
+                let iss_value = claims.get(ISS_CLAIM).ok_or(
+                    VerifyingSnafu {
+                        details: "JWT has no DID URL `kid`, `x5c` certificate chain or `iss` claim to resolve its signing key",
+                    }
+                    .build(),
+                )?;
+                let iss_did = serde_json::to_string(iss_value).map_err(|err| {
+                    ParsingSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
+
+                let vm = did_resolver
+                    .resolve_into_any_verification_method(ssi::dids::DID::new(&iss_did).map_err(
+                        |e| {
+                            DIDSnafu {
+                                details: e.to_string(),
+                            }
+                            .build()
+                        },
+                    )?)
+                    .await
+                    .map_err(|e| {
+                        CredentialCreationSnafu {
+                            details: format!("Can not resolve verification method: {e}"),
+                        }
+                        .build()
+                    })?
+                    .ok_or_else(|| {
+                        CredentialCreationSnafu {
+                            details: "Can not find verification method",
+                        }
+                        .build()
+                    })?;
+                did_resolver
+                    .fetch_public_jwk(Some(vm.id.as_str()))
+                    .await
+                    .context(ProofValidationSnafu)?
+            }
+        };
+
+        Ok(vm.into_owned())
+    }
+
+    /// Resolves the key of the leaf of `x5c` once the chain validates up to one of `trusted_certs`.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    async fn get_jwk_from_x5c(
+        x5c: &[String],
+        payload: &[u8],
+        trusted_certs: Option<&HashMap<String, String>>,
+    ) -> Result<JWK> {
+        let pem_chain = one_core::mapper::x509::x5c_into_pem_chain(x5c).map_err(|e| {
+            VerifyingSnafu {
+                details: format!("could not parse x5c as a PEM chain: {e}"),
+            }
+            .build()
+        })?;
+        // Optional; the truststore checks it against the leaf only when issuer-domain binding is on.
+        let claims: Value = serde_json::from_slice(payload).unwrap_or_default();
+        let iss = claims
+            .get(ISS_CLAIM)
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+
+        let leaf = Truststore::new(
+            CertificateValidatorImpl::default(),
+            trusted_certs.cloned().unwrap_or_default(),
+        )
+        .verify_chain_trust(&pem_chain, iss)
+        .await
+        .map_err(|e| {
+            VerifyingSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let jwk = leaf.public_key.public_key_as_jwk().map_err(|e| {
+            VerifyingSnafu {
+                details: format!("could not read the leaf certificate's public key: {e}"),
+            }
+            .build()
+        })?;
+
+        utils::jwk::from_public_jwk(jwk).ok_or_else(|| {
+            VerifyingSnafu {
+                details: "could not convert the leaf certificate's public key to a JWK",
+            }
+            .build()
+        })
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
+        trace!(presentation_input = ?input);
+
+        let claims = Self::resolve_claims_for_restriction(&input.restrictions);
+
+        let stripped: Vec<(&str, Value)> = claims
+            .into_iter()
+            .map(|(key, optional)| {
+                let value = if optional {
+                    Value::String("optional".to_string())
+                } else {
+                    Value::Bool(true)
+                };
+
+                (key, value)
+            })
+            .collect();
+
+        let json = utils::json::paths_to_json(stripped).map_err(|e| {
+            ParsingSnafu {
+                details: format!("could parse json paths: {e}"),
+            }
+            .build()
+        })?;
+
+        let json_obj = json
+            .as_object()
+            .ok_or_else(|| {
+                ParsingSnafu {
+                    details: "could not convert json into json object",
+                }
+                .build()
+            })?
+            .to_owned();
+
+        Ok(json_obj)
+    }
+
+    fn resolve_claims_for_restriction(
+        restrictions: &[PresentationRestriction],
+    ) -> HashMap<&str, bool> {
+        let mut field_map = HashMap::new();
+
+        for restriction in restrictions {
+            for field in &restriction.fields {
+                field_map
+                    .entry(field.as_str())
+                    .and_modify(|disclosure| *disclosure &= restriction.optional)
+                    .or_insert(restriction.optional);
+            }
+        }
+
+        field_map
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub(crate) fn extract_issuer_identifier(
+        credential: &Credential,
+    ) -> Result<Option<CredentialIssuerIdentifier>> {
+        let jwt = Self::strip_disclosures(credential)?;
+        let (_, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
+        let claims: Claims = serde_json::from_slice(&payload).map_err(|err| {
+            ParsingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let issuer = if let Some(Claim::String(issuer)) = claims.get(ISS_CLAIM) {
+            Some(CredentialIssuerIdentifier::from(issuer))
+        } else {
+            None
+        };
+
+        Ok(issuer)
+    }
+}
+
+impl GetDateTimeClaim<Claims, OffsetDateTime> for SdJwtAPI {
+    fn get_date_time_claim(exp: &str, claims: &Claims) -> Option<time::OffsetDateTime> {
+        get_time_based_claim(claims, exp)
+    }
+}
+
+impl IsExpired<Claims> for SdJwtAPI {
+    fn is_expired(claims: &Claims) -> Result<bool> {
+        Ok(SdJwtAPI::get_date_time_claim(EXP_CLAIM, claims)
+            .is_some_and(|exp_time| OffsetDateTime::now_utc() > exp_time))
+    }
+}
+
+impl IsValid<Claims> for SdJwtAPI {
+    async fn is_valid(
+        claims: &Claims,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
+    ) -> Result<bool> {
+        let status = StatusListJwt::get_vc_status(
+            claims,
+            http_client,
+            did_resolver,
+            cached_urls_per_status_jwts,
+        )
+        .await
+        .map_err(|e| {
+            StatusCheckSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        Ok(status.is_none_or(|s| s == VCStatus::Valid))
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
+    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data, _did_resolver), err(), ret())]
+    async fn create_vc<S, K>(
+        claims: Claims,
+        issuer_data: (&DIDURL, S),
+        holder_data: (&DIDURL, K),
+        metadata: VCMetadata,
+        _did_resolver: UniversalResolver,
+    ) -> Result<Credential>
+    where
+        S: Signer,
+        K: Key,
+    {
+        trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
+
+        let (iss_did_url, signer) = issuer_data;
+        let (hld_did_url, hld_key) = holder_data;
+
+        let unsigned = Self::prepare_credential(
+            claims,
+            iss_did_url,
+            hld_did_url,
+            &hld_key,
+            &metadata,
+            String::new(),
+        )?;
+        Self::sign_credential(unsigned, signer).await
+    }
+
+    #[instrument(level = Level::TRACE, skip(holder_signer, _did_resolver), err(), ret())]
+    async fn create_vp<S>(
+        credential: &Credential,
+        holder_signer: S,
+        metadata: VPMetadata,
+        _did_resolver: UniversalResolver,
+    ) -> Result<Presentation>
+    where
+        S: Signer,
+    {
+        let sgn_wrapper = SignerWrapper {
+            signer: holder_signer,
+        };
+
+        let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        let (nonce, aud, sgn_wrapper) = if let Some(hb) = metadata.holder_binder {
+            (
+                Some(hb.nonce.secret().to_owned()),
+                Some(hb.verifier_id),
+                Some(sgn_wrapper),
+            )
+        } else {
+            (None, None, None)
+        };
+        holder
+            .create_presentation(metadata.disclosures, nonce, aud, sgn_wrapper)
+            .await
+            .map_err(|err| {
+                PresentationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
+    }
+
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn verify_vc(
+        credential: &Credential,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<()> {
+        let plain_jwt = Self::strip_disclosures(credential)?;
+        let jwk =
+            Self::get_jwk_from_jwt(plain_jwt, did_resolver, opts.trusted_certs.as_ref()).await?;
+
+        Self::verify_signature(credential, &jwk)
+    }
+
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn verify_vp(
+        presentation: &Presentation,
+        holder_binder: Option<HolderBinder>,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<Claims> {
+        let key_resolver;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            key_resolver = DelegatingKeyResolver::new(
+                DidKeyResolver::new(did_resolver),
+                Truststore::new(
+                    CertificateValidatorImpl::default(),
+                    opts.trusted_certs.unwrap_or_default(),
+                ),
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            key_resolver = DidKeyResolver::new(did_resolver);
+        }
+
+        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+
+        let (nonce, aud) = if let Some(hb) = holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
+        let claims_json = verifier
+            .verify_presentation(
+                presentation.to_owned(),
+                aud,
+                nonce,
+                SDJWTSerializationFormat::Compact,
+            )
+            .await
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        claims_json.try_into().context(ClaimsSnafu)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crypto::Key;
+    use crate::did::didkey::DIDKey;
+    use crate::did::universal::UniversalResolver;
+    use crate::did::{DIDResolver, DIDURL, DIDURLBuf};
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::nonce::LocalNonceHandler;
+    use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
+    use crate::nonce::{Nonce, NonceHandler};
+    use crate::utils::serde::Helpers;
+    use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
+    use crate::vc::claims::Claim;
+    use crate::vc::core::HolderBinder;
+    use crate::vc::formats::sd_jwt_vc::{
+        Claims, Credential, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM, NBF_CLAIM, SUB_CLAIM, SdJwtAPI,
+        VCMetadata, VCT_CLAIM, VPMetadata,
+    };
+    use crate::vc::formats::{API, Error, HasClaims, HasCredential, IsExpired, VerifyOptions};
+    use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
+    use oid4vci::types::IssuerUrl;
+    use rstest::rstest;
+    use serde_json::json;
+    use std::ops::{Add, Sub};
+    use std::str::FromStr;
+    use time::OffsetDateTime;
+
+    #[rstest]
+    #[case::p256(KeyType::P256)]
+    #[case::ed25519(KeyType::Ed25519)]
+    #[tokio::test]
+    async fn sd_jwt_work_correctly_for_all_supported_keys(#[case] kt: KeyType) {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, kt).await;
+        let iss_jwk = iss_kh.jwk().unwrap();
+
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(time::Duration::days(365))
+            .unix_timestamp();
+        let nbf = OffsetDateTime::now_utc()
+            .add(time::Duration::days(1))
+            .unix_timestamp();
+        let iat = OffsetDateTime::now_utc().unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims.insert(NBF_CLAIM.to_string(), Claim::Int(nbf));
+        claims.insert(IAT_CLAIM.to_string(), Claim::Int(iat));
+
+        let mut vc_metadata = sample_vc_metadata();
+        vc_metadata.disclosures.extend_from_slice(&[
+            format!("$.{EXP_CLAIM}"),
+            format!("$.{NBF_CLAIM}"),
+            format!("$.{IAT_CLAIM}"),
+        ]);
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            vc_metadata,
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default())
+            .await
+            .unwrap();
+
+        let claims = vc.parse_claims().unwrap();
+        assert!(claims.get("name").is_some());
+        assert!(claims.get("surname").is_some());
+        assert_eq!(&claims["dob"], &Claim::String("09/09/1989".to_string()));
+        assert_eq!(
+            &claims[SUB_CLAIM],
+            &Claim::String(hld_did_url.did().to_string())
+        );
+        assert_eq!(
+            &claims[ISS_CLAIM],
+            &Claim::String(iss_did_url.did().to_string())
+        );
+        assert_eq!(
+            &claims[VCT_CLAIM],
+            &Claim::String("https://issuer.net/cred_schema".to_string())
+        );
+        assert_eq!(&claims[EXP_CLAIM], &Claim::Int(exp));
+        assert_eq!(&claims[NBF_CLAIM], &Claim::Int(nbf));
+        assert_eq!(&claims[IAT_CLAIM], &Claim::Int(iat));
+
+        let nonce = random_nonce().await;
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let vc_from_vp = vp.get_credential().unwrap();
+        SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(disclosed.get("name").is_some());
+        assert!(disclosed.get(EXP_CLAIM).is_some());
+        assert!(disclosed.get(NBF_CLAIM).is_some());
+        assert_eq!(&disclosed["name"], &Claim::String("John".to_string()));
+        assert!(disclosed.get("surname").is_none());
+        assert!(disclosed.get(IAT_CLAIM).is_none());
+    }
+
+    #[rstest]
+    #[case(sample_claims(), sample_vc_metadata(), false)]
+    #[case(sample_claims(), sample_vc_metadata_without_lifetime(), false)]
+    #[case(claims_with_manual_exp(), sample_vc_metadata(), false)]
+    #[case(claims_with_manual_exp(), sample_vc_metadata_without_lifetime(), false)]
+    #[should_panic(expected = "ExpiredSignature")]
+    #[case(claims_with_expired_date(), sample_vc_metadata(), true)]
+    #[should_panic(expected = "ExpiredSignature")]
+    #[case(
+        claims_with_expired_date(),
+        sample_vc_metadata_without_lifetime(),
+        true
+    )]
+    #[tokio::test]
+    async fn expiration(
+        #[case] claims: Claims,
+        #[case] metadata: VCMetadata,
+        #[case] expired: bool,
+    ) {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            metadata,
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            expired,
+            SdJwtAPI::is_expired(&vc.parse_claims().unwrap()).unwrap()
+        );
+
+        let nonce = random_nonce().await;
+        let verifier_id = "verifier-id".to_string();
+        let presentation = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata(nonce.clone(), verifier_id.clone()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let res = SdJwtAPI::verify_vp(
+            &presentation,
+            Some(HolderBinder {
+                nonce,
+                verifier_id,
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_make_all_levels_disclosable_by_default() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let iss_jwk = iss_kh.jwk().unwrap();
+
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(time::Duration::days(365))
+            .unix_timestamp();
+        let nbf = OffsetDateTime::now_utc()
+            .add(time::Duration::days(1))
+            .unix_timestamp();
+        let iat = OffsetDateTime::now_utc().unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims.insert(NBF_CLAIM.to_string(), Claim::Int(nbf));
+        claims.insert(IAT_CLAIM.to_string(), Claim::Int(iat));
+
+        let vc_metadata = sample_vc_metadata_with_empty_disclosures();
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            vc_metadata,
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default())
+            .await
+            .unwrap();
+
+        let claims = vc.parse_claims().unwrap();
+        assert!(claims.get("name").is_some());
+        assert!(claims.get("surname").is_some());
+        assert_eq!(&claims["dob"], &Claim::String("09/09/1989".to_string()));
+        assert_eq!(
+            &claims[SUB_CLAIM],
+            &Claim::String(hld_did_url.did().to_string())
+        );
+        assert_eq!(
+            &claims[ISS_CLAIM],
+            &Claim::String(iss_did_url.did().to_string())
+        );
+        assert_eq!(
+            &claims[VCT_CLAIM],
+            &Claim::String("https://issuer.net/cred_schema".to_string())
+        );
+        assert_eq!(&claims[EXP_CLAIM], &Claim::Int(exp));
+        assert_eq!(&claims[NBF_CLAIM], &Claim::Int(nbf));
+        assert_eq!(&claims[IAT_CLAIM], &Claim::Int(iat));
+
+        let nonce = random_nonce().await;
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata_with_empty_disclosures(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let vc_from_vp = vp.get_credential().unwrap();
+        SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        // all claims disclosed by default (VC metadata disclosures is empty vec[])
+        assert!(disclosed.get("name").is_none());
+        assert!(disclosed.get("surname").is_none());
+        assert!(disclosed.get("dob").is_none());
+        assert!(disclosed.get("address").is_none());
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let result = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, failed_signer_key(iss_kh)),
+            (&hld_did_url, hld_kh),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Signing { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_fails_in_case_of_jwk_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let result = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, no_jwk_key()),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::KeyTypeNotSupported { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_presentation_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let vc = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let nonce = random_nonce().await;
+        let result = SdJwtAPI::create_vp(
+            &vc,
+            failed_signer_key(hld_kh),
+            sample_vp_metadata(nonce, "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Presentation { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vp_works_when_disclosure_is_optional() {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
+        let nonce = &random_nonce().await;
+        let verifier_id = "verifier-id";
+
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            VPMetadata {
+                disclosures: json!({
+                    "optional_claim" : "optional",
+                    "name": "optional",
+                })
+                .as_object()
+                .unwrap()
+                .to_owned(),
+                holder_binder: Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: verifier_id.to_string(),
+                    response_uri: None,
+                }),
+            },
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: verifier_id.to_owned(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(disclosed.get("optional_claim").is_none());
+        assert!(disclosed.get("name").is_some());
+        assert_eq!(&disclosed["name"], &Claim::String("John".to_string()));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vc_fails_on_invalid_claim() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let mut claims = sample_claims();
+        claims.put_str("_sd", "should be empty");
+
+        let res = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Signing { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vc_fails_on_invalid_key() {
+        let kms = LocalKms::new();
+        let hld_did_url = DIDURL::new("did:example:123").unwrap();
+        let hld_kh = no_jwk_key();
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let res = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (hld_did_url, hld_kh),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::KeyTypeNotSupported { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_verify_vc_fails_on_invalid_cred() {
+        let res = SdJwtAPI::verify_vc(
+            &"not-a-valid-sd-jwt".to_string(),
+            Default::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+        assert!(matches!(res.err(), Some(Error::JWS { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_verify_vc_fails_on_resolving_vm() {
+        let vc = sample_sd_jwt_vc_did_example().await;
+
+        let res = SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default()).await;
+        assert!(matches!(res.err(), Some(Error::Parsing { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_verify_signature_fails_on_wrong_key() {
+        let (vc, _) = sample_sd_jwt_vc_with_hld_kh().await;
+
+        let kms = LocalKms::new();
+        let (_, another_iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let another_iss_jwk = another_iss_kh.jwk().unwrap();
+
+        let res = SdJwtAPI::verify_signature(&vc, &another_iss_jwk);
+        assert!(matches!(res.err(), Some(Error::JWS { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vp_fails_on_invalid_credential() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let res = SdJwtAPI::create_vp(
+            &"not-a-valid-sd-jwt".to_string(),
+            hld_kh,
+            sample_vp_metadata(random_nonce().await, "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Signing { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vp_fails_when_disclosure_not_found() {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
+
+        let res = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            VPMetadata {
+                disclosures: json!({
+                    "some_other_claim" : true
+                })
+                .as_object()
+                .unwrap()
+                .to_owned(),
+                holder_binder: Some(HolderBinder {
+                    nonce: random_nonce().await,
+                    verifier_id: "verifier-id".to_string(),
+                    response_uri: None,
+                }),
+            },
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Presentation { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_verify_vp_fails_on_invalid_vp() {
+        let res = SdJwtAPI::verify_vp(
+            &"not-a-valid-vp".to_string(),
+            Some(HolderBinder {
+                nonce: random_nonce().await,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Verifying { .. })));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_verify_vp_fails_on_vp_signed_by_another_key() {
+        let (vc, _) = sample_sd_jwt_vc_with_hld_kh().await;
+
+        let kms = LocalKms::new();
+        let (_, kh) = kms
+            .create_and_handle(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+
+        let nonce = random_nonce().await;
+        // VP can be generated using another signature
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            kh,
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        // But Verifier should deny it
+        let res = SdJwtAPI::verify_vp(
+            &vp,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Verifying { .. })));
+    }
+
+    #[tokio::test]
+    async fn get_vm_from_did_doc_works_for_didkey() {
+        let kms = LocalKms::new();
+        let (_, kh) = kms
+            .create_and_handle(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+
+        let did = DIDKey::generate(kh).unwrap();
+        let vm = UniversalResolver::default()
+            .resolve_into_any_verification_method(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(vm.id.to_string().starts_with(&did));
+    }
+
+    async fn sample_sd_jwt_vc_with_hld_kh() -> (Credential, impl KeyHandle) {
+        let kms = LocalKms::new();
+
+        let (hld_did_url, h_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, i_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let vc = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, i_kh),
+            (&hld_did_url, h_kh.clone()),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        (vc, h_kh)
+    }
+
+    async fn sample_sd_jwt_vc_did_example() -> Credential {
+        let kms = LocalKms::new();
+
+        let (hld_did_url, h_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let iss_did_url = DIDURL::new("did:example:123").unwrap();
+        let (_, i_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        SdJwtAPI::create_vc(
+            sample_claims(),
+            (iss_did_url, i_kh),
+            (&hld_did_url, h_kh),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn random_nonce() -> Nonce {
+        LocalNonceHandler::default().generate().await.unwrap()
+    }
+
+    fn sample_claims() -> Claims {
+        json!( {
+            "name": "John",
+            "surname": "Doe",
+            "dob": "09/09/1989",
+            "address": {
+                "country": "UK",
+                "city": "London"
+            }
+        })
+        .try_into()
+        .unwrap()
+    }
+
+    fn claims_with_manual_exp() -> Claims {
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(time::Duration::days(10 * 365))
+            .unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims
+    }
+
+    fn claims_with_expired_date() -> Claims {
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .sub(time::Duration::days(10 * 365))
+            .unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims
+    }
+
+    fn sample_vc_metadata() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: Some(time::Duration::days(365)),
+            disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+            credential_status: None,
+        }
+    }
+
+    fn sample_vc_metadata_without_lifetime() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: None,
+            disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+            credential_status: None,
+        }
+    }
+
+    fn sample_vc_metadata_with_empty_disclosures() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: Some(time::Duration::days(365)),
+            disclosures: vec![],
+            credential_status: None,
+        }
+    }
+
+    fn sample_vp_metadata(nonce: Nonce, verifier_id: String) -> VPMetadata {
+        VPMetadata {
+            disclosures: json!({
+                "name" : true
+            })
+            .as_object()
+            .unwrap()
+            .to_owned(),
+            holder_binder: Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id,
+                response_uri: None,
+            }),
+        }
+    }
+
+    fn sample_vp_metadata_with_empty_disclosures(nonce: Nonce, verifier_id: String) -> VPMetadata {
+        VPMetadata {
+            disclosures: serde_json::Map::new(),
+            holder_binder: Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id,
+                response_uri: None,
+            }),
+        }
+    }
+
+    #[rstest]
+    #[case::url(
+        example_sd_jwt(
+            Some("https://example.com/oid4vci-issuer"),
+            ["b836aa5414dcf683", "d19eb21f073f8cbc", "41787e54cfdcd5a7"]
+        ),
+        Some(CredentialIssuerIdentifier::OID4VCI(
+            IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
+    )]
+    #[case::did(
+        example_sd_jwt(
+            Some("did:example:123"),
+            ["ffefff4d2547eb68", "79e6f2a86d96affd", "336707f8c33b28f2"]
+        ),
+        Some(CredentialIssuerIdentifier::DID(
+            DIDURLBuf::from_str("did:example:123").unwrap())),
+    )]
+    #[case::other(
+        example_sd_jwt(
+            Some("notadid:example:123"),
+            ["f7314295e57b07c7", "5e6673c7f2dbd44c", "6488f2f40980c923"]
+        ),
+        Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
+    )]
+    #[case::no_iss(
+        example_sd_jwt(None, ["ede3b5891cbbda4b", "ae1304c5afded96a", "ebfb48b3ecec5d38"]),
+        None
+    )]
+    fn extract_issuer_identifier(
+        #[case] credential: String,
+        #[case] expected: Option<CredentialIssuerIdentifier>,
+    ) {
+        let actual = SdJwtAPI::extract_issuer_identifier(&credential).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    /// `sd+jwt` credential with `iss`, if any, disclosing `firstname`, `lastname` and `ssn` under
+    /// the recorded `salts`, signed by the fixture issuer key.
+    fn example_sd_jwt(iss: Option<&str>, salts: [&str; 3]) -> String {
+        let mut claims = json!({ "id": "1234", "iss": iss, "_sd_alg": "SHA-256" });
+        if iss.is_none() {
+            claims.as_object_mut().unwrap().remove("iss");
+        }
+        let disclosures: Vec<String> = [
+            ("firstname", "John"),
+            ("lastname", "Doe"),
+            ("ssn", "123-45-6789"),
+        ]
+        .iter()
+        .zip(salts)
+        .map(|((name, value), salt)| format!(r#"["{salt}","{name}","{value}"]"#))
+        .collect();
+        test_fixtures::sd_jwt(
+            &json!({ "typ": "sd+jwt", "alg": "ES256" }),
+            &claims,
+            &disclosures.iter().map(String::as_str).collect::<Vec<_>>(),
+            &test_fixtures::keys().issuer,
+        )
+    }
+}

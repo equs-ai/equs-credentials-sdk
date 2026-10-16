@@ -1,0 +1,22 @@
+# oid4vc/issuer/src — Context
+
+## Purpose
+Runnable demo binary implementing the Issuer role in a full OID4VCI flow. Exposes actix-web endpoints for credential metadata discovery, token exchange (pre-authorized-code and authorization-code grants), and credential issuance.
+
+## Files
+
+| File | Role |
+|------|------|
+| `main.rs` | Entry point: wires `LocalKms`, actix `AppState` with `Issuer`; registers handlers for `/.well-known/openid-credential-issuer`, `/token`, `/credential`, and `/credential-offer`; issues SD-JWT credentials. Credential configs: `SD_JWT_cred_1`, `JSON_LDP_cred_2`, `JSON_LDP_cred_3`, and `voucher_cred` (vct `https://bank.example/voucher`, claims `voucher_id`/`amount`/`currency`) used by the dSD-JWT delegation demo. |
+
+## Key types / traits
+- Uses `vc::oid4vci::Issuer` from `equs_sdk`.
+- Exposes `IssuerMetadata`, `AuthorizationMetadata`, `CredentialOfferGrants`, `PreAuthorizedCodeGrant`, `AuthorizationCodeGrant`.
+- `AppState` — actix shared state holding the `Issuer` instance and a pre-generated `did:key` DID.
+
+## Dependencies
+- Depends on: `equs_sdk` (oid4vci, kms, inmem, vc::core), `test_fixtures` (the Keycloak-shaped access token `/token` returns), `actix-web`, `tokio`
+- Used by: developers demonstrating the issuer role end-to-end
+
+## Constraints
+- Demo / development use only; hard-codes credential definitions and uses in-memory storage.

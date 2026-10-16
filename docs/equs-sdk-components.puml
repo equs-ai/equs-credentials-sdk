@@ -1,0 +1,83 @@
+@startuml
+'https://plantuml.com/component-diagram
+'left to right direction
+
+package "EQUS Credentials SDK" as EqusSdk {
+
+    package VC {
+
+
+        [Core] as VCCore #Green
+
+        package "VC Formats" as VCF {
+            [VC API] as VCAPI #Green
+            [SD-JWT VC] as SDJWT #Green
+            [W3C VC JSON-LD] as W3C1 #Green
+            [W3C VC JSON-LD BBS+] as W3C2  #Green
+            [mDL (ISO 18013-5 mdoc)] as MDOC #Green
+            VCAPI <|-- SDJWT
+            VCAPI <|-- W3C1
+            VCAPI <|--- W3C2
+            VCAPI <|--- MDOC
+        }
+
+        package "VC Exchange" {
+            [OID4VC] as VCOID #Green
+            [WACI/Aries] as Aries #Green
+        }
+
+    }
+
+    package DID {
+        [DID Resolver Interface] as DIDI #Green
+        [Universal DID Resolver] as DIDU #Green
+        [did:key] as DIDK #Green
+        [did:web] as DIDW #Green
+        [did:peer] as DIDP #Green
+        [did:ethr] as DIDE #Green
+        [did:webvh] as DIDVH #Green
+        DIDU ----|> DIDI
+        DIDK ---|> DIDI
+        DIDW ---|> DIDI
+        DIDP ---|> DIDI
+        DIDE --|> DIDI
+        DIDVH --|> DIDI
+    }
+
+    package pluggable {
+        [KMS Interface] as KMS #Green
+        [Vault Interface] as Vault #Green
+    }
+
+    package "DIDComm Protocols" as DIDCommPack {
+        [DIDComm] as DIDComm #Green
+        [Protocols] as DIDCommP #Green
+        DIDCommP --> DIDComm
+    }
+
+    package "Plugins" {
+        [Askar KMS] as AKMS #Green
+        [Askar Vault] as AVault #Green
+    }
+
+    package "Test/Demo Impls" {
+        [In Memory KMS] as MemKMS  #Green
+        [In Memory Vault] as MemVault #Green
+    }
+
+    KMS <|-- AKMS
+    KMS <|-- MemKMS
+    Vault <|-- AVault
+    Vault <|-- MemVault
+}
+
+VCCore -> VCF
+VCOID --> VCCore
+Aries --> VCCore
+Aries --> DIDComm
+
+
+note top of EqusSdk: Current state of the SDK — every component shown is implemented.\n mDL (ISO 18013-5 mdoc) — verification only.\n did:ethr, did:webvh — resolution only; registered via UniversalResolver::add_resolver.
+
+
+@enduml

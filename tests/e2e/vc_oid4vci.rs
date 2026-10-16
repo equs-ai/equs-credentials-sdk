@@ -1,0 +1,283 @@
+use crate::utils::http::HttpClientEmulator;
+use equs_sdk::http::HttpClient;
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::oid4vci::{CredentialOfferGrants, CredentialResult, Holder, Issuer};
+use futures::executor;
+use oauth2::http::Method;
+use oauth2::http::StatusCode;
+use oauth2::{HttpRequest, HttpResponse, TokenResponse};
+use oid4vci::AuthorizationCodeGrant;
+use rstest::rstest;
+use serde_json::json;
+use std::sync::Arc;
+use std::{io, str};
+use uuid::Uuid;
+
+use crate::utils::fixtures::{
+    AUTHZ_URL, SCOPE, access_token, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    sample_issuer_metadata, sample_issuer_url,
+};
+
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
+use crate::utils::helpers::oid4vci::{build_holder, build_issuer, setup_http_static_handlers};
+
+#[rstest]
+#[case::token_validation_enabled(true)]
+#[case::token_validation_disabled(false)]
+#[tokio::test]
+async fn authorized_code_flow_using_scopes(#[case] validate_token: bool) {
+    // Setting up mocks and fixtures
+    let issuer_metadata = sample_issuer_metadata();
+
+    let authz_code = Uuid::new_v4().to_string();
+    let req_uri_code = Uuid::new_v4().to_string();
+    let mut introspect_ep = None;
+
+    if validate_token {
+        introspect_ep = Some(sample_authz_url().join("/token/introspect").unwrap());
+    }
+
+    // 1. Creating issuer from issuer metadata
+    let issuer = build_issuer(
+        issuer_metadata.clone(),
+        prepare_http_client_for_issuer(),
+        introspect_ep,
+    )
+    .await;
+
+    // 2. Creating offer
+    let (offer, _) = issuer
+        .create_credential_offer(
+            vec!["SD_JWT_cred_1", "SD_JWT_cred_2", "LDPVC_cred_1"],
+            &CredentialOfferGrants {
+                authorization_code: Some(AuthorizationCodeGrant::new(None, None)),
+                pre_authorized_code: None,
+            },
+        )
+        .unwrap();
+
+    let http_client_for_holder =
+        prepare_http_client_for_holder(authz_code.clone(), req_uri_code.clone(), issuer);
+
+    // 3.1 Creating holder from offer
+    let kms = LocalKms::new();
+    let holder = build_holder(offer, http_client_for_holder, kms.clone()).await;
+
+    // 4. Holder has issuer metadata
+    assert_eq!(&holder.get_issuer_metadata(), &issuer_metadata);
+
+    // 5. Holder authorizes
+    let token_response = holder
+        .authz_code_flow_with_scope(SCOPE.into(), |url| {
+            println!("Url {}", url);
+
+            assert!(url.to_string().starts_with(AUTHZ_URL));
+            assert!(url.query().unwrap().contains(&req_uri_code));
+
+            async { Ok::<String, io::Error>(authz_code.to_owned()) }
+        })
+        .await
+        .unwrap();
+
+    println!("Token response {:?}", token_response);
+
+    // 6.1 Holder requests SD_JWT_cred_1 credentials
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let response = holder
+        .request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_1",
+            &[key_metadata],
+        )
+        .await
+        .unwrap();
+
+    println!("Credential 1: {:?}", response.data);
+
+    // 6.2 Holder performs extra credential validation
+    if let CredentialResult::Credential { credentials, .. } = response.data {
+        for credential in credentials {
+            let _ = holder.verify_credential_extra(&credential).await;
+            // Extra verification fails because issuer uses did:key.
+            // Note that we can not use did:web here
+            //   because resolver used internally does not support HTTP client substitution.
+        }
+    } else {
+        panic!("Expected immediate credential issuance");
+    }
+
+    // 6.3 Holder requests LDPVC_cred_1 credentials with the same token
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let response = holder
+        .request_credential(
+            token_response.access_token(),
+            "LDPVC_cred_1",
+            &[key_metadata],
+        )
+        .await
+        .unwrap();
+
+    match response.data {
+        oid4vci::CredentialResult::Credential {
+            credentials: credential,
+            ..
+        } => {
+            println!(
+                "Credential 2: {}",
+                serde_json::to_string_pretty(&credential).unwrap()
+            );
+        }
+        _ => panic!("unexpected result"),
+    }
+
+    // 6.4 Holder requests two SD_JWT_cred_2 credentials in one batch request. Both key proofs are
+    // signed over the single `c_nonce` the holder fetched, so the issuer has to accept that nonce
+    // once per key proof and spend it once for the request.
+    let (_, first_key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let (_, second_key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let response = holder
+        .request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_2",
+            &[first_key_metadata, second_key_metadata],
+        )
+        .await
+        .unwrap();
+
+    match response.data {
+        oid4vci::CredentialResult::Credential { credentials, .. } => {
+            assert_eq!(credentials.len(), 2);
+        }
+        _ => panic!("unexpected result"),
+    }
+}
+
+async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
+    let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
+
+    let claims = if cred_req_str.contains("SD_JWT_cred") {
+        sample_claims_sdjwt()
+    } else if cred_req_str.contains("LDPVC_cred") {
+        sample_claims_jsonld()
+    } else {
+        panic!("unsupported format of requested credential");
+    };
+
+    let cred_req = serde_json::from_slice(req.body().as_slice()).unwrap();
+
+    println!("cred request from holder: {:?}", cred_req);
+
+    let token = req.headers().get("Authorization").unwrap();
+    let token = token
+        .to_str()
+        .unwrap()
+        .strip_prefix("Bearer ")
+        .unwrap()
+        .to_string();
+
+    let result = issuer
+        .issue_credential(&cred_req, &token, &claims, None)
+        .await;
+
+    println!("result: {:?}", result);
+
+    match result {
+        Ok(cred_resp) => HttpResponse::new(serde_json::to_vec(&cred_resp).unwrap()),
+        Err(oid4vci::Error::Protocol { source }) => {
+            let mut resp = HttpResponse::new(serde_json::to_vec(&source).unwrap());
+            *resp.status_mut() = StatusCode::BAD_REQUEST;
+
+            resp
+        }
+        _ => panic!(),
+    }
+}
+
+fn prepare_http_client_for_issuer() -> impl HttpClient {
+    let mut http_client = HttpClientEmulator::new();
+
+    http_client.add_handler(
+        sample_authz_url().join("/token/introspect").unwrap(),
+        Box::new(|_| {
+            Ok(HttpResponse::new(
+                serde_json::to_vec(&json!({"active": true,})).unwrap(),
+            ))
+        }),
+    );
+
+    http_client
+}
+
+fn prepare_http_client_for_holder(
+    authz_code: String,
+    req_uri_code: String,
+    issuer: impl Issuer + 'static,
+) -> impl HttpClient {
+    let mut http_client = HttpClientEmulator::new();
+
+    setup_http_static_handlers(&mut http_client);
+
+    http_client.add_handler(
+        sample_authz_url().join("/par/request").unwrap(),
+        Box::new(move |req| {
+            assert_eq!(req.method(), Method::POST);
+
+            let resp_body = serde_json::to_value(json!(
+                {
+                    "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + &req_uri_code,
+                    "expires_in": 86400,
+                }
+            ))
+            .unwrap();
+            let mut resp = HttpResponse::new(serde_json::to_vec(&resp_body).unwrap());
+            *resp.status_mut() = StatusCode::CREATED;
+
+            Ok(resp)
+        }),
+    );
+
+    http_client.add_handler(
+        sample_authz_url().join("/token").unwrap(),
+        Box::new(move |req| {
+            let req_body = str::from_utf8(req.body()).unwrap();
+
+            assert!(req_body.contains(&format!("code={authz_code}")));
+            assert_eq!(req.method(), Method::POST);
+
+            let resp = json!({
+                "access_token": access_token(),
+                "token_type": "bearer",
+                "expires_in": 86400,
+            });
+
+            Ok(HttpResponse::new(serde_json::to_vec(&resp).unwrap()))
+        }),
+    );
+
+    // A Nonce Endpoint mints a nonce per call, and the credential endpoint spends the ones its key
+    // proofs carried, so serving a single pre-generated nonce to every request would replay a spent
+    // one.
+    let issuer = Arc::new(issuer);
+    let nonce_issuer = issuer.clone();
+
+    http_client.add_handler(
+        sample_issuer_url().join("/nonce").unwrap(),
+        Box::new(move |_| {
+            let nonce = executor::block_on(nonce_issuer.generate_nonce()).unwrap();
+
+            Ok(HttpResponse::new(serde_json::to_vec(&nonce).unwrap()))
+        }),
+    );
+
+    http_client.add_handler(
+        sample_issuer_url().join("/credential").unwrap(),
+        Box::new(move |req| {
+            let fut = credential_endpoint(issuer.as_ref(), req);
+            let result = executor::block_on(fut); // TODO: get rid of `block_on` here
+            Ok(result)
+        }),
+    );
+
+    http_client
+}
