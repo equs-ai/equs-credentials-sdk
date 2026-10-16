@@ -34,7 +34,7 @@ is the one exception and is named `publish`.
 | `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `workflows/publish-ios.yml` | Builds the dynamic `EqusSdk.xcframework` on an `ios/vX.Y.Z` tag (`-rc.N` allowed, released as a prerelease) and attaches its zip, checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job, `publish-android.yml` and `publish-ios.yml`. |
-| `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
+| `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. binstall gets `github.token`: anonymous GitHub API calls hit 403 rate limits on macOS runners, and the source-build fallback fails because sccache needs a yanked `zip 0.6`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
