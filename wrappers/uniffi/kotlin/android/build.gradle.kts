@@ -5,7 +5,7 @@ plugins {
     id("signing")
 }
 
-val baseVersion = "1.0.2"
+val baseVersion = "1.0.3-rc.1"
 val environment = project.findProperty("env")?.toString()
 
 group = "ai.equs"
