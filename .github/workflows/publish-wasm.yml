@@ -28,7 +28,7 @@ env:
 jobs:
   wasm:
     runs-on: ubuntu-latest
-    environment: npmjs
+    environment: ${{ vars.DRY_RUN != 'true' && 'npmjs' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60

@@ -467,12 +467,13 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `DRY_RUN=1` in `release.yml` and every `publish-*.yml` but `publish-ios.yml`.
   Every `cargo publish` and `npm publish` then runs with `--dry-run`, the Maven
   Central upload is skipped, the crates.io and npm token guards are lifted and
-  preflight checks only the tag; every job still builds, packs, signs and
+  preflight checks only the tag, and no job names an environment, so nothing
+  is recorded as a deployment; every job still builds, packs, signs and
   renders its manifest, and the GitHub release gets all its assets. Unset or
   any other value publishes. The wrapper scripts read the same variable.
 - Prerequisites in settings: the organization secret `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation
   token with publish rights on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
-  job uses the environment, so a required-reviewer rule prompts twice for a
+  job uses the environment unless `DRY_RUN`, so a required-reviewer rule prompts twice for a
   Node.js release (platforms, then wrapper) and once for WASM.
 - `publish-android.yml` runs on a bare `ubuntu-latest` for the same reason as
   `android-demo`, with 120 minutes. It builds the four targets with

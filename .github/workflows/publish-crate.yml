@@ -19,7 +19,7 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: crates-io
+    environment: ${{ vars.DRY_RUN != 'true' && 'crates-io' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
