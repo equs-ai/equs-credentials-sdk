@@ -11,8 +11,9 @@ use one_core::proto::http_client::reqwest_client::ReqwestClient;
 use one_core::provider::key_algorithm::{
     KeyAlgorithm, ecdsa::Ecdsa, eddsa::Eddsa, provider::KeyAlgorithmProviderImpl,
 };
-use one_core::provider::trust_list_subscriber::etsi_lote::LoteContentType;
-use one_core::provider::trust_list_subscriber::export::{ExportPolicy, TrustListExporter};
+use one_core::provider::trust_list_subscriber::export::{
+    ExportPolicy, LoteContentType, TrustListExporter,
+};
 use one_core::provider::trust_list_subscriber::fetch::{FetchError, FetchLimits};
 use snafu::{Location, Snafu};
 use std::sync::Arc;
