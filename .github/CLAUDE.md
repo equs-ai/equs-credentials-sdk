@@ -25,7 +25,7 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 24 of the 28. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zip to the one release. |
+| `workflows/release.yml` | On a `vX.Y.Z` or `vX.Y.Z-rc.N` tag: preflight (tag is `X.Y.Z` or `X.Y.Z-rc.N`, matches `Cargo.toml`, no package already at that version unless `DRY_RUN`), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle, the iOS zip, the npm tarballs and the `.crate` to the one release. |
 | `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
@@ -34,7 +34,7 @@ is the one exception and is named `publish`.
 | `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `workflows/publish-ios.yml` | Builds the dynamic `EqusSdk.xcframework` on an `ios/vX.Y.Z` tag (`-rc.N` allowed, released as a prerelease) and attaches its zip, checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job, `publish-android.yml` and `publish-ios.yml`. |
-| `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
+| `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. binstall gets `github.token`: anonymous GitHub API calls hit 403 rate limits on macOS runners, and the source-build fallback fails because sccache needs a yanked `zip 0.6`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
@@ -328,11 +328,11 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - The tag filter is the glob `v[0-9]*.[0-9]*.[0-9]*` on `release.yml`, not a regex — GitHub
   matches `on.push.tags` by glob, so `[0-9]+` would never fire. The glob is
   deliberately loose; `release.yml`'s preflight, and again the `Resolve version`
-  step, strip the `v` and re-check against `^[0-9]+\.[0-9]+\.[0-9]+$` and against the `[package]`
+  step, strip the `v` and re-check against `^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$` and against the `[package]`
   version in `Cargo.toml`, failing before anything is uploaded. A crates.io
   version can be yanked but never removed, so the mismatch has to be caught
-  before the upload, not after. crates.io receives `X.Y.Z`; the `v` is
-  git-only. Prereleases publish nothing here.
+  before the upload, not after. crates.io receives `X.Y.Z` or `X.Y.Z-rc.N`;
+  the `v` is git-only.
 - Two prerequisites live in settings, not in the tree: the organization secret
   `EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN`, and an environment named `crates-io`.
   Being an org secret it does not appear in `gh secret list --repo` — check
@@ -340,7 +340,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `CARGO_REGISTRY_TOKEN`, so the step maps the secret onto that name. The
   environment exists to carry a required-reviewer rule on an irreversible
   action; a missing environment does not fail the run, a missing secret fails
-  at the guard in the `Publish` step before cargo is invoked.
+  at the guard in the `Publish` step before cargo is invoked, except under `DRY_RUN`.
 - crates.io rejects a package with any `git` dependency and any path dependency
   without a `version` key. Both blocked this workflow until the forked
   dependencies moved to the published `equs-*` crates and `common-macros` was
@@ -423,18 +423,20 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   tag trigger of its own. `crate` runs first and the three npm calls need it, so
   a crate failure publishes nothing and the wrappers never ship ahead of the
   crate. The per-package tags keep working on their own. Preflight fails the run before
-  any job publishes when the tag is not `X.Y.Z`, disagrees with `Cargo.toml`,
+  any job publishes when the tag is not `X.Y.Z` or `X.Y.Z-rc.N`, disagrees with `Cargo.toml`,
   or any of the ten packages (crate plus nine npm) already has that version:
   crates.io and npmjs both refuse a republish, so a half-published release
-  could never be completed. Global rcs are not accepted. The wrappers publish
-  at the crate's version under `latest`.
+  could never be completed. Under `DRY_RUN` it checks only the tag. The wrappers publish
+  at the crate's version, under the `rc` dist-tag for `-rc.N` and `latest`
+  otherwise; an rc release is a GitHub prerelease.
 - Called workflows share the caller's run, and with it the artifact
   namespace, so every artifact name carries its package: `npm-nodejs-*`,
   `npm-askar-nodejs-*`, `npm-wasm`, `maven-android`, `ios`, `release-manifest-<package>`. When called,
   a wrapper's `manifest` job still renders and uploads its artifact but skips
   the release upload (`if: ${{ !inputs.version }}`); `release.yml`'s `release`
   job, which needs all six, attaches them as
-  `release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`. The caller grants
+  `release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`, next to
+  the `npm-*` tarballs and the `crate-package` `.crate`. The caller grants
   `contents: write` to the wrapper calls because a called job cannot exceed
   its caller's permissions. "Re-run failed jobs" reruns only the failed
   packages and not preflight, but on the tag's original commit: it recovers a
@@ -461,14 +463,17 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   the uploads use `--clobber`, since a re-run uploads the same artifact bytes.
   `DRY_RUN` does not apply; there is nothing to dry-run. No secrets, no
   environment.
-- Off by default: adding `DRY_RUN: "1"` to the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
-  `publish-askar-nodejs.yml` and `publish-wasm.yml` turns every `cargo publish`
-  and `npm publish` into `--dry-run` and lifts the npm token guard; every job
-  still builds, packs and renders its manifest. The wrapper scripts read the
-  same variable.
+- GitHub-only releases: the repository variable `DRY_RUN` set to `true` sets
+  `DRY_RUN=1` in `release.yml` and every `publish-*.yml` but `publish-ios.yml`.
+  Every `cargo publish` and `npm publish` then runs with `--dry-run`, the Maven
+  Central upload is skipped, the crates.io and npm token guards are lifted and
+  preflight checks only the tag, and no job names an environment, so nothing
+  is recorded as a deployment; every job still builds, packs, signs and
+  renders its manifest, and the GitHub release gets all its assets. Unset or
+  any other value publishes. The wrapper scripts read the same variable.
 - Prerequisites in settings: the organization secret `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation
   token with publish rights on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
-  job uses the environment, so a required-reviewer rule prompts twice for a
+  job uses the environment unless `DRY_RUN`, so a required-reviewer rule prompts twice for a
   Node.js release (platforms, then wrapper) and once for WASM.
 - `publish-android.yml` runs on a bare `ubuntu-latest` for the same reason as
   `android-demo`, with 120 minutes. It builds the four targets with

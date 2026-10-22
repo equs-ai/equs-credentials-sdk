@@ -15,11 +15,12 @@ env:
   RUST_VERSION: "1.97.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: crates-io
+    environment: ${{ vars.DRY_RUN != 'true' && 'crates-io' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 30
@@ -53,8 +54,8 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN }}
         run: |
           set -euo pipefail
-          [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
-          cargo publish --locked --no-verify -p equs-common-macros
+          [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -n "${DRY_RUN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          cargo publish --locked --no-verify ${DRY_RUN:+--dry-run} -p equs-common-macros
 
       - name: Render manifest
         if: always()
@@ -83,7 +84,9 @@ jobs:
           if-no-files-found: warn
 
       - shell: bash
-        run: printf "### Published\n\n\`equs-common-macros %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          [ -n "${DRY_RUN:-}" ] && heading="Dry run, not published" || heading=Published
+          printf "### %s\n\n\`equs-common-macros %s\` to crates.io\n" "$heading" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
 
   manifest:
     needs: publish

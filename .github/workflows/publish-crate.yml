@@ -14,11 +14,12 @@ env:
   RUST_VERSION: "1.97.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: crates-io
+    environment: ${{ vars.DRY_RUN != 'true' && 'crates-io' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
@@ -36,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
-          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z" >&2; exit 1; }
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z or vX.Y.Z-rc.N" >&2; exit 1; }
           version=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{gsub(/["[:space:]]/,"");sub(/^version=/,"");print;exit}' Cargo.toml)
           [ "$tag" = "$version" ] || { echo "tag '$GITHUB_REF_NAME' does not match Cargo.toml version '$version'" >&2; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
@@ -51,7 +52,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN }}
         run: |
           set -euo pipefail
-          [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -n "${DRY_RUN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
           cargo publish --locked --no-verify ${DRY_RUN:+--dry-run} -p equs-credentials-sdk
 
       - name: Render manifest
@@ -81,5 +82,7 @@ jobs:
           if-no-files-found: warn
 
       - shell: bash
-        run: printf "### Published\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          [ -n "${DRY_RUN:-}" ] && heading="Dry run, not published" || heading=Published
+          printf "### %s\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$heading" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
 
