@@ -23,6 +23,15 @@ pub fn to_json_object<T: Serialize>(value: T) -> napi::Result<JsonObject> {
     }
 }
 
+/// The string a unit enum variant serializes to, e.g. `IssuerTrustStatus::NotEvaluated` →
+/// `not_evaluated`.
+pub fn serde_str<T: Serialize>(value: T) -> napi::Result<String> {
+    match serde_json::to_value(value)? {
+        serde_json::Value::String(value) => Ok(value),
+        value => Err(napi::Error::from_reason(format!("{value} is not a string"))),
+    }
+}
+
 pub fn parse_url_arg(url: &str) -> napi::Result<Url> {
     url.parse().map_err(|err| {
         napi::Error::new(napi::Status::InvalidArg, format!("Url parse error: {err}"))

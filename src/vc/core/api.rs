@@ -9,6 +9,7 @@ use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::oid4vp::CredentialsFindResult;
 use crate::vc::status_formats::StatusListFormat;
+use crate::vc::trust::issuer::{IssuerTrustMode, IssuerTrustOutcome, IssuerTrustReason};
 use crate::vc::{
     Credential, CredentialMetadata, Presentation, StatusList, VCFormat, formats::Error as VCError,
     pop, pop::Error as ProofError,
@@ -713,6 +714,36 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         presentation: &Presentation,
         http_client: &dyn HttpClient,
     ) -> Result<Claims>;
+
+    /// Verifies a `Presentation` and evaluates its issuer against the trust anchors. The outcome
+    /// is returned, not enforced, so the caller applies [Self::issuer_trust_mode] across all
+    /// credentials.
+    ///
+    /// # Returns
+    ///
+    /// The claims, the [IssuerTrustOutcome] and the issuer chain's AKIs. The default
+    /// implementation reports no anchors and no chain.
+    async fn verify_presentation_with_issuer_trust(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<crate::vc::trust::issuer::IssuerTrustVerification> {
+        let claims = self
+            .verify_presentation(holder_binder, presentation, http_client)
+            .await?;
+        Ok(
+            crate::vc::trust::issuer::IssuerTrustVerification::without_chain(
+                claims,
+                IssuerTrustOutcome::not_evaluated(IssuerTrustReason::NoAnchorsConfigured),
+            ),
+        )
+    }
+
+    /// How an untrusted issuer affects a verification.
+    fn issuer_trust_mode(&self) -> IssuerTrustMode {
+        IssuerTrustMode::Enforce
+    }
 
     /// Verify a dSD-JWT delegation grant received in response to a `delegate`
     /// transaction-data request.

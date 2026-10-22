@@ -1,5 +1,5 @@
 use crate::error::IntoNapiError;
-use crate::utils::{from_json_object, parse_url_arg, to_json_object};
+use crate::utils::{from_json_object, parse_url_arg, serde_str, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::oid4vp::JsInnerAuthorizationResponse;
 use equs_sdk::vc::dcql::NonEmptyVec;
@@ -9,6 +9,7 @@ use equs_sdk::vc::oid4vp::{
     PresentationSession as RustPresentationSession, Verifier, VerifierInfo, VerifierInfoEntry,
     WalletMetadata,
 };
+use equs_sdk::vc::trust::issuer::IssuerTrust;
 use napi::{Error, Result, Status};
 use napi_derive::napi;
 use std::collections::HashMap;
@@ -118,15 +119,17 @@ impl InternalOID4VPVerifier {
         session: JsPresentationSession,
         verification_metadata: JsCredentialVerificationMetadata,
     ) -> Result<JsClaimsPresentations> {
-        let (claims, presentations) = self
+        let verified = self
             .0
-            .verify_and_extract_presentation(
+            .verify_and_extract_presentation_with_issuer_trust(
                 &authorization_response.try_into()?,
                 &session.try_into()?,
                 &verification_metadata.try_into()?,
             )
             .await
             .map_err(IntoNapiError::into_napi_error)?;
+        let presentations = verified.presentations;
+        let claims = verified.claims;
 
         let claims = to_json_object(claims)?;
         let mut mapped_presentations = HashMap::with_capacity(presentations.len());
@@ -143,6 +146,11 @@ impl InternalOID4VPVerifier {
         Ok(JsClaimsPresentations {
             claims,
             presentations: mapped_presentations,
+            issuer_trust: verified
+                .issuer_trust
+                .into_iter()
+                .map(JsIssuerTrust::try_from)
+                .collect::<Result<_>>()?,
         })
     }
 }
@@ -156,6 +164,51 @@ pub struct JsClaimsPresentations {
     pub claims: JsonObject,
     #[napi(ts_type = "Record<string, Array<unknown>>")]
     pub presentations: HashMap<String, Vec<serde_json::Value>>,
+    /// Issuer trust of every presented credential. Under `enforce` a rejected issuer throws
+    /// `IssuerNotTrusted` instead, so only `report` returns untrusted entries.
+    pub issuer_trust: Vec<JsIssuerTrust>,
+}
+
+/// Issuer trust of one presented credential.
+#[napi(object, js_name = "IssuerTrust")]
+pub struct JsIssuerTrust {
+    /// DCQL credential query id.
+    pub credential_id: String,
+    /// Position among the presentations for that credential query id.
+    pub index: u32,
+    #[napi(ts_type = "'trusted' | 'untrusted' | 'not_evaluated'")]
+    pub status: String,
+    /// Subject Key Identifier of the matched anchor, when trusted.
+    pub anchor_ski: Option<String>,
+    /// `sourceRef` of the matched anchor.
+    pub source_ref: Option<String>,
+    /// `role` of the matched anchor.
+    pub role: Option<String>,
+    #[napi(
+        ts_type = "'no_anchor_match' | 'chain_invalid' | 'no_anchors_configured' | 'no_anchors_for_category' | 'did_issuer' | 'did_issuer_not_allowed' | undefined"
+    )]
+    pub reason: Option<String>,
+    /// Category the credential was evaluated under.
+    #[napi(ts_type = "'pid' | 'qeaa' | 'pub_eaa' | 'eaa' | undefined")]
+    pub category: Option<String>,
+}
+
+impl TryFrom<IssuerTrust> for JsIssuerTrust {
+    type Error = Error;
+
+    fn try_from(value: IssuerTrust) -> Result<Self> {
+        Ok(Self {
+            credential_id: value.credential_id,
+            index: u32::try_from(value.index)
+                .map_err(|e| Error::from_reason(format!("issuer trust index: {e}")))?,
+            status: serde_str(value.outcome.status)?,
+            anchor_ski: value.outcome.anchor_ski,
+            source_ref: value.outcome.source_ref,
+            role: value.outcome.role,
+            reason: value.outcome.reason.map(serde_str).transpose()?,
+            category: value.outcome.category.map(serde_str).transpose()?,
+        })
+    }
 }
 
 /// An `OID4VP` response configuration of authorization request object.

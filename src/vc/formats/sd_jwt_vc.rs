@@ -1,8 +1,8 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::certificate_validator::SharedCertificateValidator;
 use crate::vc::claims::Claim;
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
-#[cfg(not(target_arch = "wasm32"))]
-use one_core::proto::certificate_validator::CertificateValidatorImpl;
 use sd_jwt_rs::resolver::KeyResolver;
 #[cfg(feature = "delegate-sd-jwt")]
 use sd_jwt_rs::utils::decode_dsd_jwt;
@@ -40,7 +40,7 @@ use crate::vc::formats::{
     IsValid, JWSSnafu, JsonSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
     ProofValidationSnafu, SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
 };
-use crate::vc::formats::{GetDateTimeClaim, Result};
+use crate::vc::formats::{AnchorPolicy, GetDateTimeClaim, Result};
 
 pub(crate) const VCT_CLAIM: &str = "vct";
 pub(crate) const EXP_CLAIM: &str = "exp";
@@ -138,14 +138,14 @@ impl KeyResolver for DidKeyResolver<UniversalResolver> {
 #[cfg(not(target_arch = "wasm32"))]
 struct DelegatingKeyResolver {
     did_key_resolver: DidKeyResolver<UniversalResolver>,
-    x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+    x5c_key_resolver: Truststore<SharedCertificateValidator>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl DelegatingKeyResolver {
     pub fn new(
         did_key_resolver: DidKeyResolver<UniversalResolver>,
-        x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+        x5c_key_resolver: Truststore<SharedCertificateValidator>,
     ) -> Self {
         Self {
             did_key_resolver,
@@ -504,6 +504,7 @@ impl SdJwtAPI {
         jwt: &str,
         did_resolver: UniversalResolver,
         trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
     ) -> Result<JWK> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
 
@@ -514,7 +515,7 @@ impl SdJwtAPI {
                 .as_ref()
                 .is_none_or(|kid| DIDURL::new(kid).is_err())
         {
-            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs).await;
+            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs, anchor_policy).await;
         }
 
         let vm = match header.key_id {
@@ -587,6 +588,7 @@ impl SdJwtAPI {
         x5c: &[String],
         payload: &[u8],
         trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
     ) -> Result<JWK> {
         let pem_chain = one_core::mapper::x509::x5c_into_pem_chain(x5c).map_err(|e| {
             VerifyingSnafu {
@@ -602,9 +604,10 @@ impl SdJwtAPI {
             .unwrap_or_default();
 
         let leaf = Truststore::new(
-            CertificateValidatorImpl::default(),
+            SharedCertificateValidator::get(),
             trusted_certs.cloned().unwrap_or_default(),
         )
+        .anchor_policy(anchor_policy)
         .verify_chain_trust(&pem_chain, iss)
         .await
         .map_err(|e| {
@@ -826,8 +829,13 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         did_resolver: UniversalResolver,
     ) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
-        let jwk =
-            Self::get_jwk_from_jwt(plain_jwt, did_resolver, opts.trusted_certs.as_ref()).await?;
+        let jwk = Self::get_jwk_from_jwt(
+            plain_jwt,
+            did_resolver,
+            opts.trusted_certs.as_ref(),
+            opts.anchor_policy,
+        )
+        .await?;
 
         Self::verify_signature(credential, &jwk)
     }
@@ -845,9 +853,10 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
             key_resolver = DelegatingKeyResolver::new(
                 DidKeyResolver::new(did_resolver),
                 Truststore::new(
-                    CertificateValidatorImpl::default(),
+                    SharedCertificateValidator::get(),
                     opts.trusted_certs.unwrap_or_default(),
-                ),
+                )
+                .anchor_policy(opts.anchor_policy),
             );
         }
         #[cfg(target_arch = "wasm32")]

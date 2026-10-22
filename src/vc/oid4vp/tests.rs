@@ -4114,6 +4114,40 @@ pub mod utils {
         create_verifier_service(false, None).await
     }
 
+    /// A verifier whose core service evaluates issuer trust under `config`.
+    pub async fn verifier_service_with_issuer_trust(
+        config: crate::vc::trust::issuer::IssuerTrustConfig,
+    ) -> TestVerifierService {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let trusted_certs = config
+            .anchors
+            .iter()
+            .map(|anchor| {
+                (
+                    crate::utils::test_utils::skid_of(&anchor.pem),
+                    anchor.pem.clone(),
+                )
+            })
+            .collect();
+        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default())
+            .with_verification_params(vc::core::VerificationParams {
+                trusted_certs: Some(trusted_certs),
+                issuer_trust: Some(config),
+            });
+        let client_metadata = generate_client_metadata(&kms).await;
+        VerifierService::new(
+            inner,
+            kms,
+            LocalNonceHandler::default(),
+            MockHttpClient::new(),
+            ClientId::from_did(&did).unwrap(),
+            key_metadata,
+            UniversalResolver::default(),
+            Some(client_metadata),
+        )
+    }
+
     pub async fn verifier_service_with_derived_client_id<F>(
         derive_client_id: F,
     ) -> (TestVerifierService, KeyHandle)

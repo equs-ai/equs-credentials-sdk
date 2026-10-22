@@ -35,6 +35,15 @@ pub enum InternalError {
     },
     #[snafu(display("Credential not found"))]
     CredentialNotFound,
+    #[snafu(display(
+        "issuer_not_trusted: {}",
+        serde_json::to_string(issuer_trust).unwrap_or_default()
+    ))]
+    IssuerNotTrusted {
+        issuer_trust: Vec<crate::vc::trust::issuer::IssuerTrust>,
+    },
+    #[snafu(display("trusted_authority_mismatch: credential query `{credential_id}`"))]
+    TrustedAuthorityMismatch { credential_id: String },
     #[snafu(display("Please provide the metadata required to generate the ID token"))]
     IdTokenMetadataNotFound,
     #[snafu(display("ID token parse error"))]

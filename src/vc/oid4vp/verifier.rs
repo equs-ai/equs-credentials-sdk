@@ -1,3 +1,12 @@
+use crate::vc::oid4vp::internal_error::IssuerNotTrustedSnafu;
+use crate::vc::trust::issuer::{IssuerTrust, IssuerTrustMode, IssuerTrustOutcome};
+
+/// vp_token claims, raw presentations by credential id, and the issuer trust of each credential.
+type VerifiedPresentations = (
+    Claim,
+    HashMap<String, Vec<crate::vc::Presentation>>,
+    Vec<IssuerTrust>,
+);
 use async_trait::async_trait;
 use openid4vp::core::authorization_request::parameters::{
     Audience, HashAlgorithm, IdTokenType, Nonce as NonceSpruce, Scope, State, TransactionData,
@@ -28,6 +37,7 @@ use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::{HolderBinder, KeyMetadata};
 use crate::vc::dcql::validate_credentials;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
+use crate::vc::oid4vp::api::VerifiedPresentationResponse;
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::oid4vp::api::as_delegate;
 #[cfg(feature = "delegate-sd-jwt")]
@@ -233,6 +243,23 @@ where
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>)> {
+        let verified = self
+            .verify_and_extract_presentation_with_issuer_trust(
+                authorization_response,
+                session,
+                verification_metadata,
+            )
+            .await?;
+        Ok((verified.claims, verified.presentations))
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn verify_and_extract_presentation_with_issuer_trust(
+        &self,
+        authorization_response: &AuthorizationResponse,
+        session: &PresentationSession,
+        verification_metadata: &CredentialVerificationMetadata,
+    ) -> Result<VerifiedPresentationResponse> {
         let (authorization_response, mut verification_opts) = self
             .resolve_authorization_response(authorization_response)
             .await?;
@@ -254,7 +281,7 @@ where
             .and_then(|request| request.return_uri())
             .map(|uri| uri.to_string());
 
-        let (vp_token_claims, presentations) = self
+        let (vp_token_claims, presentations, issuer_trust) = self
             .do_verify_presentation(
                 &session.resolved_presentation_query,
                 &session.nonce,
@@ -279,7 +306,11 @@ where
 
         info!("presentation is verified");
 
-        Ok((claims, presentations))
+        Ok(VerifiedPresentationResponse {
+            claims,
+            presentations,
+            issuer_trust,
+        })
     }
 }
 
@@ -533,12 +564,12 @@ where
         holder_binder: Option<HolderBinder>,
         transaction_data: Option<&Vec<TransactionDataItem>>,
         state: &Option<String>,
-    ) -> Result<Claims> {
+    ) -> Result<crate::vc::trust::issuer::IssuerTrustVerification> {
         let delegate_items = Self::delegate_items_for(transaction_data, &requested_presentation.id);
 
         if delegate_items.is_empty() {
             self.verifier
-                .verify_presentation(
+                .verify_presentation_with_issuer_trust(
                     holder_binder,
                     &requested_presentation.presentation,
                     &self.http_client,
@@ -565,7 +596,15 @@ where
                 state,
             )?;
 
-            Ok(claims)
+            // a delegation grant is signed by the delegating holder's key, not an issuer chain
+            Ok(
+                crate::vc::trust::issuer::IssuerTrustVerification::without_chain(
+                    claims,
+                    IssuerTrustOutcome::not_evaluated(
+                        crate::vc::trust::issuer::IssuerTrustReason::DidIssuer,
+                    ),
+                ),
+            )
         }
     }
 
@@ -1017,8 +1056,9 @@ where
         authorization_response: &AuthorizationResponseObject,
         presentation_verification_opts: PresentationVerificationOptions,
         transaction_data: Option<&Vec<TransactionDataItem>>,
-    ) -> Result<(Claim, HashMap<String, Vec<crate::vc::Presentation>>)> {
+    ) -> Result<VerifiedPresentations> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
+        let mut issuer_trust: Vec<IssuerTrust> = vec![];
         let mut validated: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut presentations: HashMap<String, Vec<crate::vc::Presentation>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
@@ -1064,11 +1104,11 @@ where
                     })
                 };
 
-            let claims: Claims;
+            let verified: crate::vc::trust::issuer::IssuerTrustVerification;
 
             #[cfg(feature = "delegate-sd-jwt")]
             {
-                claims = self
+                verified = self
                     .verify_presentation_or_delegation(
                         &requested_presentation,
                         holder_binder,
@@ -1079,9 +1119,9 @@ where
             }
             #[cfg(not(feature = "delegate-sd-jwt"))]
             {
-                claims = self
+                verified = self
                     .verifier
-                    .verify_presentation(
+                    .verify_presentation_with_issuer_trust(
                         holder_binder,
                         &requested_presentation.presentation,
                         &self.http_client,
@@ -1091,6 +1131,17 @@ where
             }
 
             let id = requested_presentation.id;
+            Self::check_trusted_authorities(
+                resolved_presentation_query,
+                &id,
+                verified.issuer_chain_akis.as_deref(),
+            )?;
+            let claims = verified.claims;
+            issuer_trust.push(IssuerTrust {
+                credential_id: id.clone(),
+                index: ids.iter().filter(|seen| **seen == id).count(),
+                outcome: verified.outcome,
+            });
             ids.push(id.clone());
             let claim: Claim = claims.into();
             validated
@@ -1111,8 +1162,53 @@ where
             ids,
         )?;
 
+        if self.verifier.issuer_trust_mode() == IssuerTrustMode::Enforce
+            && issuer_trust
+                .iter()
+                .any(|entry| entry.outcome.rejected_when_enforced())
+        {
+            tracing::warn!("presentation rejected: a credential issuer is not trusted");
+            return Err(IssuerNotTrustedSnafu { issuer_trust }.build().into());
+        }
+
         let result = HashMap::from_iter(result.into_iter().map(|(k, v)| (k, Claim::Array(v))));
-        Ok((Claim::Object(result), presentations))
+        Ok((Claim::Object(result), presentations, issuer_trust))
+    }
+
+    /// Checks a credential against the `aki` trusted authorities of its DCQL query
+    /// (OpenID4VP 1.0 §6.1.1.1).
+    fn check_trusted_authorities(
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        credential_id: &str,
+        issuer_chain_akis: Option<&[Vec<u8>]>,
+    ) -> Result<()> {
+        use crate::vc::trust::trusted_authorities::{matches_required_akis, required_akis};
+
+        let ResolvedPresentationQuery::DCQL(dcql) = resolved_presentation_query else {
+            return Ok(());
+        };
+        let Some(required) = dcql
+            .credentials()
+            .iter()
+            .find(|query| query.id().as_str() == credential_id)
+            .and_then(required_akis)
+        else {
+            return Ok(());
+        };
+        if matches_required_akis(&required, issuer_chain_akis) {
+            return Ok(());
+        }
+        tracing::warn!(
+            credential_id,
+            "presentation rejected: a credential matches none of the requested trusted authorities"
+        );
+        Err(
+            crate::vc::oid4vp::internal_error::TrustedAuthorityMismatchSnafu {
+                credential_id: credential_id.to_string(),
+            }
+            .build()
+            .into(),
+        )
     }
 
     fn validate_against_requested_claims(
@@ -1215,7 +1311,7 @@ mod tests {
         TestVerifierService, VerificationTestCase, build_url, generate_client_metadata,
         self_signed_certificate_pem, unrelated_signing_key, validate_claims, verifier_service,
         verifier_service_with_derived_client_id, verifier_service_with_invalid_kid,
-        verifier_service_with_signer_error,
+        verifier_service_with_issuer_trust, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
     use crate::vc::oid4vp::{ExpectedOrigins, HttpMethodForAuth, InternalError};
@@ -2015,33 +2111,201 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
-    async fn verifier_validating_mso_mdoc_vp_works_correctly() {
-        let (verifier, _) = verifier_service().await;
-        let session = PresentationSession {
+    fn mdoc_session() -> PresentationSession {
+        PresentationSession {
             nonce: Nonce::from_secret(mdoc::NONCE.to_string()),
             resolved_presentation_query: ResolvedPresentationQuery::DCQL(
                 sample_dcql_query_for_mso_mdoc_vp_request(),
             ),
             auth_request_jwt: Default::default(),
-        };
-        let mut vp_token = HashMap::new();
-        vp_token.insert(
-            "mDL",
-            Value::Array(vec![Value::String(mdoc::sample_mso_mdoc_vp())]),
-        );
+        }
+    }
 
-        let response = AuthorizationResponseObject {
+    fn mdoc_response(vp: String) -> AuthorizationResponse {
+        let mut vp_token = HashMap::new();
+        vp_token.insert("mDL", Value::Array(vec![Value::String(vp)]));
+        AuthorizationResponse::Plain(AuthorizationResponseObject {
             vp_token: serde_json::to_value(vp_token).unwrap(),
             presentation_submission: None,
             id_token: None,
             state: None,
             transaction_data_response: None,
-        };
+        })
+    }
 
-        let verified_claims = verifier
+    async fn verify_mdoc_with_trust(
+        vp: String,
+        config: crate::vc::trust::issuer::IssuerTrustConfig,
+    ) -> Result<crate::vc::oid4vp::VerifiedPresentationResponse> {
+        verifier_service_with_issuer_trust(config)
+            .await
+            .verify_and_extract_presentation_with_issuer_trust(
+                &mdoc_response(vp),
+                &mdoc_session(),
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(mdoc::VERIFIER.to_string()),
+                },
+            )
+            .await
+    }
+
+    fn trust(
+        mode: IssuerTrustMode,
+        anchors: Vec<crate::vc::trust::issuer::TrustAnchor>,
+    ) -> crate::vc::trust::issuer::IssuerTrustConfig {
+        crate::vc::trust::issuer::IssuerTrustConfig {
+            mode,
+            anchors,
+            ..Default::default()
+        }
+    }
+
+    fn iaca_anchor(pem: String) -> crate::vc::trust::issuer::TrustAnchor {
+        crate::vc::trust::issuer::TrustAnchor {
+            pem,
+            source_ref: Some("trust_list:iaca".to_string()),
+            // an mDL is an EAA
+            role: Some("eaa_provider".to_string()),
+            service_type: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn verifier_validating_mso_mdoc_vp_works_correctly() {
+        let (vp, iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+
+        let verified =
+            verify_mdoc_with_trust(vp, trust(IssuerTrustMode::Enforce, vec![iaca_anchor(iaca)]))
+                .await
+                .unwrap();
+
+        let claims = &verified.claims["vp_token"]["mDL"].as_vec().unwrap()[0]["org.iso.18013.5.1"];
+        assert_eq!(claims["family_name"].as_str(), Some("Mustermann"));
+        assert_eq!(claims["given_name"].as_str(), Some("Erika"));
+        assert_eq!(verified.issuer_trust.len(), 1);
+        let entry = &verified.issuer_trust[0];
+        assert_eq!((entry.credential_id.as_str(), entry.index), ("mDL", 0));
+        assert_eq!(
+            entry.outcome.status,
+            crate::vc::trust::issuer::IssuerTrustStatus::Trusted
+        );
+        assert_eq!(entry.outcome.source_ref.as_deref(), Some("trust_list:iaca"));
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_without_anchors_is_rejected_under_enforce() {
+        let error = verifier_service()
+            .await
+            .0
             .verify_presentation(
-                &AuthorizationResponse::Plain(response),
+                &mdoc_response(mdoc::sample_mso_mdoc_vp()),
+                &mdoc_session(),
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(mdoc::VERIFIER.to_string()),
+                },
+            )
+            .await
+            .unwrap_err();
+
+        let crate::vc::oid4vp::Error::Internal {
+            source: InternalError::IssuerNotTrusted { issuer_trust },
+        } = error
+        else {
+            panic!("expected issuer_not_trusted, got {error}");
+        };
+        assert_eq!(
+            issuer_trust[0].outcome.reason,
+            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorsConfigured)
+        );
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_without_anchors_is_reported_under_report() {
+        let verified = verify_mdoc_with_trust(
+            mdoc::sample_mso_mdoc_vp(),
+            trust(IssuerTrustMode::Report, vec![]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            verified.issuer_trust[0].outcome.status,
+            crate::vc::trust::issuer::IssuerTrustStatus::NotEvaluated
+        );
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_under_an_unrelated_iaca_is_rejected_under_enforce_and_reported_under_report()
+    {
+        let (_, unrelated_iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let (vp, _) = mdoc::sample_mso_mdoc_vp_with_iaca();
+
+        let enforced = verify_mdoc_with_trust(
+            vp.clone(),
+            trust(
+                IssuerTrustMode::Enforce,
+                vec![iaca_anchor(unrelated_iaca.clone())],
+            ),
+        )
+        .await;
+        assert!(
+            matches!(
+                enforced,
+                Err(crate::vc::oid4vp::Error::Internal {
+                    source: InternalError::IssuerNotTrusted { .. }
+                })
+            ),
+            "{enforced:?}"
+        );
+
+        let reported = verify_mdoc_with_trust(
+            vp,
+            trust(IssuerTrustMode::Report, vec![iaca_anchor(unrelated_iaca)]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            reported.issuer_trust[0].outcome.reason,
+            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorMatch)
+        );
+    }
+
+    /// Two mDLs, only `pid` under the anchor; the untrusted one comes first, so every entry must be
+    /// evaluated.
+    async fn verify_two_mdls(
+        mode: IssuerTrustMode,
+    ) -> Result<crate::vc::oid4vp::VerifiedPresentationResponse> {
+        let (pid, iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let (diploma, _) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let query = |id: &str| {
+            json!({
+                "id": id,
+                "format": "mso_mdoc",
+                "meta": { "doctype_value": "org.iso.18013.5.1.mDL" },
+                "claims": [{ "path": ["org.iso.18013.5.1", "family_name"] }],
+            })
+        };
+        let dcql: DCQL =
+            serde_json::from_value(json!({ "credentials": [query("diploma"), query("pid")] }))
+                .unwrap();
+        let session = PresentationSession {
+            resolved_presentation_query: ResolvedPresentationQuery::DCQL(dcql),
+            ..mdoc_session()
+        };
+        let response = AuthorizationResponse::Plain(AuthorizationResponseObject {
+            vp_token: json!({ "pid": [pid], "diploma": [diploma] }),
+            presentation_submission: None,
+            id_token: None,
+            state: None,
+            transaction_data_response: None,
+        });
+
+        verifier_service_with_issuer_trust(trust(mode, vec![iaca_anchor(iaca)]))
+            .await
+            .verify_and_extract_presentation_with_issuer_trust(
+                &response,
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
@@ -2049,11 +2313,305 @@ mod tests {
                 },
             )
             .await
+    }
+
+    fn trust_by_query(
+        entries: &[crate::vc::trust::issuer::IssuerTrust],
+    ) -> Vec<(String, usize, crate::vc::trust::issuer::IssuerTrustStatus)> {
+        let mut entries: Vec<_> = entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.credential_id.clone(),
+                    entry.index,
+                    entry.outcome.status,
+                )
+            })
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
+
+    #[tokio::test]
+    async fn mixed_presentation_is_reported_entry_by_entry_under_report() {
+        use crate::vc::trust::issuer::IssuerTrustStatus::{Trusted, Untrusted};
+
+        let verified = verify_two_mdls(IssuerTrustMode::Report).await.unwrap();
+
+        assert_eq!(
+            trust_by_query(&verified.issuer_trust),
+            [
+                ("diploma".to_string(), 0, Untrusted),
+                ("pid".to_string(), 0, Trusted)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn mixed_presentation_fails_under_enforce_with_every_entry() {
+        use crate::vc::trust::issuer::IssuerTrustStatus::{Trusted, Untrusted};
+
+        let error = verify_two_mdls(IssuerTrustMode::Enforce).await.unwrap_err();
+
+        let crate::vc::oid4vp::Error::Internal {
+            source: InternalError::IssuerNotTrusted { issuer_trust },
+        } = error
+        else {
+            panic!("expected issuer_not_trusted, got {error}");
+        };
+        assert_eq!(
+            trust_by_query(&issuer_trust),
+            [
+                ("diploma".to_string(), 0, Untrusted),
+                ("pid".to_string(), 0, Trusted)
+            ]
+        );
+    }
+
+    /// An mDL under a fresh IACA, verified against a query whose `trusted_authorities` hold the
+    /// `aki` of that IACA and of an unrelated one.
+    async fn verify_mdl_requesting(
+        mode: IssuerTrustMode,
+        anchors: impl FnOnce(&str, &str) -> Vec<crate::vc::trust::issuer::TrustAnchor>,
+        trusted_authorities: impl FnOnce(&str, &str) -> Value,
+    ) -> Result<crate::vc::oid4vp::VerifiedPresentationResponse> {
+        use crate::vc::trust::trusted_authorities::derive_trusted_authority_akis;
+
+        let (vp, iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let (_, unrelated) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let aki = |pem: &str| {
+            derive_trusted_authority_akis(&[iaca_anchor(pem.to_string())]).values[0]
+                .as_base64url()
+                .to_string()
+        };
+        let dcql: DCQL = serde_json::from_value(json!({ "credentials": [{
+            "id": "mDL",
+            "format": "mso_mdoc",
+            "meta": { "doctype_value": "org.iso.18013.5.1.mDL" },
+            "claims": [{ "path": ["org.iso.18013.5.1", "family_name"] }],
+            "trusted_authorities": trusted_authorities(&aki(&iaca), &aki(&unrelated)),
+        }] }))
+        .unwrap();
+        let session = PresentationSession {
+            resolved_presentation_query: ResolvedPresentationQuery::DCQL(dcql),
+            ..mdoc_session()
+        };
+
+        verifier_service_with_issuer_trust(trust(mode, anchors(&iaca, &unrelated)))
+            .await
+            .verify_and_extract_presentation_with_issuer_trust(
+                &mdoc_response(vp),
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(mdoc::VERIFIER.to_string()),
+                },
+            )
+            .await
+    }
+
+    fn is_trusted_authority_mismatch(
+        result: &Result<crate::vc::oid4vp::VerifiedPresentationResponse>,
+    ) -> bool {
+        matches!(
+            result,
+            Err(crate::vc::oid4vp::Error::Internal {
+                source: InternalError::TrustedAuthorityMismatch { credential_id },
+            }) if credential_id == "mDL"
+        )
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_under_the_requested_authority_is_verified() {
+        let verified = verify_mdl_requesting(
+            IssuerTrustMode::Enforce,
+            |iaca, _| vec![iaca_anchor(iaca.to_string())],
+            |requested, _| json!([{ "type": "aki", "values": [requested] }]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            verified.issuer_trust[0].outcome.status,
+            crate::vc::trust::issuer::IssuerTrustStatus::Trusted
+        );
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_outside_the_requested_authorities_fails_in_both_modes() {
+        for mode in [IssuerTrustMode::Enforce, IssuerTrustMode::Report] {
+            let result = verify_mdl_requesting(
+                mode,
+                |iaca, _| vec![iaca_anchor(iaca.to_string())],
+                |_, unrelated| json!([{ "type": "aki", "values": [unrelated] }]),
+            )
+            .await;
+
+            assert!(
+                is_trusted_authority_mismatch(&result),
+                "{mode:?}: {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn only_aki_queries_are_checked_against_the_presented_chain() {
+        let etsi_tl = json!({ "type": "etsi_tl", "values": ["https://tl.example.com/tl.xml"] });
+
+        let etsi_tl_only = verify_mdl_requesting(
+            IssuerTrustMode::Report,
+            |iaca, _| vec![iaca_anchor(iaca.to_string())],
+            |_, _| json!([etsi_tl.clone()]),
+        )
+        .await;
+        // an aki miss may be satisfied by the etsi_tl entry, which is not evaluated
+        let aki_miss_with_etsi_tl = verify_mdl_requesting(
+            IssuerTrustMode::Report,
+            |iaca, _| vec![iaca_anchor(iaca.to_string())],
+            |_, unrelated| json!([{ "type": "aki", "values": [unrelated] }, etsi_tl.clone()]),
+        )
+        .await;
+
+        assert!(etsi_tl_only.is_ok(), "{etsi_tl_only:?}");
+        assert!(aki_miss_with_etsi_tl.is_ok(), "{aki_miss_with_etsi_tl:?}");
+    }
+
+    #[tokio::test]
+    async fn a_requested_authority_does_not_make_the_issuer_trusted() {
+        let verified = verify_mdl_requesting(
+            IssuerTrustMode::Report,
+            |_, unrelated| vec![iaca_anchor(unrelated.to_string())],
+            |requested, _| json!([{ "type": "aki", "values": [requested] }]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            verified.issuer_trust[0].outcome.reason,
+            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorMatch)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_untrusted_issuer_outside_the_requested_authorities_is_a_mismatch_under_enforce() {
+        // the query criterion is checked per credential, before the enforce decision
+        let result = verify_mdl_requesting(
+            IssuerTrustMode::Enforce,
+            |_, unrelated| vec![iaca_anchor(unrelated.to_string())],
+            |_, unrelated| json!([{ "type": "aki", "values": [unrelated] }]),
+        )
+        .await;
+
+        assert!(is_trusted_authority_mismatch(&result), "{result:?}");
+    }
+
+    #[test]
+    fn an_issuer_without_a_certificate_chain_misses_an_aki_query() {
+        let dcql: DCQL = serde_json::from_value(json!({ "credentials": [{
+            "id": "pid",
+            "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:1"] },
+            "trusted_authorities": [{ "type": "aki", "values": ["s9tIpPmhxdiuNkHMEWNpYim8S8Y"] }],
+        }] }))
+        .unwrap();
+        let query = ResolvedPresentationQuery::DCQL(dcql);
+
+        // a DID issuer has no chain
+        let error = TestVerifierService::check_trusted_authorities(&query, "pid", None)
+            .expect_err("a DID issuer must miss an aki query");
+
+        assert!(
+            matches!(
+                &error,
+                crate::vc::oid4vp::Error::Internal {
+                    source: InternalError::TrustedAuthorityMismatch { credential_id },
+                } if credential_id == "pid"
+            ),
+            "{error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn trusted_authorities_reach_the_signed_request_and_the_session() {
+        let (verifier, _) = verifier_service().await;
+        let trusted_authorities = json!([
+            { "type": "aki", "values": ["s9tIpPmhxdiuNkHMEWNpYim8S8Y"] },
+            { "type": "etsi_tl", "values": ["https://tl.example.com/tl.xml"] },
+            { "type": "x_custom", "values": ["anything"] }
+        ]);
+        let mut query = serde_json::to_value(sample_dcql_query_for_mso_mdoc_vp_request()).unwrap();
+        query["credentials"][0]["trusted_authorities"] = trusted_authorities.clone();
+        let dcql: DCQL = serde_json::from_value(query).unwrap();
+
+        let (_, session) = verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(dcql),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options: auth_response_options(
+                        build_url(VERIFIER_URL, "auth"),
+                        None,
+                    ),
+                    pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
+                },
+                None,
+            )
+            .await
             .unwrap();
 
-        let claims = &verified_claims["vp_token"]["mDL"].as_vec().unwrap()[0]["org.iso.18013.5.1"];
-        assert_eq!(claims["family_name"].as_str(), Some("Mustermann"));
-        assert_eq!(claims["given_name"].as_str(), Some("Erika"));
+        let request = serde_json::to_value(
+            decode_unverified::<UntypedObject>(session.auth_request_jwt.as_deref().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            request["dcql_query"]["credentials"][0]["trusted_authorities"],
+            trusted_authorities
+        );
+        let stored = serde_json::to_value(&session.resolved_presentation_query).unwrap();
+        assert_eq!(
+            stored["dcql_query"]["credentials"][0]["trusted_authorities"],
+            trusted_authorities
+        );
+    }
+
+    #[tokio::test]
+    async fn mso_mdoc_bound_to_another_nonce_still_fails_under_report() {
+        let (vp, iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        // report mode relaxes only the anchor decision, never the device binding
+        let session = PresentationSession {
+            nonce: Nonce::from_secret("another-nonce".to_string()),
+            ..mdoc_session()
+        };
+
+        let result = verifier_service_with_issuer_trust(trust(
+            IssuerTrustMode::Report,
+            vec![iaca_anchor(iaca)],
+        ))
+        .await
+        .verify_and_extract_presentation_with_issuer_trust(
+            &mdoc_response(vp),
+            &session,
+            &CredentialVerificationMetadata {
+                transaction_data: None,
+                audience: Some(mdoc::VERIFIER.to_string()),
+            },
+        )
+        .await;
+
+        assert!(
+            !matches!(
+                result,
+                Ok(_)
+                    | Err(crate::vc::oid4vp::Error::Internal {
+                        source: InternalError::IssuerNotTrusted { .. }
+                    })
+            ),
+            "{result:?}"
+        );
     }
 
     #[tokio::test]

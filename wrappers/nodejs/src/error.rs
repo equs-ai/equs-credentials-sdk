@@ -19,11 +19,25 @@ where
 pub struct EncodableError {
     pub code: String,
     pub message: String,
+    /// Structured data of the error, by code: for `IssuerNotTrusted`, the `IssuerTrust` of every
+    /// presented credential.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[napi(ts_type = "unknown")]
+    pub details: Option<serde_json::Value>,
 }
 
 impl EncodableError {
     pub fn new(code: String, message: String) -> Self {
-        Self { code, message }
+        Self {
+            code,
+            message,
+            details: None,
+        }
+    }
+
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 
     pub fn encode(self) -> String {

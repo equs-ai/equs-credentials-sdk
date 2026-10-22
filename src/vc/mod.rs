@@ -31,6 +31,7 @@ pub mod dcql;
 pub mod metadata;
 pub mod oid4vci;
 pub mod oid4vp;
+pub mod trust;
 
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;

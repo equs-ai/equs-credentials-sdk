@@ -1,0 +1,20 @@
+# trust — Context
+
+## Purpose
+Issuer trust (ASI-6961): which certificates a verifier trusts credential issuers under, where those anchors come from (a
+Verifier's own roots, or an exported ETSI trust list), and how a presented credential's issuer is checked against them,
+per EUDI credential category. Protocol-neutral: the core verifier evaluates it, OID4VP configures it and adds the DCQL
+`trusted_authorities` check, and the trust-list export feeds it.
+
+## Files
+
+| File | Role |
+|------|------|
+| `mod.rs` | Declares `issuer`, `list` (non-wasm only) and `trusted_authorities`. |
+| `issuer.rs` | Issuer trust of a presented credential: `IssuerTrustMode` (`Enforce` / `Report`), `TrustAnchor { pem, source_ref, role, service_type }` (`anchors_issuers()`: only an anchor without a type, a TS 119 602 `…/Issuance` service or an issuing TS 119 612 type in `ISSUING_TSL_SERVICE_TYPES` (`EAA`, `EAA/Q`, `EAA/Pub-EAA`, the pilot PID type; never `CA/QC` or `CA/PKC`) anchors issuers; others only check status-list signatures), `IssuerTrustOutcome` / `IssuerTrust`, `CredentialCategory` / `CredentialClassification` / `RolelessAnchors` (per-category trust: only anchors whose role fits the credential's category count, `evaluate_chain_for_category`; none fitting is `no_anchors_for_category`; `IssuerTrustOutcome::without_chain` refuses a PID / QEAA / PuB-EAA issuer without a certificate chain as `did_issuer_not_allowed`), and `evaluate_chain` (issuer anchors only; an anchor in the chain, else path validation to anchors the chain names by AKI, or by issuer name when it has no AKIs; certificates below the anchor are checked for revocation, and a revoked or expired path is an error rather than an outcome). |
+| `list.rs` | `export_trust_list(url, kind, &ExportOptions)` — fetches an ETSI TS 119 612 LoTL or TS 119 602 LoTE (XML, or JWT with the list bare or in a `LoTE` member as the EU lists have it) through one-core's `TrustListExporter` with its hardened client (`https` only, no redirects, at most `max_document_bytes` held per document), authenticates it against pinned signers and returns the granted anchors (`TrustListExport`, each with its service type; LoTE services left out for their status are listed in `excluded_services`); nothing is cached. `export_trust_list_with_client` takes an SDK `HttpClient` instead, which must bound sizes itself. Options are validated first: an `https` root, `leeway` at most `MAX_LEEWAY` (24 h), non-zero size, deadline and `document_timeout`. Each member list is bounded by `document_timeout` and skipped past it (`unreachable`) or past the `deadline` (`deadline`); the root is bounded by the `deadline` only and fails the export past it. `TrustListError::code()` is `trust_list_<reason>` (`ExportFailure` for export failures); `trust_list_kind` parses `lotl_119612` / `lote_119602`; `From<&TrustListAnchor> for TrustAnchor` and `anchor_role_name` feed an export to a verifier. Non-wasm only. |
+| `trusted_authorities.rs` | DCQL `trusted_authorities` (OpenID4VP 1.0 §6.1.1, HAIP 1.0 §5) on the verifier side: `derive_trusted_authority_akis(&[TrustAnchor])` gives the `aki` values for the issuer anchors (a CA's SKI, a listed non-CA certificate's own AKI), deduplicated and sorted; an issuer anchor without that key identifier, or that is not a certificate, is reported in `skipped`, and a non-issuing anchor (`TrustAnchor::anchors_issuers`) is left out without an entry; `required_akis` / `matches_required_akis` check a presented credential's issuer-chain AKIs against an `aki`-only query. The model (`TrustedAuthority`, `KeyIdentifier`) comes from `equs-openid4vp`. |
+
+## Dependencies
+- Depends on: one-core (`trust_list_subscriber::export`, the certificate validator), `equs-openid4vp` (`TrustedAuthority`, `KeyIdentifier`), `crate::utils` (certificate validator, one-core HTTP adapter)
+- Used by: `vc::core::verifier`, `vc::oid4vp` (builder, verifier, errors), `utils::x509_truststore`, the Node wrapper (`vc::trust`)

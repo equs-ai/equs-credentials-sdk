@@ -45,4 +45,39 @@ Implements the OpenID for Verifiable Presentations (OID4VP) protocol layer, prov
 - `JweDecrypt` is an optional capability: it must be implemented by the KMS only when encrypted response modes are needed; `VerifierBuilder` requires `KMS: Kms<KH> + JweDecrypt<KH>`.
 - X.509 request generation is native-only: the upstream `X509Client` needs an `Arc<dyn Signer + Send + Sync>`, so the `Verifier` impl / builder carry a `KH: 'static` bound (a bound on an existing generic — no lifetime parameter was added to any type). `x509-cert` is a non-wasm dependency, so `Certificate` and everything in `x509.rs` bar the two type aliases are `#[cfg(not(wasm32))]`, and wasm returns an `X509` error for an `x509_*` `client_id`. **The chain API deliberately is not gated**: `VerifierMetadata.x5c_chain` and both `with_x509_certificate_chain` setters hold PEM bytes and compile everywhere, so the Verifier's shape does not fork per target — only the parsing and request-building do. Neither the wasm nor the uniffi wrapper exposes an OID4VP Verifier at all (holder only), so this feature reaches consumers through Node.js alone. `mod.rs` re-exports **no** x509 name for wasm, `X509Variant` included: wasm exposes no Verifier, so a wasm consumer has nothing to do with one. `X509Variant` stays crate-reachable as `x509::X509Variant` because the verifier's wasm stub and the ungated `X509SanDns` / `X509Hash` match arms in `build_authorization_request` still name it. Keep the `#[cfg]` split narrow: a re-export or import left ungated but used only on the native path warns on the wasm build (`wasm-pack build` in `wrappers/wasm` is what catches it — the native `cargo` commands never compile those branches). It is generation-only — the holder cannot consume such requests.
 - The upstream request builder rejects any `client_id` prefix the Wallet Metadata does not advertise (`is_client_id_prefix_supported`), and cross-device OID4VP has no Wallet Metadata, so `default_wallet_metadata()` must keep advertising `x509_san_dns` / `x509_hash` for an X.509 `client_id` to work at all.
-- Verifying an `mso_mdoc` VP needs issuer trust anchors from `VerifierBuilder::add_trusted_root_certificate`; without one the issuer chain check is skipped, not failed (the default metadata advertises the format regardless). `add_trusted_root_certificate` stores the parsed certificate re-encoded as a single PEM, not the caller's raw bytes, so a bundle cannot smuggle extra certificates into the anchor.
+- Verifying an `mso_mdoc` VP needs issuer trust anchors (`VerifierBuilder::add_trusted_root_certificate` or `add_trust_anchor`); without one the issuer is `not_evaluated/no_anchors_configured`, which fails under `Enforce` and is reported under `Report` (see Issuer trust below; the default metadata advertises the format regardless). `add_trusted_root_certificate` stores the parsed certificate re-encoded as a single PEM, not the caller's raw bytes, so a bundle cannot smuggle extra certificates into the anchor.
+
+## Issuer trust (ASI-6961)
+
+- `VerifierBuilder::add_trust_anchor(pem, source_ref, role, service_type)` adds anchors that may be intermediates or
+  listed signing certificates, tried in order. Only an anchor without a `service_type`, or of an issuing service
+  (`TrustAnchor::anchors_issuers`), anchors issuers; others, e.g. a revocation service's, only check status lists. `add_trusted_root_certificate` still adds self-signed CA roots.
+  `with_issuer_trust_mode(Enforce | Report)` sets the mode; the default is `Enforce`.
+- Issuer trust is per credential category (EUDI ARF OIA_12 to OIA_15): `CredentialClassification` (set with
+  `with_credential_classification`; default PID types `urn:eudi:pid:*` and `eu.europa.ec.eudi.pid.1`, a `category`
+  claim of `urn:etsi:esi:eaa:eu:qualified` is a QEAA and `urn:etsi:esi:eaa:eu:pub` a PuB-EAA, a listed type wins
+  over the claim, anything else an EAA) picks the category, and only anchors whose
+  role fits it count (`pid_provider`, `qeaa_provider`, `pub_eaa_provider`, `eaa_provider`). Anchors without a role fit
+  every category unless `with_roleless_anchors(RolelessAnchors::EaaOnly)`. None fitting is `untrusted` /
+  `no_anchors_for_category`. A PID, QEAA or PuB-EAA issuer without a certificate chain (a DID, even with `x5c`
+  beside it) is `untrusted` / `did_issuer_not_allowed` (`IssuerTrustOutcome::without_chain`).
+- `verify_and_extract_presentation_with_issuer_trust` returns `VerifiedPresentationResponse { claims, presentations,
+  issuer_trust }`, with one `IssuerTrust { credential_id, index, status, anchor_ski, source_ref, role, reason, category }` per
+  presented credential. In `Enforce` mode, any certificate-identified issuer that is `untrusted`, or that has no anchors,
+  fails with `InternalError::IssuerNotTrusted`. Its message is `issuer_not_trusted: <JSON entries>`.
+- DID-identified EAA issuers and dSD-JWT delegation grants are `not_evaluated/did_issuer` and are never rejected
+  (known limitation); a DID-identified PID, QEAA or PuB-EAA issuer is `untrusted/did_issuer_not_allowed`. An mdoc with no anchors is now `not_evaluated/no_anchors_configured` instead of being skipped.
+- DCQL `trusted_authorities` on a credential query is kept through the signed request and the session. After a
+  credential is verified, `check_trusted_authorities` requires one certificate of its issuer chain to carry a requested
+  `aki` value, when the query requests only `aki` entries; otherwise `TrustedAuthorityMismatch { credential_id }`, in
+  either issuer-trust mode (OpenID4VP §8.6). A DID issuer has no chain and does not match. A match never makes the
+  issuer trusted. `verify_presentation_with_issuer_trust` returns `IssuerTrustVerification { claims, outcome,
+  issuer_chain_akis }` for this.
+  - Precedence: the check runs per credential inside the verification loop, before the `Enforce` decision, so an
+    untrusted issuer that also misses the requested values fails with `TrustedAuthorityMismatch`, not
+    `IssuerNotTrusted`.
+  - It is a filter, not a trust signal: the topmost certificate's AKI is not authenticated by any anchor.
+  - On wasm, and in the trait default of `verify_presentation_with_issuer_trust`, `issuer_chain_akis` is `None`, so a
+    credential presented for a query with only `aki` entries always fails there.
+  - A failing credential fails the whole response. Discarding only that credential and re-checking `credential_sets`
+    (OpenID4VP §8.6) is a follow-up.

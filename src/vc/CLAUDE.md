@@ -18,6 +18,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 | `pop/` | Proof of Possession generation and verification — see [pop/CLAUDE.md](pop/CLAUDE.md) |
 | `presentation_exchange/` | DIF Presentation Exchange spec implementation — see [presentation_exchange/CLAUDE.md](presentation_exchange/CLAUDE.md) |
 | `status_formats/` | VC revocation status list formats (JWT Token Status List) — see [status_formats/CLAUDE.md](status_formats/CLAUDE.md) |
+| `trust/` | Issuer trust, trust-list export and DCQL `trusted_authorities`, protocol-neutral — see [trust/CLAUDE.md](trust/CLAUDE.md) |
 
 ## Key types / traits
 - `Credential` — `SdJwt(sd_jwt_vc::Credential)` | `LdpVc(json_ld_vc::VC)` | `JwtVcJson(String)` | `JwtVcJsonLd(String)`; implements `is_expired()`, `is_valid()`, `HasVCFormat`, `HasClaims<Claims>`.
