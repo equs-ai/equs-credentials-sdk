@@ -20,7 +20,7 @@ Created via `BasicMessageProtocol::new(agent, storage)`.
 send_message(my_did, their_did, content, options) → String (message_id)
 ```
 1. Builds a DIDComm `Message` with type `basicmessage/2.0/message`.
-2. Calls `DIDCommService::send_message`.
+2. Calls `DIDCommService::send_message`, authcrypted as `my_did` (a receiving agent rejects an unauthenticated `from`).
 3. Persists a `BasicMessageRecord` (role: Sender).
 4. Emits `MESSAGE_SENT_EVENT`.
 

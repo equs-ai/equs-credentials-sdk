@@ -53,11 +53,17 @@ impl OutboundTransport for MockTransport {
         message: OutboundMessage,
     ) -> transport::Result<OutboundMessageResponse> {
         let message_str = String::from_utf8_lossy(&message.payload);
-        let (message, _) = self
+        let (message, metadata) = self
             .envelope_service
             .unpack(message_str.as_ref(), &UnpackOptions::default())
             .await
             .unwrap();
+
+        // A receiving `MessageReceiver` rejects such a message.
+        assert!(
+            message.from.is_none() || metadata.authenticated,
+            "Outbound message has an unauthenticated `from`"
+        );
 
         self.outbound_messages.write().await.push(message);
 

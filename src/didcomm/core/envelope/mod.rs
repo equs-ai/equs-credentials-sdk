@@ -4,6 +4,7 @@ mod did_resolver;
 mod kms;
 
 use common_macros::DebugError;
+use didcomm::error::ErrorKind;
 use didcomm::secrets::KeyManagementService;
 use snafu::{Location, ResultExt, Snafu};
 use std::ops::Deref;
@@ -192,17 +193,62 @@ impl EnvelopeService {
     ///
     /// # Errors
     ///
-    /// * [Error] An error if the unpacking process fails.
+    /// * [Error] An error if the unpacking process fails, or if `message.from` is set and is not
+    ///   the DID of the authcrypt `skid` or of the signer `kid`.
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     pub async fn unpack(
         &self,
         msg: &str,
         options: &UnpackOptions,
     ) -> Result<(Message, UnpackMetadata)> {
-        Message::unpack(msg, &self.did_resolver, self.kms.deref(), options)
-            .await
-            .context(Snafu)
+        let (message, metadata) =
+            Message::unpack(msg, &self.did_resolver, self.kms.deref(), options)
+                .await
+                .context(Snafu)?;
+
+        verify_sender_binding(&message, &metadata).context(Snafu)?;
+
+        Ok((message, metadata))
     }
+}
+
+/// Enforces DIDComm Messaging v2.1 §Message Layer Addressing Consistency: a plaintext `from`
+/// must be the DID of the key that authenticated the message, at every layer that did.
+fn verify_sender_binding(
+    message: &Message,
+    metadata: &UnpackMetadata,
+) -> didcomm::error::Result<()> {
+    let Some(from) = message.from.as_deref() else {
+        return Ok(());
+    };
+
+    if metadata
+        .encrypted_from_kid
+        .as_deref()
+        .is_some_and(|skid| kid_did(skid) != from)
+    {
+        return Err(didcomm::error::Error::msg(
+            ErrorKind::Malformed,
+            "`message.from` value is not equal to the `skid` DID",
+        ));
+    }
+
+    if metadata
+        .sign_from
+        .as_deref()
+        .is_some_and(|kid| kid_did(kid) != from)
+    {
+        return Err(didcomm::error::Error::msg(
+            ErrorKind::Malformed,
+            "`message.from` value is not equal to the signer's DID",
+        ));
+    }
+
+    Ok(())
+}
+
+fn kid_did(kid: &str) -> &str {
+    kid.split_once('#').map_or(kid, |(did, _)| did)
 }
 
 #[cfg(test)]
@@ -210,7 +256,9 @@ mod test {
     use crate::did::didpeer::{DIDPeer, DidPeerService};
     use crate::did::universal::UniversalResolver;
     use crate::did::{DID, DIDResolver, VerificationMethodKey, VerificationRelationshipType};
-    use crate::didcomm::core::envelope::{EnvelopeService, Message, UnpackOptions};
+    use crate::didcomm::core::envelope::{
+        EnvelopeService, Message, PackEncryptedOptions, UnpackOptions, verify_sender_binding,
+    };
     use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::{KeyType, Kms};
@@ -367,6 +415,74 @@ mod test {
             .unpack(&packed_msg, &UnpackOptions::default())
             .await
             .unwrap();
+    }
+
+    #[should_panic(expected = "`message.from` value is not equal to the signer's DID")]
+    #[tokio::test]
+    async fn unpack_failed_with_from_not_matching_signer() {
+        let kms = LocalKms::new();
+
+        let (alice_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+        let (eve_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+
+        let didcomm_service = EnvelopeService::new(kms, UniversalResolver::default());
+
+        let msg = Message::build(
+            alice_did.to_owned(),
+            "http://example.com/protocols/lets_do_lunch/1.0/proposal".to_owned(),
+            json!({}),
+        )
+        .from(alice_did)
+        .finalize();
+
+        let (signed_msg, _) = didcomm_service.pack_signed(&msg, &eve_did).await.unwrap();
+
+        didcomm_service
+            .unpack(&signed_msg, &UnpackOptions::default())
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "`message.from` value is not equal to the `skid` DID")]
+    #[tokio::test]
+    async fn sender_binding_failed_with_from_not_matching_skid() {
+        let kms = LocalKms::new();
+
+        let (alice_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+        let (eve_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+        let (bob_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+
+        let didcomm_service = EnvelopeService::new(kms, UniversalResolver::default());
+
+        let msg = Message::build(
+            eve_did.to_owned(),
+            "example/1.0/example".to_owned(),
+            json!({}),
+        )
+        .to(bob_did.to_owned())
+        .from(eve_did.to_owned())
+        .finalize();
+
+        let (packed_msg, _) = didcomm_service
+            .pack_encrypted(
+                &msg,
+                &bob_did,
+                Some(&eve_did),
+                None,
+                &PackEncryptedOptions::default(),
+            )
+            .await
+            .unwrap();
+
+        let (mut msg, metadata) = didcomm_service
+            .unpack(&packed_msg, &UnpackOptions::default())
+            .await
+            .unwrap();
+
+        // A sender who generated the CEK can re-seal the envelope with any `from`.
+        msg.from = Some(alice_did);
+
+        verify_sender_binding(&msg, &metadata).unwrap();
     }
 
     #[tokio::test]

@@ -12,7 +12,7 @@ Infrastructure layer beneath the DIDComm agent. Provides envelope cryptography, 
 | `protocol/` | `Protocol` trait, `MessageHandler`, `StateMachine` abstractions — see [protocol/CLAUDE.md](protocol/CLAUDE.md) |
 | `protocol_registry.rs` | Runtime registry mapping message types to handlers; shared via `Arc<RwLock<_>>` |
 | `dispatcher.rs` | Receives a decoded `Message`, looks up handler in registry, calls `handle` |
-| `message_receiver.rs` | Unpacks raw bytes → `Message`; feeds to `DispatcherService` |
+| `message_receiver.rs` | Unpacks raw bytes → `Message`; rejects a `from` that neither authcrypt nor a signature authenticated; feeds to `DispatcherService` |
 | `message_sender.rs` | Packs a `Message` and sends via `OutboundTransport` |
 | `message_type.rs` | `MessageType` struct + `parse_message_type` utility |
 | `message_id.rs` | `MessageId` newtype (UUID-backed) |
@@ -24,8 +24,8 @@ Infrastructure layer beneath the DIDComm agent. Provides envelope cryptography, 
 ```
 raw bytes
   → MessageReceiver::receive_message
-    → EnvelopeService::unpack
-      → Message
+    → EnvelopeService::unpack (from must match the skid / signer DID)
+      → Message (from, when set, must be authenticated)
         → DispatcherService::dispatch
           → ProtocolRegistry::find_handler(type)
             → MessageHandler::handle(msg)

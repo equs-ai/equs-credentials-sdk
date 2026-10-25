@@ -29,6 +29,7 @@ descriptions of the connections between components and their responsibilities.
 
 - Handles incoming messages with async methods.
 - Coordinates with `EnvelopeService` for unpacking.
+- Rejects a message whose `from` neither authcrypt nor a signature authenticated.
 - Routes messages to the `Dispatcher`.
 
 ### MessageSender (Struct)

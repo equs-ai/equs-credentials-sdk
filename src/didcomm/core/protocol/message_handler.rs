@@ -17,7 +17,8 @@ pub trait MessageHandler: Sync + Send {
     /// Handle an incoming message
     ///
     /// # Arguments
-    /// * `msg` - the unpacked [`Message`], of a supported type
+    /// * `msg` - the unpacked [`Message`], of a supported type. Received through the
+    ///   `MessageReceiver`, its `from`, when set, is the authenticated sender.
     ///
     /// # Errors
     /// * [protocol::Error] - the message could not be processed
