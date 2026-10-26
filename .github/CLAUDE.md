@@ -296,7 +296,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   report and a plain `cargo audit` runs after it to fail the pipeline.
   `release_artifacts_job` keeps its `|| true` — it renders `AUDIT.auto.out` for
   a tag build and was never a gate.
-- The gate can only be green because `.cargo/audit.toml` allowlists five
+- The gate can only be green because `.cargo/audit.toml` allowlists two
   advisory IDs, which no lockfile change can reach. `cargo audit` reads that
   file from the project root, so local runs and both pipelines share one list.
   Only `vulnerability` is denied, which is cargo-audit's default; the 26
@@ -305,12 +305,6 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
     `patched = []`: no fix has ever been released, and 0.10.0-rc is affected
     too. Reached through `ssi-jwk` → `isomdl` → `equs-oid4vci`, and through
     `openidconnect`. It drops out only when those stop pulling `rsa`.
-  - RUSTSEC-2026-0367, -0368 and -0369, `zip` 7.2.0 — SUID bits, symlink
-    targets and permissions applied through symlinks, all in
-    `ZipArchive::extract()`. Patched only in 9.0.0, and `equs-one-core` 0.1.1
-    requires `zip = "7.0"`. Its backup service reads entries with `by_name`
-    and never calls `extract()`. They drop out when `equs-one-core` moves to
-    `zip` 9.
   - RUSTSEC-2026-0387, `crypto-bigint` 0.3.2 and 0.5.5 — timing variability
     in operations meant to be constant-time. Patched only in 0.7.6. 0.5.5 is
     pinned by `elliptic-curve` 0.13, under `p256`, `p384`, `k256`, `ecdsa`,
@@ -320,6 +314,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   0.4.19, `quinn-proto` 0.11.19, `ctutils` 0.4.6, `rustls-webpki` 0.103.16,
   `webpki-roots` and `webpki-root-certs` 1.0.10, and `rustls` 0.23.45.
   `rustls` needed `cargo update --precise`; a plain update stops at 0.23.43.
+  `zip` 9 needed `equs-one-core` 0.1.2, which builds it without `lzma`.
   `h2` 0.3 stays out of the lockfile only while nothing enables an `http2`
   feature that pulls it: the SDK's `hyper` 0.14 (DIDComm HTTP transport)
   takes `server`, `http1`, `tcp` and `runtime` rather than `full`, and the
