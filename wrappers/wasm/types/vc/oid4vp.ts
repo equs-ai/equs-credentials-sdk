@@ -28,6 +28,28 @@ export interface IdTokenMetadata {
   lifetime: number;
 }
 
+/**
+ * Error code of a declined authorization request.
+ * @enum {string}
+ */
+export enum DeclineError {
+  /** `access_denied` — the End-User did not give consent to share the requested Credentials. */
+  AccessDenied = "AccessDenied",
+  /** `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid. */
+  InvalidTransactionData = "InvalidTransactionData",
+}
+
+/**
+ * Why the Wallet declines an authorization request.
+ *
+ * @property {DeclineError} error - The `error` code of the error response.
+ * @property {string} [description] - Its `error_description`, omitted when absent. Printable ASCII only, without `"` and `\`.
+ */
+export interface DeclineReason {
+  error: DeclineError;
+  description?: string;
+}
+
 export type CredentialsFindResult = { data: CredentialEntry[] | FindVCsFailReason };
 
 /**

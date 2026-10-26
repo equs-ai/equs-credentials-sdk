@@ -6,8 +6,8 @@ use crate::vc::core::{JsCredential, JsKeyMetadata, JsVCStatus};
 use crate::vc::oid4vp::JsPresentationResult;
 use equs_sdk::vault::CredentialEntry;
 use equs_sdk::vc::oid4vp::{
-    AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
-    ResolvedAuthRequest,
+    AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping, DeclineError,
+    DeclineReason, ResolvedAuthRequest,
 };
 use equs_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -146,15 +146,18 @@ impl InnerOID4VPHolder {
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
     ///
     /// @param {_AuthorizationRequest} authRequest - the resolved authorization request.
+    /// @param {DeclineReason | undefined} reason - the error code and description of the error response;
+    /// omitted, it sends `access_denied` with "consent to share the presentation is not given".
     #[napi]
     pub async fn decline_authorization_request(
         &self,
         auth_request: _AuthorizationRequest,
+        reason: Option<JsDeclineReason>,
     ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
         let redirect_url = self
             .0
-            .decline_authorization_request(&auth_request)
+            .decline_authorization_request(&auth_request, reason.map(Into::into))
             .await
             .map_err(IntoNapiError::into_napi_error)?;
 
@@ -296,6 +299,44 @@ pub struct JsAuthorizationResponseMetadata {
 pub struct JsIdTokenMetadata {
     pub key_metadata: JsKeyMetadata,
     pub lifetime: i64,
+}
+
+/// Error code of a declined authorization request.
+#[napi(string_enum, js_name = "DeclineError")]
+pub enum JsDeclineError {
+    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    AccessDenied,
+    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid.
+    InvalidTransactionData,
+}
+
+impl From<JsDeclineError> for DeclineError {
+    fn from(value: JsDeclineError) -> Self {
+        match value {
+            JsDeclineError::AccessDenied => DeclineError::AccessDenied,
+            JsDeclineError::InvalidTransactionData => DeclineError::InvalidTransactionData,
+        }
+    }
+}
+
+/// Why the Wallet declines an authorization request.
+///
+/// @property {DeclineError} error - the `error` code of the error response.
+/// @property {string | null} [description] - its `error_description`, omitted when absent. Printable ASCII
+/// only, without `"` and `\`.
+#[napi(object, js_name = "DeclineReason")]
+pub struct JsDeclineReason {
+    pub error: JsDeclineError,
+    pub description: Option<String>,
+}
+
+impl From<JsDeclineReason> for DeclineReason {
+    fn from(value: JsDeclineReason) -> Self {
+        Self {
+            error: value.error.into(),
+            description: value.description,
+        }
+    }
 }
 
 impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata {

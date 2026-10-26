@@ -20,6 +20,8 @@ pub mod holder;
 
 pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
+pub type DeclineError = equs_sdk::vc::oid4vp::DeclineError;
+pub type DeclineReason = equs_sdk::vc::oid4vp::DeclineReason;
 
 #[derive(uniffi::Enum)]
 #[allow(clippy::large_enum_variant)]
@@ -57,6 +59,23 @@ pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,
     pub dc_api_origin: Option<String>,
+}
+
+/// Error code of a declined authorization request.
+#[uniffi::remote(Enum)]
+pub enum DeclineError {
+    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    AccessDenied,
+    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid.
+    InvalidTransactionData,
+}
+
+/// Why the Wallet declines an authorization request: the `error` code and its `error_description`,
+/// omitted when `None` (printable ASCII only, without `"` and `\`).
+#[uniffi::remote(Record)]
+pub struct DeclineReason {
+    pub error: DeclineError,
+    pub description: Option<String>,
 }
 
 /// A transaction-data item of an authorization request, as the SDK holds it.

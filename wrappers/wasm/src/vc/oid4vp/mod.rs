@@ -13,6 +13,9 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "AuthorizationResponseMetadata")]
     pub type AuthorizationResponseMetadata;
 
+    #[wasm_bindgen(typescript_type = "DeclineReason")]
+    pub type DeclineReason;
+
     #[wasm_bindgen(typescript_type = "CommonAuthorizationRequest")]
     pub type RustAuthorizationRequest;
     #[wasm_bindgen(typescript_type = "CredentialMapping")]

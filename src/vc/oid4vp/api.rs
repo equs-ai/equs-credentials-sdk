@@ -129,6 +129,38 @@ impl AuthorizationResponseMetadata {
     }
 }
 
+/// Error code of a declined authorization request.
+///
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclineError {
+    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    AccessDenied,
+    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid,
+    /// e.g. it has a field with an invalid value for its type.
+    InvalidTransactionData,
+}
+
+impl From<DeclineError> for ErrorType {
+    fn from(value: DeclineError) -> Self {
+        match value {
+            DeclineError::AccessDenied => ErrorType::AccessDenied,
+            DeclineError::InvalidTransactionData => ErrorType::InvalidTransactionData,
+        }
+    }
+}
+
+/// Why the Wallet declines an authorization request.
+///
+/// * `error` - the `error` code of the error response.
+/// * `description` - its `error_description`, omitted when `None`. Printable ASCII only, without `"`
+///   and `\` (RFC 6749, Section 4.1.2.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclineReason {
+    pub error: DeclineError,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuthorizationRequestMetadata {
     pub auth_response_options: AuthResponseOptions,
@@ -387,6 +419,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Arguments
     ///
     /// * `auth_request` - the resolved authorization request.
+    /// * `reason` - the error code and description of the error response; `None` sends `access_denied`
+    ///   with "consent to share the presentation is not given".
     /// # Returns
     ///
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
@@ -394,10 +428,12 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
-    /// * [InternalError::AuthorizationResponse] - if the Verifier answers with a non-2xx status
+    /// * [InternalError::AuthorizationResponse] - if the reason's description contains a character outside
+    ///   the allowed set, or if the Verifier answers with a non-2xx status
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
+        reason: Option<DeclineReason>,
     ) -> Result<Option<Url>, Error>;
 
     /// Gets the status of Credential.

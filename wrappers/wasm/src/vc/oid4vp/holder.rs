@@ -2,7 +2,7 @@ use crate::utils;
 use crate::utils::convert_to_opaque_object;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
-    PresentationResult, VCStatus,
+    DeclineReason, PresentationResult, VCStatus,
 };
 use crate::vc::{Credential, CredentialsFindResult, JsCredential, JsCredentialEntry};
 use equs_sdk::vault::CredentialEntry;
@@ -189,6 +189,8 @@ impl OID4VPHolder {
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
     ///
     /// @param {AuthorizationRequest} auth_request - the resolved authorization request.
+    /// @param {DeclineReason | undefined} reason - the error code and description of the error response;
+    /// omitted, it sends `access_denied` with "consent to share the presentation is not given".
     ///
     /// @returns {string | null}
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
@@ -196,12 +198,14 @@ impl OID4VPHolder {
     pub async fn decline_authorization_request(
         &self,
         auth_request: AuthorizationRequest,
+        reason: Option<DeclineReason>,
     ) -> Result<Option<String>, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
+        let reason = reason.map(utils::convert_to_rust_object).transpose()?;
 
         let redirect_url = self
             .0
-            .decline_authorization_request(&auth_request)
+            .decline_authorization_request(&auth_request, reason)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
