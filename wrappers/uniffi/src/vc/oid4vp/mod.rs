@@ -61,20 +61,18 @@ pub struct AuthorizationResponseMetadata {
     pub dc_api_origin: Option<String>,
 }
 
-/// Error code of a declined authorization request.
 #[uniffi::remote(Enum)]
 pub enum DeclineError {
-    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid.
+    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
-/// Why the Wallet declines an authorization request: the `error` code and its `error_description`,
-/// omitted when `None` (printable ASCII only, without `"` and `\`).
 #[uniffi::remote(Record)]
 pub struct DeclineReason {
     pub error: DeclineError,
+    /// `error_description`: printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }
 

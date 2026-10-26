@@ -301,12 +301,11 @@ pub struct JsIdTokenMetadata {
     pub lifetime: i64,
 }
 
-/// Error code of a declined authorization request.
 #[napi(string_enum, js_name = "DeclineError")]
 pub enum JsDeclineError {
-    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid.
+    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
@@ -319,14 +318,10 @@ impl From<JsDeclineError> for DeclineError {
     }
 }
 
-/// Why the Wallet declines an authorization request.
-///
-/// @property {DeclineError} error - the `error` code of the error response.
-/// @property {string | null} [description] - its `error_description`, omitted when absent. Printable ASCII
-/// only, without `"` and `\`.
 #[napi(object, js_name = "DeclineReason")]
 pub struct JsDeclineReason {
     pub error: JsDeclineError,
+    /// `error_description`: printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }
 

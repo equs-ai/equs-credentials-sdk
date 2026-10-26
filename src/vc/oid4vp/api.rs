@@ -129,15 +129,12 @@ impl AuthorizationResponseMetadata {
     }
 }
 
-/// Error code of a declined authorization request.
-///
-/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+/// OID4VP 1.0, Section 8.5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeclineError {
-    /// `access_denied` — the End-User did not give consent to share the requested Credentials.
+    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data` — a `transaction_data` item is unsupported or invalid,
-    /// e.g. it has a field with an invalid value for its type.
+    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
@@ -150,14 +147,10 @@ impl From<DeclineError> for ErrorType {
     }
 }
 
-/// Why the Wallet declines an authorization request.
-///
-/// * `error` - the `error` code of the error response.
-/// * `description` - its `error_description`, omitted when `None`. Printable ASCII only, without `"`
-///   and `\` (RFC 6749, Section 4.1.2.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclineReason {
     pub error: DeclineError,
+    /// `error_description`: printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
     pub description: Option<String>,
 }
 

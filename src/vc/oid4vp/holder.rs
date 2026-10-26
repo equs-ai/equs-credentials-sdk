@@ -1054,10 +1054,9 @@ fn validate_transaction_data_delegate(
     Ok(())
 }
 
-/// `error_description` of a declined authorization request when the caller gives no reason.
 const DEFAULT_DECLINE_DESCRIPTION: &str = "consent to share the presentation is not given";
 
-/// RFC 6749, Section 4.1.2.1: `error_description` is limited to %x20-21 / %x23-5B / %x5D-7E.
+/// RFC 6749, Section 4.1.2.1.
 fn is_valid_error_description(description: &str) -> bool {
     description
         .bytes()
@@ -2804,7 +2803,6 @@ mod tests {
     async fn decline_authorization_request_rejects_description_outside_rfc6749_charset(
         #[case] description: &str,
     ) {
-        // No HTTP expectation: the request must fail before anything is sent.
         let holder =
             holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
 
