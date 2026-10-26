@@ -29,12 +29,13 @@ export interface IdTokenMetadata {
 }
 
 export enum DeclineError {
-  /** `access_denied`: the End-User did not consent. */
   AccessDenied = "AccessDenied",
-  /** `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid. */
   InvalidTransactionData = "InvalidTransactionData",
 }
 
+/**
+ * See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+ */
 export interface DeclineReason {
   error: DeclineError;
   /** `error_description`: printable ASCII without `"` and `\`. */

@@ -63,12 +63,11 @@ pub struct AuthorizationResponseMetadata {
 
 #[uniffi::remote(Enum)]
 pub enum DeclineError {
-    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[uniffi::remote(Record)]
 pub struct DeclineReason {
     pub error: DeclineError,

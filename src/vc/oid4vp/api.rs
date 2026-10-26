@@ -129,12 +129,9 @@ impl AuthorizationResponseMetadata {
     }
 }
 
-/// OID4VP 1.0, Section 8.5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeclineError {
-    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
@@ -147,6 +144,7 @@ impl From<DeclineError> for ErrorType {
     }
 }
 
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclineReason {
     pub error: DeclineError,

@@ -303,9 +303,7 @@ pub struct JsIdTokenMetadata {
 
 #[napi(string_enum, js_name = "DeclineError")]
 pub enum JsDeclineError {
-    /// `access_denied`: the End-User did not consent.
     AccessDenied,
-    /// `invalid_transaction_data`: a `transaction_data` item is unsupported or invalid.
     InvalidTransactionData,
 }
 
@@ -318,6 +316,7 @@ impl From<JsDeclineError> for DeclineError {
     }
 }
 
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[napi(object, js_name = "DeclineReason")]
 pub struct JsDeclineReason {
     pub error: JsDeclineError,
