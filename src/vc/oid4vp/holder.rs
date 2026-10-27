@@ -20,8 +20,8 @@ use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialMapping,
-    CredentialsFindResult, CredentialsMapping, DeclineError, DeclineReason, ID_TOKEN,
-    PRESENTATION_SUBMISSION, PresentationResult, ProtocolError, ResolvedAuthRequest,
+    CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequestError, DeclineReason,
+    ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult, ProtocolError, ResolvedAuthRequest,
     ResolvedPresentationQuery, ResponseMode, STATE, TRANSACTION_DATA_HASHES,
     TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate, get_transaction_data_hash,
 };
@@ -1286,7 +1286,7 @@ where
         reason: Option<DeclineReason>,
     ) -> Result<Option<Url>> {
         let reason = reason.unwrap_or_else(|| DeclineReason {
-            error: DeclineError::AccessDenied,
+            error: DeclineAuthorizationRequestError::AccessDenied,
             description: Some(DEFAULT_DECLINE_DESCRIPTION.to_owned()),
         });
         if let Some(description) = &reason.description
@@ -1513,9 +1513,9 @@ mod tests {
     };
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
-        CredentialsFindResult, DeclineError, DeclineReason, Error, FindVCsFailReason, Holder,
-        IdTokenMetadata, InternalError, PresentationResult, ProtocolError,
-        ResolvedPresentationQuery, ResponseType,
+        CredentialsFindResult, DeclineAuthorizationRequestError, DeclineReason, Error,
+        FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
+        ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::status_formats::status_list_token_jwt;
@@ -2736,7 +2736,10 @@ mod tests {
             .unwrap();
     }
 
-    fn decline_reason(error: DeclineError, description: Option<&str>) -> Option<DeclineReason> {
+    fn decline_reason(
+        error: DeclineAuthorizationRequestError,
+        description: Option<&str>,
+    ) -> Option<DeclineReason> {
         Some(DeclineReason {
             error,
             description: description.map(str::to_owned),
@@ -2749,15 +2752,21 @@ mod tests {
         "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
     )]
     #[case::access_denied(
-        decline_reason(DeclineError::AccessDenied, Some("amount exceeds the spending limit")),
+        decline_reason(
+            DeclineAuthorizationRequestError::AccessDenied,
+            Some("amount exceeds the spending limit")
+        ),
         "error=access_denied&error_description=amount+exceeds+the+spending+limit"
     )]
     #[case::invalid_transaction_data(
-        decline_reason(DeclineError::InvalidTransactionData, Some("unsupported currency")),
+        decline_reason(
+            DeclineAuthorizationRequestError::InvalidTransactionData,
+            Some("unsupported currency")
+        ),
         "error=invalid_transaction_data&error_description=unsupported+currency"
     )]
     #[case::without_description(
-        decline_reason(DeclineError::AccessDenied, None),
+        decline_reason(DeclineAuthorizationRequestError::AccessDenied, None),
         "error=access_denied"
     )]
     #[tokio::test]
@@ -2809,7 +2818,10 @@ mod tests {
         let err = holder
             .decline_authorization_request(
                 &serde_json::from_value(auth_request_json()).unwrap(),
-                decline_reason(DeclineError::InvalidTransactionData, Some(description)),
+                decline_reason(
+                    DeclineAuthorizationRequestError::InvalidTransactionData,
+                    Some(description),
+                ),
             )
             .await
             .unwrap_err();
@@ -2868,7 +2880,10 @@ mod tests {
         "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
     )]
     #[case::invalid_transaction_data(
-        decline_reason(DeclineError::InvalidTransactionData, Some("unsupported currency")),
+        decline_reason(
+            DeclineAuthorizationRequestError::InvalidTransactionData,
+            Some("unsupported currency")
+        ),
         "error=invalid_transaction_data&error_description=unsupported+currency"
     )]
     #[tokio::test]

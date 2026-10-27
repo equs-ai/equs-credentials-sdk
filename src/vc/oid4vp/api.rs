@@ -130,16 +130,18 @@ impl AuthorizationResponseMetadata {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DeclineError {
+pub enum DeclineAuthorizationRequestError {
     AccessDenied,
     InvalidTransactionData,
 }
 
-impl From<DeclineError> for ErrorType {
-    fn from(value: DeclineError) -> Self {
+impl From<DeclineAuthorizationRequestError> for ErrorType {
+    fn from(value: DeclineAuthorizationRequestError) -> Self {
         match value {
-            DeclineError::AccessDenied => ErrorType::AccessDenied,
-            DeclineError::InvalidTransactionData => ErrorType::InvalidTransactionData,
+            DeclineAuthorizationRequestError::AccessDenied => ErrorType::AccessDenied,
+            DeclineAuthorizationRequestError::InvalidTransactionData => {
+                ErrorType::InvalidTransactionData
+            }
         }
     }
 }
@@ -147,7 +149,7 @@ impl From<DeclineError> for ErrorType {
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclineReason {
-    pub error: DeclineError,
+    pub error: DeclineAuthorizationRequestError,
     /// `error_description`: printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
     pub description: Option<String>,
 }

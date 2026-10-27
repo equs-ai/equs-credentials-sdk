@@ -6,8 +6,8 @@ use crate::vc::core::{JsCredential, JsKeyMetadata, JsVCStatus};
 use crate::vc::oid4vp::JsPresentationResult;
 use equs_sdk::vault::CredentialEntry;
 use equs_sdk::vc::oid4vp::{
-    AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping, DeclineError,
-    DeclineReason, ResolvedAuthRequest,
+    AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
+    DeclineAuthorizationRequestError, DeclineReason, ResolvedAuthRequest,
 };
 use equs_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -301,17 +301,21 @@ pub struct JsIdTokenMetadata {
     pub lifetime: i64,
 }
 
-#[napi(string_enum, js_name = "DeclineError")]
-pub enum JsDeclineError {
+#[napi(string_enum, js_name = "DeclineAuthorizationRequestError")]
+pub enum JsDeclineAuthorizationRequestError {
     AccessDenied,
     InvalidTransactionData,
 }
 
-impl From<JsDeclineError> for DeclineError {
-    fn from(value: JsDeclineError) -> Self {
+impl From<JsDeclineAuthorizationRequestError> for DeclineAuthorizationRequestError {
+    fn from(value: JsDeclineAuthorizationRequestError) -> Self {
         match value {
-            JsDeclineError::AccessDenied => DeclineError::AccessDenied,
-            JsDeclineError::InvalidTransactionData => DeclineError::InvalidTransactionData,
+            JsDeclineAuthorizationRequestError::AccessDenied => {
+                DeclineAuthorizationRequestError::AccessDenied
+            }
+            JsDeclineAuthorizationRequestError::InvalidTransactionData => {
+                DeclineAuthorizationRequestError::InvalidTransactionData
+            }
         }
     }
 }
@@ -319,7 +323,7 @@ impl From<JsDeclineError> for DeclineError {
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[napi(object, js_name = "DeclineReason")]
 pub struct JsDeclineReason {
-    pub error: JsDeclineError,
+    pub error: JsDeclineAuthorizationRequestError,
     /// `error_description`: printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }
