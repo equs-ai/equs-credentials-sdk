@@ -1285,6 +1285,19 @@ where
         auth_request: &ResolvedAuthRequest,
         reason: Option<DeclineReason>,
     ) -> Result<Option<Url>> {
+        if reason.is_some()
+            && matches!(
+                auth_request.response_mode,
+                ResponseMode::DcApi | ResponseMode::DcApiJwt
+            )
+        {
+            return Err(AuthorizationResponseSnafu {
+                details: "a decline reason cannot be delivered in dc_api/dc_api.jwt response mode; return the error through the Digital Credentials API",
+            }
+            .build()
+            .into());
+        }
+
         let reason = reason.unwrap_or_else(|| DeclineReason {
             error: DeclineAuthorizationRequestError::AccessDenied,
             description: Some(DEFAULT_DECLINE_DESCRIPTION.to_owned()),
@@ -2912,6 +2925,45 @@ mod tests {
         assert_eq!(
             redirect_url.fragment().unwrap(),
             format!("{expected_error}&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3")
+        );
+    }
+
+    #[rstest]
+    #[case::dc_api("dc_api")]
+    #[case::dc_api_jwt("dc_api.jwt")]
+    #[tokio::test]
+    async fn decline_authorization_request_rejects_reason_in_dc_api_mode(
+        #[case] response_mode: &str,
+    ) {
+        let holder =
+            holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let mut auth_req: serde_json::Map<String, Value> =
+            serde_json::from_value(auth_request_json()).unwrap();
+        auth_req.insert(
+            "response_mode".to_string(),
+            Value::String(response_mode.to_string()),
+        );
+        let auth_req = serde_json::from_str(&serde_json::to_string(&auth_req).unwrap()).unwrap();
+
+        let err = holder
+            .decline_authorization_request(
+                &auth_req,
+                decline_reason(DeclineAuthorizationRequestError::AccessDenied, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::Internal { .. }));
+        assert!(
+            err.to_string().contains("cannot be delivered in dc_api"),
+            "{err}"
+        );
+        assert_eq!(
+            holder
+                .decline_authorization_request(&auth_req, None)
+                .await
+                .unwrap(),
+            None
         );
     }
 

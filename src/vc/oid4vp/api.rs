@@ -422,7 +422,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
     /// * [InternalError::AuthorizationResponse] - if the reason's description contains a character outside
-    ///   the allowed set, or if the Verifier answers with a non-2xx status
+    ///   the allowed set, if a reason is given in `dc_api`/`dc_api.jwt` response mode (the error must be
+    ///   returned through the Digital Credentials API), or if the Verifier answers with a non-2xx status
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
