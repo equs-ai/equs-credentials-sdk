@@ -10,7 +10,7 @@ use crate::vc::claims::Claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction, PresentationRestrictionValue};
 use crate::vc::oid4vp::verifier::PresentationVerificationOptions;
 use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresentation, formats};
-use crate::vc::{Credential, HasVCFormat, JsonPath};
+use crate::vc::{Credential, HasVCFormat};
 use common_macros::DebugError;
 use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathValue, ValueType};
 use serde_json::{Value, json};
@@ -350,25 +350,39 @@ pub(crate) fn resolve_presentation_response(
     dcql: &DCQL,
     presentation_verification_opts: &PresentationVerificationOptions,
 ) -> Result<Vec<RequestedPresentation>> {
-    let mut result: Vec<RequestedPresentation> = vec![];
-    for credential_query in dcql.credentials() {
-        let path = JsonPath::parse(
-            json::json_path_as_string(&vec![PathValue::String(
-                credential_query.id().as_str().to_owned(),
-            )])
-            .as_str(),
-        )
-        .map_err(|e| {
-            ParseSnafu {
-                details: "Could not parse json path",
-            }
-            .build()
-        })?;
+    let presentations = presentations.as_object().ok_or(
+        ParseSnafu {
+            details: "vp_token must be a JSON object keyed by credential query id",
+        }
+        .build(),
+    )?;
+    if let Some(unknown_id) = presentations.keys().find(|id| {
+        !dcql
+            .credentials()
+            .iter()
+            .any(|query| query.id().as_str() == id.as_str())
+    }) {
+        ParseSnafu {
+            details: format!(
+                "Presentation for unknown credential query {}",
+                sanitize_log_msg(unknown_id)
+            ),
+        }
+        .fail()?
+    }
 
-        let extracted_presentations = get_presentations_by_path(
-            &presentations,
-            credential_query.id().as_str().to_owned(),
-            &path,
+    let mut result: Vec<RequestedPresentation> = vec![];
+    // An unanswered query is skipped; `validate_credentials` decides which ones had to be answered.
+    for credential_query in dcql.credentials() {
+        let Some(extracted_presentations) = presentations.get(credential_query.id().as_str())
+        else {
+            continue;
+        };
+        let extracted_presentations = extracted_presentations.as_array().ok_or(
+            ParseSnafu {
+                details: "Could not parse presentations as array of json".to_string(),
+            }
+            .build(),
         )?;
 
         let mut presentation_results = Vec::new();
@@ -434,45 +448,13 @@ pub(crate) fn resolve_presentation_response(
             })
         }
     }
-    Ok(result)
-}
-
-fn get_presentations_by_path<'a>(
-    presentations: &'a Value,
-    credential_id: String,
-    path: &JsonPath,
-) -> Result<&'a Vec<Value>> {
-    let root = path
-        .query(presentations)
-        .at_most_one()
-        .map_err(|e| {
-            ParseSnafu {
-                details: format!(
-                    "Requested presentation \"{}\" not found by path {}: {}",
-                    credential_id,
-                    sanitize_log_msg(&path.to_string()),
-                    e
-                ),
-            }
-            .build()
-        })?
-        .ok_or(
-            ParseSnafu {
-                details: format!(
-                    "Requested presentation \"{}\" not found by path {}",
-                    credential_id,
-                    sanitize_log_msg(&path.to_string())
-                ),
-            }
-            .build(),
-        )?;
-
-    root.as_array().ok_or(
+    if result.is_empty() {
         ParseSnafu {
-            details: "Could not parse presentations as array of json".to_string(),
+            details: "vp_token contains no presentations",
         }
-        .build(),
-    )
+        .fail()?
+    }
+    Ok(result)
 }
 
 pub fn validate_credential_for_dcql(
@@ -539,6 +521,11 @@ pub fn validate_credential_for_dcql(
 
 pub fn validate_credentials(dcql: &DCQL, credentials: &HashMap<String, Vec<Claim>>) -> Result<()> {
     if let Some(credential_sets) = dcql.credential_sets() {
+        for query in dcql.credentials() {
+            if let Some(creds) = credentials.get(query.id().as_str()) {
+                validate_against_credential_query(creds, query)?;
+            }
+        }
         for set in credential_sets {
             validate_against_credential_set(credentials, dcql, set)?
         }
@@ -1062,6 +1049,39 @@ mod tests {
     }
 
     #[rstest]
+    #[case::other_option(json!([{"options": [["a"], ["b"]]}]))]
+    #[case::optional_set(json!([{"options": [["a"]]}, {"required": false, "options": [["b"]]}]))]
+    #[case::no_credential_sets(Value::Null)]
+    fn resolve_presentation_response_skips_unanswered_query(#[case] credential_sets: Value) {
+        let dcql = sd_jwt_dcql(json!([{"id": "a"}, {"id": "b"}]), credential_sets);
+        let vp_token = json!({ "a": [sample_sdjwt_presentation_token()] });
+
+        let actual = resolve_presentation_response(vp_token, &dcql, &Default::default()).unwrap();
+
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].id, "a");
+    }
+
+    #[rstest]
+    #[case::string(json!("presentation"), "vp_token must be a JSON object")]
+    #[case::array(json!([sample_sdjwt_presentation_token()]), "vp_token must be a JSON object")]
+    #[case::empty_object(json!({}), "vp_token contains no presentations")]
+    #[case::empty_array(json!({"a": []}), "vp_token contains no presentations")]
+    fn resolve_presentation_response_rejects_vp_token_without_presentations(
+        #[case] vp_token: Value,
+        #[case] expected: &str,
+    ) {
+        let dcql = sd_jwt_dcql(
+            json!([{"id": "a"}]),
+            json!([{"required": false, "options": [["a"]]}]),
+        );
+
+        let err = resolve_presentation_response(vp_token, &dcql, &Default::default()).unwrap_err();
+
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+
+    #[rstest]
     #[case(sample_sdjwt_presentation_for_dcql(), ClaimFormatDesignation::SdJwtVc)]
     #[case(sample_ldp_vc_presentation_for_dcql(), ClaimFormatDesignation::LdpVc)]
     fn resolve_presentation_response_works_correctly_with_correct_data(
@@ -1089,8 +1109,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Requested presentation \"not_correct_id\" not found by path")]
-    fn resolve_presentation_response_returns_error_with_wrong_path() {
+    #[should_panic(expected = "Presentation for unknown credential query id")]
+    fn resolve_presentation_response_returns_error_with_unknown_query_id() {
         let (presentation, _) = sample_sdjwt_presentation_for_dcql();
         let format_str = ClaimFormatDesignation::SdJwtVc.to_string();
         let credential: DCQLCredential = serde_json::from_value(json!(
@@ -1179,6 +1199,37 @@ mod tests {
     async fn validate_claims_failure(#[case] test_case: (DCQL, HashMap<String, Vec<Claim>>)) {
         let (dcql, credentials) = test_case;
         validate_credentials(&dcql, &credentials).unwrap();
+    }
+
+    #[rstest]
+    #[case::other_option(json!([{"options": [["pid"], ["loyalty"]]}]))]
+    #[case::optional_set(
+        json!([{"options": [["pid"]]}, {"required": false, "options": [["loyalty"]]}])
+    )]
+    fn validate_credentials_rejects_credential_not_matching_its_query(
+        #[case] credential_sets: Value,
+    ) {
+        let dcql = sd_jwt_dcql(
+            json!([
+                {"id": "pid", "meta": {"vct_values": ["https://credentials.example.com/identity_credential"]}},
+                {"id": "loyalty", "meta": {"vct_values": ["https://credentials.example.com/loyalty_card"]}}
+            ]),
+            credential_sets,
+        );
+        let credentials: HashMap<String, Vec<Claim>> = serde_json::from_value(json!({
+            "pid": [{"vct": "https://credentials.example.com/identity_credential"}],
+            "loyalty": [{"vct": "https://credentials.example.com/unrequested_credential"}]
+        }))
+        .unwrap();
+
+        let err = validate_credentials(&dcql, &credentials).unwrap_err();
+
+        assert!(
+            err.to_string().contains(
+                "query id = loyalty: Credential(s) does not contain required \"vct_values\""
+            ),
+            "{err}"
+        );
     }
 
     fn dcql_with_claims() -> (DCQL, HashMap<String, Vec<Claim>>) {
@@ -1590,15 +1641,6 @@ mod tests {
             .add_credential_set(optional_set);
 
         let mut credentials = HashMap::new();
-        let claims1: Vec<Claim> = serde_json::from_value(json!(
-            [
-                {
-                    "vct": "https://credentials.example.com/identity_credential",
-                    "postal_code": "7777"
-                }
-            ]
-        ))
-        .unwrap();
         let claims2: Vec<Claim> = serde_json::from_value(json!(
             [
                 {
@@ -1618,10 +1660,29 @@ mod tests {
         ))
         .unwrap();
 
-        credentials.insert("pid1".to_string(), claims1);
         credentials.insert("pid2".to_string(), claims2);
         credentials.insert("pid3".to_string(), claims3);
         (dcql, credentials)
+    }
+
+    /// SD-JWT credential queries, `meta` defaulting to `{}`.
+    fn sd_jwt_dcql(credentials: Value, credential_sets: Value) -> DCQL {
+        let credentials: Vec<Value> = serde_json::from_value(credentials).unwrap();
+        let credentials: Vec<Value> = credentials
+            .into_iter()
+            .map(|mut query| {
+                query["format"] = json!("dc+sd-jwt");
+                if query.get("meta").is_none() {
+                    query["meta"] = json!({});
+                }
+                query
+            })
+            .collect();
+        serde_json::from_value(json!({
+            "credentials": credentials,
+            "credential_sets": credential_sets
+        }))
+        .unwrap()
     }
 
     fn dcql_with_credential_sets_mismatch() -> (DCQL, HashMap<String, Vec<Claim>>) {
