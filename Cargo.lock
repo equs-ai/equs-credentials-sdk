@@ -1687,7 +1687,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2993,7 +2993,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core"
 version = "0.1.2"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31b038b7a1e915c406e6261dad90b0308d71ef231013a15cbdd59de350a74782"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3075,7 +3076,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-crypto"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63f89b2447a70d76d04af06fc7c8dfac01abc4ee45356be4d50e210a89e08fe"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3111,7 +3113,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-dcql"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b91b175642d96ad6d999a5aff4e0677e9a47c6689717e1be9fa734e27cdfbbf"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3123,7 +3126,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-portable"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85614c49d560af51a68cb45a55603c4a225c23af7b824a51b1fc4f7005adc549"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3158,7 +3162,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3170,7 +3175,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
 dependencies = [
  "regex",
  "serde",
@@ -3182,7 +3188,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-standardized-types"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core?rev=706dd14d8#706dd14d8f0a1e420f096121f5ff2d5b71f7f9fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac0ac3b192367782e1c970d2f26557f92dbd165ef9aa6a509f05bf80aa97b2d"
 dependencies = [
  "anyhow",
  "ct-codecs",
@@ -4390,7 +4397,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -6004,7 +6011,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http 1.3.1",
@@ -6721,7 +6728,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6760,7 +6767,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.59.0",
 ]
@@ -10830,7 +10837,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

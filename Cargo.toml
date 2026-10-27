@@ -151,12 +151,3 @@ strip = "none"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
-
-[patch.crates-io]
-equs-one-core = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-crypto = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-dcql = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-portable = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-proc-macros = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-shared-types = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
-equs-one-core-standardized-types = { git = "https://github.com/equs-ai/one-core", rev = "706dd14d8" }
