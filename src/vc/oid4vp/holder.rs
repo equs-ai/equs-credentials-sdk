@@ -511,7 +511,7 @@ where
         Ok(error)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, error), err())]
     async fn send_auth_error_resp(
         &self,
         response_uri: Option<&Url>,
@@ -1279,7 +1279,7 @@ where
         Ok(result)
     }
 
-    #[instrument(level = Level::TRACE, skip(self, reason), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, reason), err())]
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
