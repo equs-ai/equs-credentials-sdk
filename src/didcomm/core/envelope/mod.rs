@@ -4,6 +4,7 @@ mod did_resolver;
 mod kms;
 
 use common_macros::DebugError;
+use didcomm::did::{DIDResolver, ServiceKind};
 use didcomm::secrets::KeyManagementService;
 use snafu::{Location, ResultExt, Snafu};
 use std::ops::Deref;
@@ -53,6 +54,8 @@ pub struct Error {
 
 /// `Result` alias for `DIDComm`-specific [Error].
 pub type Result<T> = std::result::Result<T, Error>;
+
+const DIDCOMM_V2_PROFILE: &str = "didcomm/v2";
 
 /// A DIDComm service that provides packing and unpacking of DIDComm messages.
 #[derive(Clone)]
@@ -203,6 +206,36 @@ impl EnvelopeService {
         Message::unpack(msg, &self.did_resolver, self.kms.deref(), options)
             .await
             .context(Snafu)
+    }
+
+    /// Finds the endpoint of the first DIDComm v2 messaging service in `did`'s document.
+    ///
+    /// Picks the service the same way `pack_encrypted` does when it routes through a mediator.
+    ///
+    /// # Returns
+    ///
+    /// * The service endpoint URI, or `None` if `did` has no DIDComm v2 messaging service.
+    ///
+    /// # Errors
+    ///
+    /// * [Error] An error if resolving `did` fails.
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    pub async fn find_service_endpoint(&self, did: &str) -> Result<Option<String>> {
+        let did_doc = self.did_resolver.resolve(did).await.context(Snafu)?;
+
+        Ok(did_doc
+            .into_iter()
+            .flat_map(|doc| doc.service)
+            .find_map(|service| match service.service_endpoint {
+                ServiceKind::DIDCommMessaging { value }
+                    if value.accept.as_ref().is_none_or(|accept| {
+                        accept.is_empty() || accept.iter().any(|a| a == DIDCOMM_V2_PROFILE)
+                    }) =>
+                {
+                    Some(value.uri)
+                }
+                _ => None,
+            }))
     }
 }
 

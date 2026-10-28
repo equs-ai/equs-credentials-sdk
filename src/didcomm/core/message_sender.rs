@@ -1,6 +1,6 @@
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
-use snafu::{Location, ResultExt, Snafu};
+use snafu::{Location, OptionExt, ResultExt, Snafu};
 use std::sync::Arc;
 use time::OffsetDateTime;
 
@@ -36,6 +36,11 @@ pub enum Error {
     #[snafu(display("Parse error"))]
     Parse {
         source: serde_json::error::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Recipient DID has no DIDComm v2 messaging service"))]
+    NoServiceEndpoint {
         #[snafu(implicit)]
         location: Location,
     },
@@ -75,7 +80,8 @@ impl MessageSender {
     /// # Errors
     ///
     /// * [Error::EnvelopeService] - fails to pack the message, e.g. `options.from` and `msg.from`
-    ///   name different DIDs.
+    ///   name different DIDs, or fails to resolve `to_did`.
+    /// * [Error::NoServiceEndpoint] - `to_did` has no DIDComm v2 messaging service.
     /// * [Error::Transport] - fails to send the packed message.
     pub async fn send_message(
         &self,
@@ -100,8 +106,19 @@ impl MessageSender {
             .await
             .context(EnvelopeServiceSnafu)?;
 
+        // `messaging_service` is only set when the message is wrapped for a mediator.
+        let endpoint = match metadata.messaging_service {
+            Some(service) => service.service_endpoint,
+            None => self
+                .envelope_service
+                .find_service_endpoint(&to_did)
+                .await
+                .context(EnvelopeServiceSnafu)?
+                .context(NoServiceEndpointSnafu)?,
+        };
+
         let outbound_message = OutboundMessage::new(
-            metadata.messaging_service.unwrap().service_endpoint,
+            endpoint,
             packed_msg.as_bytes().to_vec(),
             MIME_DIDCOMM_ENCRYPTED_JSON.to_string(),
             MIME_TYPE_TEXT_PLAIN.to_string(),
@@ -184,8 +201,10 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::kms::{KeyType, Kms};
 
+    const ENDPOINT: &str = "http://127.0.0.1:8000";
+
     #[derive(Clone, Default)]
-    struct RecordingTransport(Arc<Mutex<Vec<Vec<u8>>>>);
+    struct RecordingTransport(Arc<Mutex<Vec<OutboundMessage>>>);
 
     #[async_trait]
     impl OutboundTransport for RecordingTransport {
@@ -197,7 +216,7 @@ mod tests {
             &self,
             message: OutboundMessage,
         ) -> transport::Result<OutboundMessageResponse> {
-            self.0.lock().unwrap().push(message.payload);
+            self.0.lock().unwrap().push(message);
 
             Ok(OutboundMessageResponse {
                 status: 200,
@@ -285,6 +304,38 @@ mod tests {
         assert!(transport.0.lock().unwrap().is_empty());
     }
 
+    #[tokio::test]
+    async fn send_message_sends_to_endpoint_of_recipient_without_routing_keys() {
+        let kms = LocalKms::new();
+        let bob_did = create_did_with_services(&kms, &[messaging_service(&[])]).await;
+        let (_, transport, sender) = create_sender(kms);
+
+        sender
+            .send_message(&example_message(None), bob_did, &SendOptions::default())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            transport.0.lock().unwrap().pop().unwrap().endpoint,
+            ENDPOINT
+        );
+    }
+
+    #[tokio::test]
+    async fn send_message_failed_without_service_endpoint() {
+        let kms = LocalKms::new();
+        let bob_did = create_did_with_services(&kms, &[]).await;
+        let (_, transport, sender) = create_sender(kms);
+
+        let err = sender
+            .send_message(&example_message(None), bob_did, &SendOptions::default())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::NoServiceEndpoint { .. }));
+        assert!(transport.0.lock().unwrap().is_empty());
+    }
+
     fn create_sender(kms: LocalKms) -> (EnvelopeService, RecordingTransport, MessageSender) {
         let envelope_service = EnvelopeService::new(kms, UniversalResolver::default());
         let transport = RecordingTransport::default();
@@ -302,7 +353,7 @@ mod tests {
         envelope_service: &EnvelopeService,
         transport: &RecordingTransport,
     ) -> UnpackMetadata {
-        let payload = transport.0.lock().unwrap().pop().unwrap();
+        let payload = transport.0.lock().unwrap().pop().unwrap().payload;
         let (_, metadata) = envelope_service
             .unpack(&String::from_utf8(payload).unwrap(), &Default::default())
             .await
@@ -325,21 +376,14 @@ mod tests {
     }
 
     async fn create_did(kms: &LocalKms) -> DID {
+        create_did_with_services(kms, &[messaging_service(&["#key-0"])]).await
+    }
+
+    async fn create_did_with_services(kms: &LocalKms, services: &[DidPeerService]) -> DID {
         let (_, kh) = kms
             .create_and_handle(KeyType::P256, Default::default())
             .await
             .unwrap();
-
-        let service: DidPeerService = serde_json::from_value(json!({
-            "id": "#didcomm-1",
-            "type": "DIDCommMessaging",
-            "serviceEndpoint": {
-                "uri": "http://127.0.0.1:8000",
-                "accept": ["didcomm/v2"],
-                "routingKeys": ["#key-0"]
-            }
-        }))
-        .unwrap();
 
         DIDPeer::generate_did_peer4(
             &[VerificationMethodKey {
@@ -351,8 +395,21 @@ mod tests {
                 .into_iter()
                 .collect(),
             }],
-            &[service],
+            services,
         )
+        .unwrap()
+    }
+
+    fn messaging_service(routing_keys: &[&str]) -> DidPeerService {
+        serde_json::from_value(json!({
+            "id": "#didcomm-1",
+            "type": "DIDCommMessaging",
+            "serviceEndpoint": {
+                "uri": ENDPOINT,
+                "accept": ["didcomm/v2"],
+                "routingKeys": routing_keys
+            }
+        }))
         .unwrap()
     }
 }

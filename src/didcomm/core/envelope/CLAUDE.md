@@ -20,7 +20,9 @@ pack_plaintext(message) → Result<String>
 pack_signed(message, sign_by) → Result<(String, PackSignedMetadata)>
 pack_encrypted(message, to, from, sign_by, options) → Result<(String, PackEncryptedMetadata)>
 unpack(msg, options) → Result<(Message, UnpackMetadata)>
+find_service_endpoint(did) → Result<Option<String>>
 ```
+`find_service_endpoint` returns the URI of the DID's first `DIDCommMessaging` service that accepts `didcomm/v2` (or lists no `accept`), the same selection `pack_encrypted` applies when routing through a mediator.
 `unpack` inherits the `didcomm` crate's (`equs-didcomm` ≥ 0.1.1) DIDComm v2.1 §Message Layer Addressing Consistency check: a set `message.from` must be the DID of `encrypted_from_kid` (authcrypt `skid`) and of `sign_from` (signer `kid`) whenever those are present; a mismatch is a `Malformed` error. A `from` with neither (plaintext, anoncrypt only) passes with `authenticated: false`.
 
 ### Type aliases (all from `didcomm::*`, re-exported publicly)

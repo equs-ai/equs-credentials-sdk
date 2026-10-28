@@ -43,5 +43,6 @@ Implements the DIDComm V2 protocol engine for secure, decentralised agent-to-age
 - Inbound `from` is authenticated before dispatch: `EnvelopeService::unpack` (via the `didcomm` crate) rejects a `from` that is not the DID of the authcrypt `skid` or signer `kid`, and `MessageReceiver` rejects a `from` that neither authenticated. Handlers receive no envelope metadata and treat `msg.from` as the peer DID.
 - Aries handlers bind `msg.from` to the connection via `OutOfBandV2Protocol::establish_connection`: a message without `from` is rejected, the first message on an `Invited`/`Accepted` connection sets the peer, and every later message must come from that peer.
 - Outbound `from` is authenticated too: `MessageSender` authcrypts as `SendOptions.from`, else `msg.from`, and anoncrypts only when neither is set.
+- The `didcomm` crate only reports an endpoint when it wraps a message for a mediator (recipient lists routing keys); otherwise `MessageSender` resolves the recipient's DIDComm v2 service endpoint itself and fails with `NoServiceEndpoint` when there is none.
 - `StatefulMessageHandler` + `StateMachine` enforce a strict event-sourced state-transition model; state is always persisted before the handler returns.
 

@@ -37,6 +37,7 @@ descriptions of the connections between components and their responsibilities.
 - Prepares outbound messages with async methods.
 - Coordinates with `EnvelopeService` for packing.
 - Authcrypts a message as `SendOptions.from`, or as `msg.from` when that is unset.
+- Sends to the mediator when the recipient's DID lists routing keys, otherwise to the recipient's own DIDComm v2 service endpoint.
 - Sends the packed message over its `OutboundTransport`.
 - Emits events for sent messages.
 
