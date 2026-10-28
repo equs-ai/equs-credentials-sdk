@@ -26,7 +26,6 @@ use crate::vc;
 use crate::vc::RequestedPresentation;
 use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::{HolderBinder, KeyMetadata};
-use crate::vc::dcql::validate_credentials;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::oid4vp::api::as_delegate;
@@ -530,13 +529,13 @@ where
     /// `credential_sets` let a wallet leave all of them out.
     fn ensure_transaction_data_bound(
         expected_td: Option<&Vec<TransactionDataItem>>,
-        presented_ids: &[String],
+        presented_ids: &[&str],
     ) -> Result<()> {
         let unbound = expected_td.into_iter().flatten().any(|item| {
             !item
                 .credential_ids
                 .iter()
-                .any(|id| presented_ids.contains(id))
+                .any(|id| presented_ids.contains(&id.as_str()))
         });
         if unbound {
             return Err(Protocol {
@@ -1074,6 +1073,16 @@ where
             }
         };
 
+        // These checks need only the presented ids, so they run before any presentation is verified.
+        if let ResolvedPresentationQuery::DCQL(dcql) = resolved_presentation_query {
+            let answered: Vec<&str> = requested_presentations
+                .iter()
+                .map(|presentation| presentation.id.as_str())
+                .collect();
+            dcql::ensure_required_queries_answered(dcql, &answered).context(DCQLSnafu)?;
+            Self::ensure_transaction_data_bound(transaction_data, &answered)?;
+        }
+
         for requested_presentation in requested_presentations {
             let holder_binder =
                 if let Some(false) = requested_presentation.require_cryptographic_holder_binding {
@@ -1129,9 +1138,6 @@ where
                 .push(requested_presentation.presentation);
         }
 
-        if let ResolvedPresentationQuery::DCQL(_) = resolved_presentation_query {
-            Self::ensure_transaction_data_bound(transaction_data, &ids)?;
-        }
         Self::validate_against_requested_claims(
             resolved_presentation_query,
             authorization_response,
@@ -1189,7 +1195,7 @@ where
                 }
             }
             ResolvedPresentationQuery::DCQL(dcql) => {
-                validate_credentials(dcql, credentials).context(DCQLSnafu)?
+                dcql::validate_presented_credentials(dcql, credentials).context(DCQLSnafu)?
             }
         };
         Ok(())
@@ -2130,12 +2136,26 @@ mod tests {
     }
 
     #[rstest]
-    #[case::bound_to_presented_credential("mDL", true)]
-    #[case::bound_to_omitted_credential("pid_sdjwt", false)]
+    #[case::bound_to_presented_credential(
+        "mDL",
+        json!([{"options": [["pid_sdjwt"], ["mDL"]]}]),
+        None
+    )]
+    #[case::bound_to_omitted_credential(
+        "pid_sdjwt",
+        json!([{"options": [["pid_sdjwt"], ["mDL"]]}]),
+        Some("Transaction data is not bound to any presented credential")
+    )]
+    #[case::bound_to_missing_required_credential(
+        "pid_sdjwt",
+        Value::Null,
+        Some("Credential(s) for credential-query with id = pid_sdjwt not found")
+    )]
     #[tokio::test]
     async fn verify_mso_mdoc_vp_requires_transaction_data_bound_to_presented_credential(
         #[case] credential_id: &str,
-        #[case] accepted: bool,
+        #[case] credential_sets: Value,
+        #[case] expected_error: Option<&str>,
     ) {
         let (verifier, _) = verifier_service().await;
         let item = TransactionDataItem {
@@ -2156,7 +2176,7 @@ mod tests {
         let result = verifier
             .verify_presentation(
                 &AuthorizationResponse::Plain(mso_mdoc_response(Some(hashes))),
-                &pid_sd_jwt_or_mdl_session(json!([{"options": [["pid_sdjwt"], ["mDL"]]}])),
+                &pid_sd_jwt_or_mdl_session(credential_sets),
                 &CredentialVerificationMetadata {
                     transaction_data: Some(vec![item]),
                     audience: Some(mdoc::VERIFIER.to_string()),
@@ -2164,16 +2184,38 @@ mod tests {
             )
             .await;
 
-        match accepted {
-            true => assert!(result.is_ok(), "{:?}", result.err()),
-            false => {
+        match expected_error {
+            None => assert!(result.is_ok(), "{:?}", result.err()),
+            Some(expected) => {
                 let err = result.unwrap_err().to_string();
-                assert!(
-                    err.contains("Transaction data is not bound to any presented credential"),
-                    "{err}"
-                );
+                assert!(err.contains(expected), "{err}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn verify_presentation_rejects_unanswered_query_before_verifying_presentations() {
+        let (verifier, _) = verifier_service().await;
+        let mut response = mso_mdoc_response(None);
+        response.vp_token = json!({ "mDL": ["not a device response"] });
+
+        let err = verifier
+            .verify_presentation(
+                &AuthorizationResponse::Plain(response),
+                &pid_sd_jwt_or_mdl_session(Value::Null),
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(mdoc::VERIFIER.to_string()),
+                },
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            err.contains("Credential(s) for credential-query with id = pid_sdjwt not found"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

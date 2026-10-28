@@ -7,7 +7,7 @@ Implements the Digital Credentials Query Language (DCQL) spec: converts DCQL que
 
 | File | Role |
 |------|------|
-| mod.rs | All DCQL logic: `split_to_inputs_for_dcql`, `filter_claims_using_claim_sets`, `filter_creds_with_cred_sets`, `validate_credentials`, `resolve_presentation_response`, `prepare_vp_token_response_for_dcql`. |
+| mod.rs | All DCQL logic: `split_to_inputs_for_dcql`, `filter_claims_using_claim_sets`, `filter_creds_with_cred_sets`, `validate_credentials` (= `ensure_required_queries_answered` + `validate_presented_credentials`), `resolve_presentation_response`, `prepare_vp_token_response_for_dcql`. |
 
 ## Key types / traits
 - `DCQL` — re-export of `openid4vp::core::dcql::DCQL`; the root query object.
@@ -21,5 +21,6 @@ Implements the Digital Credentials Query Language (DCQL) spec: converts DCQL que
 - Used by: `oid4vp::holder`, `oid4vp::verifier`
 
 ## Constraints
-- `resolve_presentation_response` parses only: it rejects a `vp_token` that is not an object, names an unknown credential query, or holds no presentation, and skips unanswered queries. `validate_credentials` decides which queries had to be answered: without `credential_sets` every one; with them one option per required set (OpenID4VP 1.0), checking every presented credential against its own query.
+- `resolve_presentation_response` parses only: it rejects a `vp_token` that is not an object, is empty, names an unknown credential query, or holds an empty presentation array, and skips unanswered queries.
+- `ensure_required_queries_answered` decides from the presented ids alone which queries had to be answered: without `credential_sets` every one; with them one option per required set (OpenID4VP 1.0). Needing no claims, the verifier runs it before verifying any presentation. `validate_presented_credentials` checks every presented credential against its own query, including ones from optional sets or unchosen options.
 - `filter_creds_with_cred_sets` (holder) returns every query named in any option of any set, held or not, rather than one held option per set.

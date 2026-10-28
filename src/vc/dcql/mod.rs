@@ -350,12 +350,18 @@ pub(crate) fn resolve_presentation_response(
     dcql: &DCQL,
     presentation_verification_opts: &PresentationVerificationOptions,
 ) -> Result<Vec<RequestedPresentation>> {
-    let presentations = presentations.as_object().ok_or(
+    let presentations = presentations.as_object().ok_or_else(|| {
         ParseSnafu {
             details: "vp_token must be a JSON object keyed by credential query id",
         }
-        .build(),
-    )?;
+        .build()
+    })?;
+    if presentations.is_empty() {
+        ParseSnafu {
+            details: "vp_token contains no presentations",
+        }
+        .fail()?
+    }
     if let Some(unknown_id) = presentations.keys().find(|id| {
         !dcql
             .credentials()
@@ -364,7 +370,7 @@ pub(crate) fn resolve_presentation_response(
     }) {
         ParseSnafu {
             details: format!(
-                "Presentation for unknown credential query {}",
+                "Presentation for unknown credential query \"{}\"",
                 sanitize_log_msg(unknown_id)
             ),
         }
@@ -378,12 +384,21 @@ pub(crate) fn resolve_presentation_response(
         else {
             continue;
         };
-        let extracted_presentations = extracted_presentations.as_array().ok_or(
+        let extracted_presentations = extracted_presentations.as_array().ok_or_else(|| {
             ParseSnafu {
-                details: "Could not parse presentations as array of json".to_string(),
+                details: "Could not parse presentations as array of json",
             }
-            .build(),
-        )?;
+            .build()
+        })?;
+        if extracted_presentations.is_empty() {
+            ParseSnafu {
+                details: format!(
+                    "vp_token contains no presentations for credential query \"{}\"",
+                    credential_query.id().as_str()
+                ),
+            }
+            .fail()?
+        }
 
         let mut presentation_results = Vec::new();
         match credential_query.format() {
@@ -447,12 +462,6 @@ pub(crate) fn resolve_presentation_response(
                     .require_cryptographic_holder_binding(),
             })
         }
-    }
-    if result.is_empty() {
-        ParseSnafu {
-            details: "vp_token contains no presentations",
-        }
-        .fail()?
     }
     Ok(result)
 }
@@ -520,39 +529,52 @@ pub fn validate_credential_for_dcql(
 }
 
 pub fn validate_credentials(dcql: &DCQL, credentials: &HashMap<String, Vec<Claim>>) -> Result<()> {
-    if let Some(credential_sets) = dcql.credential_sets() {
+    let answered: Vec<&str> = credentials.keys().map(String::as_str).collect();
+    ensure_required_queries_answered(dcql, &answered)?;
+    validate_presented_credentials(dcql, credentials)
+}
+
+/// Without `credential_sets` every query must be answered; with them, one option of every
+/// required set (OpenID4VP 1.0).
+pub(crate) fn ensure_required_queries_answered(dcql: &DCQL, answered: &[&str]) -> Result<()> {
+    let Some(credential_sets) = dcql.credential_sets() else {
         for query in dcql.credentials() {
-            if let Some(creds) = credentials.get(query.id().as_str()) {
-                validate_against_credential_query(creds, query)?;
+            let id = query.id().as_str();
+            if !answered.contains(&id) {
+                CredentialQueryValidationSnafu {
+                    query_id: id.to_string(),
+                    details: format!("Credential(s) for credential-query with id = {id} not found"),
+                }
+                .fail()?
             }
         }
-        for set in credential_sets {
-            validate_against_credential_set(credentials, dcql, set)?
-        }
-
         return Ok(());
+    };
+
+    for set in credential_sets {
+        validate_against_credential_set(answered, dcql, set)?
     }
 
-    for query in dcql.credentials() {
-        let creds = credentials.get(query.id().as_str()).ok_or_else(|| {
-            CredentialQueryValidationSnafu {
-                query_id: query.id().as_str().to_string(),
-                details: format!(
-                    "Credential(s) for credential-query with id = {} not found",
-                    query.id().as_str()
-                ),
-            }
-            .build()
-        })?;
+    Ok(())
+}
 
-        validate_against_credential_query(creds, query)?;
+/// Checks every presented credential against its own query, including ones the response did
+/// not have to contain.
+pub(crate) fn validate_presented_credentials(
+    dcql: &DCQL,
+    credentials: &HashMap<String, Vec<Claim>>,
+) -> Result<()> {
+    for query in dcql.credentials() {
+        if let Some(creds) = credentials.get(query.id().as_str()) {
+            validate_against_credential_query(creds, query)?;
+        }
     }
 
     Ok(())
 }
 
 fn validate_against_credential_set(
-    credentials: &HashMap<String, Vec<Claim>>,
+    answered: &[&str],
     dcql: &DCQL,
     set: &DcqlCredentialSet,
 ) -> Result<()> {
@@ -562,7 +584,7 @@ fn validate_against_credential_set(
 
     let mut result = Ok(());
     for option in set.options() {
-        result = validate_against_credential_set_option(credentials, dcql, option);
+        result = validate_against_credential_set_option(answered, dcql, option);
         if result.is_ok() {
             return Ok(());
         }
@@ -572,33 +594,24 @@ fn validate_against_credential_set(
 }
 
 fn validate_against_credential_set_option(
-    credentials: &HashMap<String, Vec<Claim>>,
+    answered: &[&str],
     dcql: &DCQL,
     option: &NonEmptyVec<String>,
 ) -> Result<()> {
     for id in option {
-        let Some(creds) = credentials.get(id.as_str()) else {
+        if !answered.contains(&id.as_str()) {
             CredentialSetsValidationSnafu {
                 set_option: option.clone().to_vec(),
                 details: format!("Credential(s) for credential-query with id = {id} not found"),
             }
             .fail()?
-        };
-        let Some(query) = dcql.credentials().iter().find(|q| q.id().as_str() == id) else {
+        }
+        if !dcql.credentials().iter().any(|q| q.id().as_str() == id) {
             CredentialSetsValidationSnafu {
                 set_option: option.clone().to_vec(),
                 details: format!(
                     "Credential-query with id = {id} not found in dcql credential queries"
                 ),
-            }
-            .fail()?
-        };
-
-        let cred_query_result = validate_against_credential_query(creds, query);
-        if let Err(err) = cred_query_result {
-            CredentialSetsValidationSnafu {
-                set_option: option.clone().to_vec(),
-                details: err.to_string(),
             }
             .fail()?
         }
@@ -1066,14 +1079,21 @@ mod tests {
     #[case::string(json!("presentation"), "vp_token must be a JSON object")]
     #[case::array(json!([sample_sdjwt_presentation_token()]), "vp_token must be a JSON object")]
     #[case::empty_object(json!({}), "vp_token contains no presentations")]
-    #[case::empty_array(json!({"a": []}), "vp_token contains no presentations")]
+    #[case::empty_array(
+        json!({"a": []}),
+        "vp_token contains no presentations for credential query \"a\""
+    )]
+    #[case::empty_array_beside_presentation(
+        json!({"a": [], "b": [sample_sdjwt_presentation_token()]}),
+        "vp_token contains no presentations for credential query \"a\""
+    )]
     fn resolve_presentation_response_rejects_vp_token_without_presentations(
         #[case] vp_token: Value,
         #[case] expected: &str,
     ) {
         let dcql = sd_jwt_dcql(
-            json!([{"id": "a"}]),
-            json!([{"required": false, "options": [["a"]]}]),
+            json!([{"id": "a"}, {"id": "b"}]),
+            json!([{"required": false, "options": [["a"], ["b"]]}]),
         );
 
         let err = resolve_presentation_response(vp_token, &dcql, &Default::default()).unwrap_err();
@@ -1109,7 +1129,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Presentation for unknown credential query id")]
+    #[should_panic(expected = "Presentation for unknown credential query \"id\"")]
     fn resolve_presentation_response_returns_error_with_unknown_query_id() {
         let (presentation, _) = sample_sdjwt_presentation_for_dcql();
         let format_str = ClaimFormatDesignation::SdJwtVc.to_string();
