@@ -1058,9 +1058,10 @@ const DEFAULT_DECLINE_DESCRIPTION: &str = "consent to share the presentation is 
 
 /// RFC 6749, Section 4.1.2.1.
 fn is_valid_error_description(description: &str) -> bool {
-    description
-        .bytes()
-        .all(|b| matches!(b, 0x20..=0x21 | 0x23..=0x5B | 0x5D..=0x7E))
+    !description.is_empty()
+        && description
+            .bytes()
+            .all(|b| matches!(b, 0x20..=0x21 | 0x23..=0x5B | 0x5D..=0x7E))
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -1306,7 +1307,7 @@ where
             && !is_valid_error_description(description)
         {
             return Err(AuthorizationResponseSnafu {
-                details: "decline description may only contain printable ASCII characters other than `\"` and `\\`",
+                details: "decline description must be non-empty printable ASCII without `\"` and `\\`",
             }
             .build()
             .into());
@@ -2818,6 +2819,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case::empty("")]
     #[case::double_quote("say \"no\"")]
     #[case::backslash("no\\thanks")]
     #[case::control_character("no\nthanks")]
@@ -2842,7 +2844,7 @@ mod tests {
         assert!(matches!(err, Error::Internal { .. }));
         assert!(
             err.to_string()
-                .contains("decline description may only contain"),
+                .contains("decline description must be non-empty"),
             "{err}"
         );
     }

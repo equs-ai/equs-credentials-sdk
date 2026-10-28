@@ -38,7 +38,7 @@ export enum DeclineAuthorizationRequestError {
  */
 export interface DeclineReason {
   error: DeclineAuthorizationRequestError;
-  /** `error_description`: printable ASCII without `"` and `\`. */
+  /** `error_description`: non-empty printable ASCII without `"` and `\`. */
   description?: string;
 }
 

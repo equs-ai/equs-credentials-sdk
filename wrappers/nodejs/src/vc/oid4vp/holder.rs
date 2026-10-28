@@ -324,7 +324,7 @@ impl From<JsDeclineAuthorizationRequestError> for DeclineAuthorizationRequestErr
 #[napi(object, js_name = "DeclineReason")]
 pub struct JsDeclineReason {
     pub error: JsDeclineAuthorizationRequestError,
-    /// `error_description`: printable ASCII without `"` and `\`.
+    /// `error_description`: non-empty printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }
 

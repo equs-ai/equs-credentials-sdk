@@ -713,7 +713,7 @@ import Testing
 				reason: DeclineReason(error: .accessDenied, description: "отказано"))
 			Issue.record("expected the non-ASCII description to be rejected")
 		} catch EqusSdk.Error.Oid4vpHolder(let message) {
-			#expect(message.contains("decline description may only contain"), "\(message)")
+			#expect(message.contains("decline description must be non-empty"), "\(message)")
 		} catch {
 			Issue.record("expected the non-ASCII description to be rejected, got \(error)")
 		}

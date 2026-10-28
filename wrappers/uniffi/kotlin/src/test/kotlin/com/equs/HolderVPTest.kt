@@ -951,7 +951,7 @@ class HolderVPTest {
                 holder.declineAuthorizationRequest(authRequest, DeclineReason(DeclineAuthorizationRequestError.ACCESS_DENIED, "отказано"))
             }
         }
-        assertTrue(error.message.contains("decline description may only contain"), error.message)
+        assertTrue(error.message.contains("decline description must be non-empty"), error.message)
     }
 
     @Test

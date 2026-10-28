@@ -150,7 +150,7 @@ impl From<DeclineAuthorizationRequestError> for ErrorType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclineReason {
     pub error: DeclineAuthorizationRequestError,
-    /// `error_description`: printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
+    /// `error_description`: non-empty printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
     pub description: Option<String>,
 }
 
@@ -421,8 +421,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
-    /// * [InternalError::AuthorizationResponse] - if the reason's description contains a character outside
-    ///   the allowed set, if a reason is given in `dc_api`/`dc_api.jwt` response mode (the error must be
+    /// * [InternalError::AuthorizationResponse] - if the reason's description is empty or contains a
+    ///   character outside the allowed set, if a reason is given in `dc_api`/`dc_api.jwt` response mode (the error must be
     ///   returned through the Digital Credentials API), or if the Verifier answers with a non-2xx status
     async fn decline_authorization_request(
         &self,

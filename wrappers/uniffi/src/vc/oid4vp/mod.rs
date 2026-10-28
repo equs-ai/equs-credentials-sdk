@@ -71,7 +71,7 @@ pub enum DeclineAuthorizationRequestError {
 #[uniffi::remote(Record)]
 pub struct DeclineReason {
     pub error: DeclineAuthorizationRequestError,
-    /// `error_description`: printable ASCII without `"` and `\`.
+    /// `error_description`: non-empty printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }
 

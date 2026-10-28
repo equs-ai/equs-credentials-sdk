@@ -315,7 +315,7 @@ describe("OID4VP Holder: ", () => {
         error: DeclineAuthorizationRequestError.AccessDenied,
         description: "отказано",
       }),
-    ).rejects.toThrow("decline description may only contain");
+    ).rejects.toThrow("decline description must be non-empty");
   });
 });
 
