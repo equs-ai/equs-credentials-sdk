@@ -7,7 +7,7 @@ use crate::vc::oid4vp::JsPresentationResult;
 use equs_sdk::vault::CredentialEntry;
 use equs_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
-    DeclineAuthorizationRequest, DeclineAuthorizationRequestError, ResolvedAuthRequest,
+    DeclineAuthorizationRequest, DeclineAuthorizationRequestReason, ResolvedAuthRequest,
 };
 use equs_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -301,20 +301,20 @@ pub struct JsIdTokenMetadata {
     pub lifetime: i64,
 }
 
-#[napi(string_enum, js_name = "DeclineAuthorizationRequestError")]
-pub enum JsDeclineAuthorizationRequestError {
+#[napi(string_enum, js_name = "DeclineAuthorizationRequestReason")]
+pub enum JsDeclineAuthorizationRequestReason {
     AccessDenied,
     InvalidTransactionData,
 }
 
-impl From<JsDeclineAuthorizationRequestError> for DeclineAuthorizationRequestError {
-    fn from(value: JsDeclineAuthorizationRequestError) -> Self {
+impl From<JsDeclineAuthorizationRequestReason> for DeclineAuthorizationRequestReason {
+    fn from(value: JsDeclineAuthorizationRequestReason) -> Self {
         match value {
-            JsDeclineAuthorizationRequestError::AccessDenied => {
-                DeclineAuthorizationRequestError::AccessDenied
+            JsDeclineAuthorizationRequestReason::AccessDenied => {
+                DeclineAuthorizationRequestReason::AccessDenied
             }
-            JsDeclineAuthorizationRequestError::InvalidTransactionData => {
-                DeclineAuthorizationRequestError::InvalidTransactionData
+            JsDeclineAuthorizationRequestReason::InvalidTransactionData => {
+                DeclineAuthorizationRequestReason::InvalidTransactionData
             }
         }
     }
@@ -323,7 +323,7 @@ impl From<JsDeclineAuthorizationRequestError> for DeclineAuthorizationRequestErr
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[napi(object, js_name = "DeclineAuthorizationRequest")]
 pub struct JsDeclineAuthorizationRequest {
-    pub error: JsDeclineAuthorizationRequestError,
+    pub error: JsDeclineAuthorizationRequestReason,
     /// `error_description`: non-empty printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }

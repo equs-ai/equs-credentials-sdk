@@ -4,7 +4,7 @@ import {
   Credential,
   CredentialEntry,
   CredentialMetadata,
-  DeclineAuthorizationRequestError,
+  DeclineAuthorizationRequestReason,
   DIDKey,
   FindVCsFailReason,
   FindVCsFailReasonType,
@@ -298,7 +298,7 @@ describe("OID4VP Holder: ", () => {
     });
 
     await holder.declineAuthorizationRequest(new AuthorizationRequest(AUTH_REQUEST), {
-      error: DeclineAuthorizationRequestError.InvalidTransactionData,
+      error: DeclineAuthorizationRequestReason.InvalidTransactionData,
       description: "unsupported currency",
     });
 
@@ -312,7 +312,7 @@ describe("OID4VP Holder: ", () => {
   it("decline authorization request rejects a non-ASCII description", async () => {
     await expect(
       holder.declineAuthorizationRequest(new AuthorizationRequest(AUTH_REQUEST), {
-        error: DeclineAuthorizationRequestError.AccessDenied,
+        error: DeclineAuthorizationRequestReason.AccessDenied,
         description: "отказано",
       }),
     ).rejects.toThrow("decline description must be non-empty");

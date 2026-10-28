@@ -20,7 +20,8 @@ pub mod holder;
 
 pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
-pub type DeclineAuthorizationRequestError = equs_sdk::vc::oid4vp::DeclineAuthorizationRequestError;
+pub type DeclineAuthorizationRequestReason =
+    equs_sdk::vc::oid4vp::DeclineAuthorizationRequestReason;
 pub type DeclineAuthorizationRequest = equs_sdk::vc::oid4vp::DeclineAuthorizationRequest;
 
 #[derive(uniffi::Enum)]
@@ -62,7 +63,7 @@ pub struct AuthorizationResponseMetadata {
 }
 
 #[uniffi::remote(Enum)]
-pub enum DeclineAuthorizationRequestError {
+pub enum DeclineAuthorizationRequestReason {
     AccessDenied,
     InvalidTransactionData,
 }
@@ -70,7 +71,7 @@ pub enum DeclineAuthorizationRequestError {
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[uniffi::remote(Record)]
 pub struct DeclineAuthorizationRequest {
-    pub error: DeclineAuthorizationRequestError,
+    pub error: DeclineAuthorizationRequestReason,
     /// `error_description`: non-empty printable ASCII without `"` and `\`.
     pub description: Option<String>,
 }

@@ -21,7 +21,7 @@ use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialMapping,
     CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequest,
-    DeclineAuthorizationRequestError, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
+    DeclineAuthorizationRequestReason, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
     ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, STATE,
     TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate,
     get_transaction_data_hash,
@@ -1301,7 +1301,7 @@ where
         }
 
         let reason = reason.unwrap_or_else(|| DeclineAuthorizationRequest {
-            error: DeclineAuthorizationRequestError::AccessDenied,
+            error: DeclineAuthorizationRequestReason::AccessDenied,
             description: Some(DEFAULT_DECLINE_DESCRIPTION.to_owned()),
         });
         if let Some(description) = &reason.description
@@ -1528,7 +1528,7 @@ mod tests {
     };
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
-        CredentialsFindResult, DeclineAuthorizationRequest, DeclineAuthorizationRequestError,
+        CredentialsFindResult, DeclineAuthorizationRequest, DeclineAuthorizationRequestReason,
         Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
         ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
@@ -2752,7 +2752,7 @@ mod tests {
     }
 
     fn decline_reason(
-        error: DeclineAuthorizationRequestError,
+        error: DeclineAuthorizationRequestReason,
         description: Option<&str>,
     ) -> Option<DeclineAuthorizationRequest> {
         Some(DeclineAuthorizationRequest {
@@ -2768,20 +2768,20 @@ mod tests {
     )]
     #[case::access_denied(
         decline_reason(
-            DeclineAuthorizationRequestError::AccessDenied,
+            DeclineAuthorizationRequestReason::AccessDenied,
             Some("amount exceeds the spending limit")
         ),
         "error=access_denied&error_description=amount+exceeds+the+spending+limit"
     )]
     #[case::invalid_transaction_data(
         decline_reason(
-            DeclineAuthorizationRequestError::InvalidTransactionData,
+            DeclineAuthorizationRequestReason::InvalidTransactionData,
             Some("unsupported currency")
         ),
         "error=invalid_transaction_data&error_description=unsupported+currency"
     )]
     #[case::without_description(
-        decline_reason(DeclineAuthorizationRequestError::AccessDenied, None),
+        decline_reason(DeclineAuthorizationRequestReason::AccessDenied, None),
         "error=access_denied"
     )]
     #[tokio::test]
@@ -2835,7 +2835,7 @@ mod tests {
             .decline_authorization_request(
                 &serde_json::from_value(auth_request_json()).unwrap(),
                 decline_reason(
-                    DeclineAuthorizationRequestError::InvalidTransactionData,
+                    DeclineAuthorizationRequestReason::InvalidTransactionData,
                     Some(description),
                 ),
             )
@@ -2897,7 +2897,7 @@ mod tests {
     )]
     #[case::invalid_transaction_data(
         decline_reason(
-            DeclineAuthorizationRequestError::InvalidTransactionData,
+            DeclineAuthorizationRequestReason::InvalidTransactionData,
             Some("unsupported currency")
         ),
         "error=invalid_transaction_data&error_description=unsupported+currency"
@@ -2951,7 +2951,7 @@ mod tests {
         let err = holder
             .decline_authorization_request(
                 &auth_req,
-                decline_reason(DeclineAuthorizationRequestError::AccessDenied, None),
+                decline_reason(DeclineAuthorizationRequestReason::AccessDenied, None),
             )
             .await
             .unwrap_err();

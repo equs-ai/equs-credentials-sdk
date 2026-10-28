@@ -28,7 +28,7 @@ export interface IdTokenMetadata {
   lifetime: number;
 }
 
-export enum DeclineAuthorizationRequestError {
+export enum DeclineAuthorizationRequestReason {
   AccessDenied = "AccessDenied",
   InvalidTransactionData = "InvalidTransactionData",
 }
@@ -37,7 +37,7 @@ export enum DeclineAuthorizationRequestError {
  * See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
  */
 export interface DeclineAuthorizationRequest {
-  error: DeclineAuthorizationRequestError;
+  error: DeclineAuthorizationRequestReason;
   /** `error_description`: non-empty printable ASCII without `"` and `\`. */
   description?: string;
 }
