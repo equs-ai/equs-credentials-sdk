@@ -36,6 +36,7 @@ descriptions of the connections between components and their responsibilities.
 
 - Prepares outbound messages with async methods.
 - Coordinates with `EnvelopeService` for packing.
+- Authcrypts a message as `SendOptions.from`, or as `msg.from` when that is unset.
 - Sends the packed message over its `OutboundTransport`.
 - Emits events for sent messages.
 

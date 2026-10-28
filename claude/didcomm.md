@@ -41,5 +41,6 @@ Implements the DIDComm V2 protocol engine for secure, decentralised agent-to-age
 - Protocols are registered at runtime and dispatched by message type string match — no compile-time protocol list.
 - The `didcomm-http-transport` feature flag must be enabled to compile the HTTP transport.
 - Inbound `from` is authenticated before dispatch: `EnvelopeService::unpack` (via the `didcomm` crate) rejects a `from` that is not the DID of the authcrypt `skid` or signer `kid`, and `MessageReceiver` rejects a `from` that neither authenticated. Handlers receive no envelope metadata and treat `msg.from` as the peer DID.
+- Outbound `from` is authenticated too: `MessageSender` authcrypts as `SendOptions.from`, else `msg.from`, and anoncrypts only when neither is set.
 - `StatefulMessageHandler` + `StateMachine` enforce a strict event-sourced state-transition model; state is always persisted before the handler returns.
 
