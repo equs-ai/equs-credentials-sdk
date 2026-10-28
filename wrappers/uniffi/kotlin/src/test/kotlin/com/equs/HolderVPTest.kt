@@ -932,7 +932,7 @@ class HolderVPTest {
             server.enqueue(MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/plain"))
             holder.declineAuthorizationRequest(
                 authRequest.copy(responseUri = "http://localhost:9007/response"),
-                DeclineReason(DeclineAuthorizationRequestError.INVALID_TRANSACTION_DATA, "unsupported currency")
+                DeclineAuthorizationRequest(DeclineAuthorizationRequestError.INVALID_TRANSACTION_DATA, "unsupported currency")
             )
             val request = String(server.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
             assertEquals(
@@ -948,7 +948,7 @@ class HolderVPTest {
     fun testDeclineAuthorizationRequestRejectsNonAsciiDescription() = runTest {
         val error = assertThrows<Exception.Oid4vpHolder> {
             runBlocking {
-                holder.declineAuthorizationRequest(authRequest, DeclineReason(DeclineAuthorizationRequestError.ACCESS_DENIED, "отказано"))
+                holder.declineAuthorizationRequest(authRequest, DeclineAuthorizationRequest(DeclineAuthorizationRequestError.ACCESS_DENIED, "отказано"))
             }
         }
         assertTrue(error.message.contains("decline description must be non-empty"), error.message)

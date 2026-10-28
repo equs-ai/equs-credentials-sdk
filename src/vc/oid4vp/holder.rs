@@ -20,10 +20,11 @@ use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialMapping,
-    CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequestError, DeclineReason,
-    ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult, ProtocolError, ResolvedAuthRequest,
-    ResolvedPresentationQuery, ResponseMode, STATE, TRANSACTION_DATA_HASHES,
-    TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate, get_transaction_data_hash,
+    CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequest,
+    DeclineAuthorizationRequestError, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
+    ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, STATE,
+    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate,
+    get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{
@@ -1284,7 +1285,7 @@ where
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
-        reason: Option<DeclineReason>,
+        reason: Option<DeclineAuthorizationRequest>,
     ) -> Result<Option<Url>> {
         if reason.is_some()
             && matches!(
@@ -1299,7 +1300,7 @@ where
             .into());
         }
 
-        let reason = reason.unwrap_or_else(|| DeclineReason {
+        let reason = reason.unwrap_or_else(|| DeclineAuthorizationRequest {
             error: DeclineAuthorizationRequestError::AccessDenied,
             description: Some(DEFAULT_DECLINE_DESCRIPTION.to_owned()),
         });
@@ -1527,8 +1528,8 @@ mod tests {
     };
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
-        CredentialsFindResult, DeclineAuthorizationRequestError, DeclineReason, Error,
-        FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
+        CredentialsFindResult, DeclineAuthorizationRequest, DeclineAuthorizationRequestError,
+        Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
         ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
@@ -2753,8 +2754,8 @@ mod tests {
     fn decline_reason(
         error: DeclineAuthorizationRequestError,
         description: Option<&str>,
-    ) -> Option<DeclineReason> {
-        Some(DeclineReason {
+    ) -> Option<DeclineAuthorizationRequest> {
+        Some(DeclineAuthorizationRequest {
             error,
             description: description.map(str::to_owned),
         })
@@ -2785,7 +2786,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn decline_authorization_request_succeeds(
-        #[case] reason: Option<DeclineReason>,
+        #[case] reason: Option<DeclineAuthorizationRequest>,
         #[case] expected_error: &'static str,
     ) {
         let mut http_client = MockHttpClient::new();
@@ -2903,7 +2904,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn decline_authorization_request_returns_url_in_same_device_flow(
-        #[case] reason: Option<DeclineReason>,
+        #[case] reason: Option<DeclineAuthorizationRequest>,
         #[case] expected_error: &'static str,
     ) {
         let holder =

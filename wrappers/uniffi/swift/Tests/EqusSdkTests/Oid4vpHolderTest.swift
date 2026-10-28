@@ -702,7 +702,7 @@ import Testing
 
 			let _ = try await holder.declineAuthorizationRequest(
 				authRequest: Oid4vpHolderTestConstants.authRequest,
-				reason: DeclineReason(error: .invalidTransactionData, description: "unsupported currency"))
+				reason: DeclineAuthorizationRequest(error: .invalidTransactionData, description: "unsupported currency"))
 		}
 	}
 
@@ -710,7 +710,7 @@ import Testing
 		do {
 			let _ = try await self.holder.declineAuthorizationRequest(
 				authRequest: Oid4vpHolderTestConstants.authRequest,
-				reason: DeclineReason(error: .accessDenied, description: "отказано"))
+				reason: DeclineAuthorizationRequest(error: .accessDenied, description: "отказано"))
 			Issue.record("expected the non-ASCII description to be rejected")
 		} catch EqusSdk.Error.Oid4vpHolder(let message) {
 			#expect(message.contains("decline description must be non-empty"), "\(message)")

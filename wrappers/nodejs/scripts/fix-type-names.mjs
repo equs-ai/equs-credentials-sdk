@@ -55,7 +55,7 @@ const replacements = [
   { from: "JsNotificationEvent", to: "CredentialNotificationEvent" },
   { from: "JsX509Variant", to: "X509Variant" },
   { from: "JsDeclineAuthorizationRequestError", to: "DeclineAuthorizationRequestError" },
-  { from: "JsDeclineReason", to: "DeclineReason" },
+  { from: "JsDeclineAuthorizationRequest", to: "DeclineAuthorizationRequest" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

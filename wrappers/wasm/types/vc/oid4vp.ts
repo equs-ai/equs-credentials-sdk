@@ -36,7 +36,7 @@ export enum DeclineAuthorizationRequestError {
 /**
  * See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
  */
-export interface DeclineReason {
+export interface DeclineAuthorizationRequest {
   error: DeclineAuthorizationRequestError;
   /** `error_description`: non-empty printable ASCII without `"` and `\`. */
   description?: string;

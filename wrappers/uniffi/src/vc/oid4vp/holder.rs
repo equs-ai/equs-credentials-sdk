@@ -3,8 +3,8 @@ use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
 use crate::vc::VCStatus;
 use crate::vc::oid4vp::{
-    AuthorizationRequest, AuthorizationResponseMetadata, DeclineReason, PresentationResult,
-    check_delegate_items,
+    AuthorizationRequest, AuthorizationResponseMetadata, DeclineAuthorizationRequest,
+    PresentationResult, check_delegate_items,
 };
 use equs_sdk::vc::Credential;
 use equs_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
@@ -163,7 +163,7 @@ impl OID4VPHolder {
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
     ///
     /// @param {AuthorizationRequest} authRequest - the resolved authorization request.
-    /// @param {DeclineReason | null} reason - the error code and description of the error response; `null`
+    /// @param {DeclineAuthorizationRequest | null} reason - the error code and description of the error response; `null`
     /// sends `access_denied` with "consent to share the presentation is not given".
     /// @returns {string | null}
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
@@ -171,7 +171,7 @@ impl OID4VPHolder {
     pub async fn decline_authorization_request(
         &self,
         auth_request: AuthorizationRequest,
-        reason: Option<DeclineReason>,
+        reason: Option<DeclineAuthorizationRequest>,
     ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
         let redirect_url = self

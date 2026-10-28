@@ -26,7 +26,7 @@ import fs from "fs/promises";
       "DIDResolution",
       "Alg",
       "AuthorizationResponseMetadata",
-      "DeclineReason",
+      "DeclineAuthorizationRequest",
       "Credential",
       "CredentialEntry",
       "CredentialOffer",

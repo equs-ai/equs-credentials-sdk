@@ -4,7 +4,7 @@ import {
   Credential,
   CredentialEntry,
   CredentialsFindResult,
-  DeclineReason,
+  DeclineAuthorizationRequest,
   InnerOID4VPHolder,
   PresentationQuery,
   PresentationResult,
@@ -108,10 +108,10 @@ export class OID4VPHolder {
    * @returns {string | null}
    * An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
    * @param {AuthorizationRequest} authRequest - the resolved authorization request.
-   * @param {DeclineReason} [reason] - the error code and description of the error response; omitted, it sends
+   * @param {DeclineAuthorizationRequest} [reason] - the error code and description of the error response; omitted, it sends
    * `access_denied` with "consent to share the presentation is not given".
    */
-  async declineAuthorizationRequest(authRequest: AuthorizationRequest, reason?: DeclineReason): Promise<string | null> {
+  async declineAuthorizationRequest(authRequest: AuthorizationRequest, reason?: DeclineAuthorizationRequest): Promise<string | null> {
     return await this.inner.declineAuthorizationRequest(authRequest.toRustObject(), reason);
   }
 

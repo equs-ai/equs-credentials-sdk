@@ -148,7 +148,7 @@ impl From<DeclineAuthorizationRequestError> for ErrorType {
 
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeclineReason {
+pub struct DeclineAuthorizationRequest {
     pub error: DeclineAuthorizationRequestError,
     /// `error_description`: non-empty printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
     pub description: Option<String>,
@@ -427,7 +427,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
-        reason: Option<DeclineReason>,
+        reason: Option<DeclineAuthorizationRequest>,
     ) -> Result<Option<Url>, Error>;
 
     /// Gets the status of Credential.

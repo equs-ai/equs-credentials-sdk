@@ -21,7 +21,7 @@ pub mod holder;
 pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 pub type DeclineAuthorizationRequestError = equs_sdk::vc::oid4vp::DeclineAuthorizationRequestError;
-pub type DeclineReason = equs_sdk::vc::oid4vp::DeclineReason;
+pub type DeclineAuthorizationRequest = equs_sdk::vc::oid4vp::DeclineAuthorizationRequest;
 
 #[derive(uniffi::Enum)]
 #[allow(clippy::large_enum_variant)]
@@ -69,7 +69,7 @@ pub enum DeclineAuthorizationRequestError {
 
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
 #[uniffi::remote(Record)]
-pub struct DeclineReason {
+pub struct DeclineAuthorizationRequest {
     pub error: DeclineAuthorizationRequestError,
     /// `error_description`: non-empty printable ASCII without `"` and `\`.
     pub description: Option<String>,
