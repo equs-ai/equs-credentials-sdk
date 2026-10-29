@@ -66,7 +66,7 @@ Implements the OpenID for Verifiable Presentations (OID4VP) protocol layer, prov
   presented credential. In `Enforce` mode, any certificate-identified issuer that is `untrusted`, or that has no anchors,
   fails with `InternalError::IssuerNotTrusted`. Its message is `issuer_not_trusted: <JSON entries>`.
 - DID-identified EAA issuers and dSD-JWT delegation grants are `not_evaluated/did_issuer` and are never rejected
-  (known limitation); a DID-identified PID, QEAA or PuB-EAA issuer is `untrusted/did_issuer_not_allowed`. An mdoc with no anchors is now `not_evaluated/no_anchors_configured` instead of being skipped.
+  (known limitation); a DID-identified PID, QEAA or PuB-EAA issuer is `untrusted/did_issuer_not_allowed`. An mdoc with no anchors is `not_evaluated/no_anchors_configured`, like any certificate-identified issuer.
 - DCQL `trusted_authorities` on a credential query is kept through the signed request and the session. After a
   credential is verified, `check_trusted_authorities` requires one certificate of its issuer chain to carry a requested
   `aki` value, when the query requests only `aki` entries; otherwise `TrustedAuthorityMismatch { credential_id }`, in
