@@ -2993,7 +2993,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3078,7 +3078,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-crypto"
 version = "0.1.1"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3114,7 +3114,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-dcql"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3126,7 +3126,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-portable"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3161,7 +3161,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3173,7 +3173,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "regex",
  "serde",
@@ -3185,7 +3185,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-standardized-types"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=7b4830f4d0f597deef29c0153de8bd252a569e1c#7b4830f4d0f597deef29c0153de8bd252a569e1c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
 dependencies = [
  "anyhow",
  "ct-codecs",
