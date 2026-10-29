@@ -17,7 +17,7 @@ members = [
 
 [package]
 name = "equs-credentials-sdk"
-version = "1.0.2"
+version = "1.1.1"
 edition = "2024"
 rust-version = "1.97.0"
 license = "Apache-2.0"
@@ -44,7 +44,7 @@ equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
 openid4vp = { package = "equs-openid4vp", version = "0.1.1" }
 sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.1" }
-didcomm = { package = "equs-didcomm", version = "0.1.0" }
+didcomm = { package = "equs-didcomm", version = "0.1.1" }
 did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
 did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
 did_parser_nom = { package = "equs-vcx-did-parser-nom", version = "0.1.0" }
@@ -104,7 +104,6 @@ tokio = { version = "1.25.0", features = ["macros"], optional = true }
 # Transitive dependecies versioning
 generic-array = "=0.14.7" # Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 hex = "0.4.3"
-crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
 ml-dsa = "=0.1.0-rc.9" # one-crypto (one-core-new@092a2de1) uses the pre-rc.11 KeyGen API; rc.11 removed it
 getrandom = "=0.4.2"
 
@@ -112,7 +111,7 @@ getrandom = "=0.4.2"
 ## remember to update one-core version for not-wasm targets
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { package = "equs-didcomm", version = "0.1.0", features = ["uniffi"] }
+didcomm = { package = "equs-didcomm", version = "0.1.1", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 one-core = { package = "equs-one-core", version = "0.2.0" }

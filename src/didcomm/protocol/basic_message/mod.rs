@@ -12,6 +12,7 @@ use crate::didcomm::agent;
 use crate::didcomm::connection::ConnectionService;
 use crate::didcomm::core::envelope::{Attachment, Message};
 use crate::didcomm::core::event_emitter::EventEmitter;
+use crate::didcomm::core::message_sender;
 use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::core::protocol;
 use crate::didcomm::core::protocol::Protocol;
@@ -204,7 +205,14 @@ where
 
         // Send the message
         self.service
-            .send_message(&message, their_did.clone(), &Default::default())
+            .send_message(
+                &message,
+                their_did.clone(),
+                &message_sender::SendOptions {
+                    from: Some(&my_did),
+                    sign_by: None,
+                },
+            )
             .await
             .context(DIDCommSnafu)?;
 
@@ -302,5 +310,33 @@ where
         self.event_emitter.emit(MESSAGE_RECEIVED_EVENT, event).await;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::protocol::basic_message::{BasicMessageProtocol, SendOptions};
+    use crate::inmem::storage::InMemStorage;
+
+    #[tokio::test]
+    async fn send_message_succeeded() {
+        let (agent, _) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let protocol = BasicMessageProtocol::new(&agent, InMemStorage::new()).await;
+
+        protocol
+            .send_message(
+                connection.my_did.to_owned(),
+                connection.their_did().unwrap(),
+                "example".to_owned(),
+                SendOptions {
+                    thread_id: None,
+                    parent_thread_id: None,
+                },
+            )
+            .await
+            .unwrap();
     }
 }

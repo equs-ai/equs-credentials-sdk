@@ -129,6 +129,31 @@ impl AuthorizationResponseMetadata {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclineAuthorizationRequestReason {
+    AccessDenied,
+    InvalidTransactionData,
+}
+
+impl From<DeclineAuthorizationRequestReason> for ErrorType {
+    fn from(value: DeclineAuthorizationRequestReason) -> Self {
+        match value {
+            DeclineAuthorizationRequestReason::AccessDenied => ErrorType::AccessDenied,
+            DeclineAuthorizationRequestReason::InvalidTransactionData => {
+                ErrorType::InvalidTransactionData
+            }
+        }
+    }
+}
+
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclineAuthorizationRequest {
+    pub error: DeclineAuthorizationRequestReason,
+    /// `error_description`: non-empty printable ASCII without `"` and `\` (RFC 6749, Section 4.1.2.1).
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuthorizationRequestMetadata {
     pub auth_response_options: AuthResponseOptions,
@@ -387,6 +412,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Arguments
     ///
     /// * `auth_request` - the resolved authorization request.
+    /// * `reason` - the error code and description of the error response; `None` sends `access_denied`
+    ///   with "consent to share the presentation is not given".
     /// # Returns
     ///
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
@@ -394,10 +421,13 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
-    /// * [InternalError::AuthorizationResponse] - if the Verifier answers with a non-2xx status
+    /// * [InternalError::AuthorizationResponse] - if the reason's description is empty or contains a
+    ///   character outside the allowed set, if a reason is given in `dc_api`/`dc_api.jwt` response mode (the error must be
+    ///   returned through the Digital Credentials API), or if the Verifier answers with a non-2xx status
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
+        reason: Option<DeclineAuthorizationRequest>,
     ) -> Result<Option<Url>, Error>;
 
     /// Gets the status of Credential.

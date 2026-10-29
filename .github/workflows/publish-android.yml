@@ -23,13 +23,14 @@ env:
   SCCACHE_CACHE_SIZE: 1G
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
   CENTRAL_API: https://central.sonatype.com/api/v1/publisher
   MAVEN_PATH: ai/equs/equs-credentials-sdk-android
 
 jobs:
   android:
     runs-on: ubuntu-latest
-    environment: maven-central
+    environment: ${{ vars.DRY_RUN != 'true' && 'maven-central' || '' }}
     timeout-minutes: 120
     outputs:
       version: ${{ steps.version.outputs.version }}

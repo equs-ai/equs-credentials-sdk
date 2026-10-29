@@ -63,6 +63,8 @@ runs:
     - name: Install cargo-binstall and sccache
       if: inputs.tooling == 'true'
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         bash .github/scripts/install-binstall.sh

@@ -9,7 +9,7 @@ Defines the transport layer abstractions (`InboundTransport`, `OutboundTransport
 |------|------|
 | `mod.rs` | `InboundTransport` + `OutboundTransport` traits, `OutboundMessage`, `OutboundMessageResponse`, `TransportType`, `Error` |
 | `http/` | `HttpTransport` — concrete HTTP inbound + outbound implementation — see [http/CLAUDE.md](http/CLAUDE.md) |
-| `mock.rs` | Mock transport for tests (`#[cfg(test)]`) |
+| `mock.rs` | Mock transport for tests (`#[cfg(test)]`); unpacks each outbound message and panics on a `from` that is not authenticated, as a receiving agent would reject it |
 
 ## Key types / traits
 

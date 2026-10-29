@@ -20,6 +20,9 @@ pub mod holder;
 
 pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
+pub type DeclineAuthorizationRequestReason =
+    equs_sdk::vc::oid4vp::DeclineAuthorizationRequestReason;
+pub type DeclineAuthorizationRequest = equs_sdk::vc::oid4vp::DeclineAuthorizationRequest;
 
 #[derive(uniffi::Enum)]
 #[allow(clippy::large_enum_variant)]
@@ -57,6 +60,20 @@ pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,
     pub dc_api_origin: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum DeclineAuthorizationRequestReason {
+    AccessDenied,
+    InvalidTransactionData,
+}
+
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+#[uniffi::remote(Record)]
+pub struct DeclineAuthorizationRequest {
+    pub error: DeclineAuthorizationRequestReason,
+    /// `error_description`: non-empty printable ASCII without `"` and `\`.
+    pub description: Option<String>,
 }
 
 /// A transaction-data item of an authorization request, as the SDK holds it.

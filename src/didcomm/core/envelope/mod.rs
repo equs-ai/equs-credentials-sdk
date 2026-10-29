@@ -192,7 +192,8 @@ impl EnvelopeService {
     ///
     /// # Errors
     ///
-    /// * [Error] An error if the unpacking process fails.
+    /// * [Error] An error if the unpacking process fails, or if `message.from` is set and is not
+    ///   the DID of the authcrypt `skid` or of the signer `kid`.
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     pub async fn unpack(
         &self,
@@ -365,6 +366,32 @@ mod test {
 
         didcomm_service
             .unpack(&packed_msg, &UnpackOptions::default())
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "`message.from` value is not equal to signer `kid` value's DID")]
+    #[tokio::test]
+    async fn unpack_failed_with_from_not_matching_signer() {
+        let kms = LocalKms::new();
+
+        let (alice_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+        let (eve_did, _) = create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+
+        let didcomm_service = EnvelopeService::new(kms, UniversalResolver::default());
+
+        let msg = Message::build(
+            alice_did.to_owned(),
+            "http://example.com/protocols/lets_do_lunch/1.0/proposal".to_owned(),
+            json!({}),
+        )
+        .from(alice_did)
+        .finalize();
+
+        let (signed_msg, _) = didcomm_service.pack_signed(&msg, &eve_did).await.unwrap();
+
+        didcomm_service
+            .unpack(&signed_msg, &UnpackOptions::default())
             .await
             .unwrap();
     }

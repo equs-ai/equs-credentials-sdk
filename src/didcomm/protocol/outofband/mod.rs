@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snafu::{Location, ResultExt, Snafu};
+use snafu::{Location, OptionExt, ResultExt, Snafu, ensure};
 use ssi::dids::document::Represented;
 use url::Url;
 
@@ -72,6 +72,16 @@ pub enum Error {
     #[snafu(display("Agent error"))]
     Agent {
         source: agent::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Message has no `from`"))]
+    MissingSender {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Message `from` is not the connection's peer"))]
+    UnexpectedSender {
         #[snafu(implicit)]
         location: Location,
     },
@@ -279,12 +289,24 @@ where
         Ok(connection)
     }
 
+    /// Binds a message's sender to the connection, or checks that it is the bound peer.
+    ///
+    /// The first message on an `Invited` or `Accepted` connection makes `their_did` the peer and
+    /// completes the connection. Every later message must come from that peer.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::MissingSender] - `their_did` is `None`.
+    /// * [Error::UnexpectedSender] - the connection already has a peer and `their_did` is not it.
+    /// * [Error::Connection] - fails to load or update the connection.
     pub async fn establish_connection(
         &self,
         connection_id: &str,
         their_did: Option<String>,
         key_type: KeyType,
     ) -> Result<()> {
+        let their_did = their_did.context(MissingSenderSnafu)?;
+
         let mut connection = self
             .agent
             .connection_service()
@@ -296,14 +318,20 @@ where
             ConnectionState::Invited => {
                 let new_did = self.create_did(key_type).await?;
                 connection.my_did = new_did;
-                connection.their_did = their_did;
+                connection.their_did = Some(their_did);
                 connection.state = ConnectionState::Completed;
             }
             ConnectionState::Accepted => {
-                connection.their_did = their_did;
+                connection.their_did = Some(their_did);
                 connection.state = ConnectionState::Completed;
             }
-            _ => return Ok(()),
+            _ => {
+                ensure!(
+                    connection.their_did.as_deref() == Some(their_did.as_str()),
+                    UnexpectedSenderSnafu
+                );
+                return Ok(());
+            }
         }
 
         self.agent
@@ -391,4 +419,103 @@ pub enum Event {
         connection_id: String,
         invitation_url: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::connection::{
+        ConnectionRole, ConnectionService, ConnectionState, CreateOptions,
+    };
+    use crate::didcomm::protocol::outofband::{Error, OutOfBandV2Protocol};
+    use crate::kms::KeyType;
+
+    const ALICE_DID: &str = "did:example:alice";
+    const MALLORY_DID: &str = "did:example:mallory";
+
+    #[tokio::test]
+    async fn establish_connection_binds_sender_of_invited_connection() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+        let connection = agent
+            .connection_service()
+            .create_connection(&"did:example:inviter".to_owned(), invited_options())
+            .await
+            .unwrap();
+
+        oob.establish_connection(&connection.id, Some(ALICE_DID.to_owned()), KeyType::P256)
+            .await
+            .unwrap();
+
+        let connection = agent
+            .connection_service()
+            .get_connection(&connection.id)
+            .await
+            .unwrap();
+        assert_eq!(connection.state, ConnectionState::Completed);
+        assert_eq!(connection.their_did.as_deref(), Some(ALICE_DID));
+    }
+
+    #[tokio::test]
+    async fn establish_connection_accepts_peer_of_completed_connection() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+        let connection = create_test_connection(&agent).await;
+
+        oob.establish_connection(&connection.id, connection.their_did.clone(), KeyType::P256)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn establish_connection_failed_with_sender_not_peer() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+        let connection = create_test_connection(&agent).await;
+
+        let err = oob
+            .establish_connection(&connection.id, Some(MALLORY_DID.to_owned()), KeyType::P256)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::UnexpectedSender { .. }));
+    }
+
+    #[tokio::test]
+    async fn establish_connection_failed_without_sender() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+        let connection = agent
+            .connection_service()
+            .create_connection(&"did:example:inviter".to_owned(), invited_options())
+            .await
+            .unwrap();
+
+        let err = oob
+            .establish_connection(&connection.id, None, KeyType::P256)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::MissingSender { .. }));
+        let connection = agent
+            .connection_service()
+            .get_connection(&connection.id)
+            .await
+            .unwrap();
+        assert_eq!(connection.state, ConnectionState::Invited);
+        assert_eq!(connection.their_did, None);
+    }
+
+    fn invited_options() -> CreateOptions {
+        CreateOptions {
+            label: None,
+            role: ConnectionRole::Inviter,
+            state: ConnectionState::Invited,
+            alias: None,
+            auto_accept: None,
+            metadata: Default::default(),
+            pthid: "".to_owned(),
+        }
+    }
 }
