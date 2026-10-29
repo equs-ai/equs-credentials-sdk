@@ -8,6 +8,9 @@ on:
       version:
         type: string
         required: true
+      dry-run:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -23,17 +26,26 @@ env:
   SCCACHE_CACHE_SIZE: 1G
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
   CENTRAL_API: https://central.sonatype.com/api/v1/publisher
   MAVEN_PATH: ai/equs/equs-credentials-sdk-android
 
 jobs:
+  dry-run:
+    uses: ./.github/workflows/_dry-run.yml
+    with:
+      dry-run: ${{ inputs.dry-run }}
+    secrets:
+      token: ${{ secrets.EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN }}
+
   android:
+    needs: [dry-run]
     runs-on: ubuntu-latest
-    environment: ${{ vars.DRY_RUN != 'true' && 'maven-central' || '' }}
+    environment: ${{ needs.dry-run.outputs.dry-run != 'true' && 'maven-central' || '' }}
     timeout-minutes: 120
     outputs:
       version: ${{ steps.version.outputs.version }}
+    env:
+      DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

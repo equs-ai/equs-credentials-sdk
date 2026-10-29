@@ -8,6 +8,9 @@ on:
       version:
         type: string
         required: true
+      dry-run:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -21,18 +24,26 @@ env:
   NODE_VERSION: "20.18.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
   REGISTRY_URL_NPM: https://registry.npmjs.org/
   npm_config_access: public
 
 jobs:
+  dry-run:
+    uses: ./.github/workflows/_dry-run.yml
+    with:
+      dry-run: ${{ inputs.dry-run }}
+    secrets:
+      token: ${{ secrets.EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN }}
+
   nodejs-target-linux:
+    needs: [dry-run]
     runs-on: ubuntu-latest
-    environment: ${{ vars.DRY_RUN != 'true' && 'npmjs' || '' }}
+    environment: ${{ needs.dry-run.outputs.dry-run != 'true' && 'npmjs' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
     env:
+      DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
       ENVIRONMENT: production
       TARGET: x86_64-unknown-linux-gnu
       ALIAS: linux-x64-gnu
@@ -69,8 +80,9 @@ jobs:
           if-no-files-found: error
 
   nodejs-target-darwin:
+    needs: [dry-run]
     runs-on: macos-15
-    environment: ${{ vars.DRY_RUN != 'true' && 'npmjs' || '' }}
+    environment: ${{ needs.dry-run.outputs.dry-run != 'true' && 'npmjs' || '' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -79,6 +91,7 @@ jobs:
           - {target: aarch64-apple-darwin, alias: darwin-arm64}
           - {target: x86_64-apple-darwin, alias: darwin-x64}
     env:
+      DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
       ENVIRONMENT: production
       TARGET: ${{ matrix.target }}
       ALIAS: ${{ matrix.alias }}
@@ -115,15 +128,16 @@ jobs:
           if-no-files-found: error
 
   nodejs-wrapper:
-    needs: [nodejs-target-linux, nodejs-target-darwin]
+    needs: [dry-run, nodejs-target-linux, nodejs-target-darwin]
     runs-on: ubuntu-latest
-    environment: ${{ vars.DRY_RUN != 'true' && 'npmjs' || '' }}
+    environment: ${{ needs.dry-run.outputs.dry-run != 'true' && 'npmjs' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
     outputs:
       version: ${{ steps.version.outputs.version }}
     env:
+      DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
       ENVIRONMENT: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
