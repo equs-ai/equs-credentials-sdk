@@ -11,20 +11,26 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-env:
-  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
-
 jobs:
+  dry-run:
+    uses: ./.github/workflows/_dry-run.yml
+    secrets:
+      token: ${{ secrets.EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN }}
+
   preflight:
+    needs: [dry-run]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       version: ${{ steps.check.outputs.version }}
+      dry-run: ${{ needs.dry-run.outputs.dry-run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: check
         shell: bash
+        env:
+          DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -77,6 +83,8 @@ jobs:
   crate:
     needs: [preflight]
     uses: ./.github/workflows/publish-crate.yml
+    with:
+      dry-run: ${{ needs.preflight.outputs.dry-run }}
     secrets: inherit
 
   nodejs:
@@ -86,6 +94,7 @@ jobs:
     uses: ./.github/workflows/publish-nodejs.yml
     with:
       version: ${{ needs.preflight.outputs.version }}
+      dry-run: ${{ needs.preflight.outputs.dry-run }}
     secrets: inherit
 
   askar-nodejs:
@@ -95,6 +104,7 @@ jobs:
     uses: ./.github/workflows/publish-askar-nodejs.yml
     with:
       version: ${{ needs.preflight.outputs.version }}
+      dry-run: ${{ needs.preflight.outputs.dry-run }}
     secrets: inherit
 
   wasm:
@@ -104,6 +114,7 @@ jobs:
     uses: ./.github/workflows/publish-wasm.yml
     with:
       version: ${{ needs.preflight.outputs.version }}
+      dry-run: ${{ needs.preflight.outputs.dry-run }}
     secrets: inherit
 
   android:
@@ -113,6 +124,7 @@ jobs:
     uses: ./.github/workflows/publish-android.yml
     with:
       version: ${{ needs.preflight.outputs.version }}
+      dry-run: ${{ needs.preflight.outputs.dry-run }}
     secrets: inherit
 
   ios:
