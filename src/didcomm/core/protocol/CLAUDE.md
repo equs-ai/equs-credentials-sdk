@@ -26,7 +26,7 @@ Registered with `ProtocolRegistry`. The dispatcher queries `get_message_handlers
 fn supported_message_types(&self) -> &[&str];
 async fn handle(&self, msg: Message) -> protocol::Result<()>;
 ```
-Simple, stateless handler interface.
+Simple, stateless handler interface. A `msg` received through the `MessageReceiver` has an authenticated `from` whenever `from` is set, so handlers may treat it as the peer DID.
 
 ### `StatefulMessageHandler`
 Higher-level handler managing a `StateMachine`. Default `handle` implementation:

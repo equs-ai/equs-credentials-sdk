@@ -2944,9 +2944,9 @@ dependencies = [
 
 [[package]]
 name = "equs-didcomm"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8930f48a3fcfd7c837fbe4337436f20f814f187f1eaeaf6c5f94258d4840d17"
+checksum = "430a64a8b113270df3055661308693be88248cdd869ea7f9f5f3b0872dbdb5ca"
 dependencies = [
  "anyhow",
  "askar-crypto 0.3.3",

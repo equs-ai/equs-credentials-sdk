@@ -21,6 +21,7 @@ pack_signed(message, sign_by) → Result<(String, PackSignedMetadata)>
 pack_encrypted(message, to, from, sign_by, options) → Result<(String, PackEncryptedMetadata)>
 unpack(msg, options) → Result<(Message, UnpackMetadata)>
 ```
+`unpack` inherits the `didcomm` crate's (`equs-didcomm` ≥ 0.1.1) DIDComm v2.1 §Message Layer Addressing Consistency check: a set `message.from` must be the DID of `encrypted_from_kid` (authcrypt `skid`) and of `sign_from` (signer `kid`) whenever those are present; a mismatch is a `Malformed` error. A `from` with neither (plaintext, anoncrypt only) passes with `authenticated: false`.
 
 ### Type aliases (all from `didcomm::*`, re-exported publicly)
 `Message`, `MessageBuilder`, `Attachment`, `AttachmentBuilder`, `AttachmentData`,
@@ -38,6 +39,7 @@ Single-variant snafu struct: `Error { source: didcomm::error::Error, location: L
 - `pack_signed_succeeded` — round-trips a signed message.
 - `pack_plaintext_succeeded` — verifies exact JSON output of plaintext pack.
 - Two `#[should_panic]` tests: incorrect sender DID and incorrect recipient DID.
+- `unpack_failed_with_from_not_matching_signer` (`#[should_panic]`) — a JWS signed by one DID with `from` naming another; guards that the `didcomm` dependency enforces the sender binding.
 
 All tests use `LocalKms` + `UniversalResolver::default()` + `DIDPeer::generate_did_peer4`.
 

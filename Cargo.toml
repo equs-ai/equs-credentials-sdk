@@ -44,7 +44,7 @@ equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
 openid4vp = { package = "equs-openid4vp", version = "0.1.0" }
 sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.1" }
-didcomm = { package = "equs-didcomm", version = "0.1.0" }
+didcomm = { package = "equs-didcomm", version = "0.1.1" }
 did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
 did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
 did_parser_nom = { package = "equs-vcx-did-parser-nom", version = "0.1.0" }
@@ -111,7 +111,7 @@ getrandom = "=0.4.2"
 ## remember to update one-core version for not-wasm targets
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { package = "equs-didcomm", version = "0.1.0", features = ["uniffi"] }
+didcomm = { package = "equs-didcomm", version = "0.1.1", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 one-core = { package = "equs-one-core", version = "0.1.2" }

@@ -9,7 +9,7 @@ A complete example DIDComm protocol implementation of TicTacToe, demonstrating t
 |------|------|
 | `mod.rs` | Module root: `TicTacToeGame` struct, `Error` enum, move validation, winner detection |
 | `message.rs` | Message body types: `Move`, `Mark`, `MoveMessageBody`, `OutcomeMessageBody` |
-| `protocol.rs` | `TicTacToeProtocol<S>` — high-level API (start game, send move, send outcome); implements `Protocol` |
+| `protocol.rs` | `TicTacToeProtocol<S>` — high-level API (start game, send move, send outcome); implements `Protocol`; sends authcrypted as the message's `from` |
 | `fsm/` | Finite state machine: events, states, `TicTacToeStateMachine` |
 
 ## Key types / traits

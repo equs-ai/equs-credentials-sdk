@@ -32,7 +32,7 @@ parse_invitation(str)                       → Invitation
 2. Creates a local `did:peer:4` DID.
 3. Creates `ConnectionRecord` (Invitee, Accepted).
 
-`establish_connection`: advances connection from `Invited`/`Accepted` → `Completed`; sets `their_did`.
+`establish_connection`: binds a message's sender to its connection. Rejects a missing `their_did` (`MissingSender`). On `Invited`/`Accepted` it sets `their_did` and advances to `Completed`; in any other state `their_did` must equal the stored peer (`UnexpectedSender`). Every Aries handler (issuance and present-proof, both roles) calls it before stepping its state machine.
 
 `parse_invitation`: handles `?_oob=` URL param or raw JSON; validates `type_` == `INVITATION_TYPE`.
 

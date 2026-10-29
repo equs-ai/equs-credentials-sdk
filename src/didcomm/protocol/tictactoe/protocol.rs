@@ -196,9 +196,17 @@ where
 
     async fn send_message(&self, message: Message) -> protocol::Result<()> {
         let to_did = message.recipient()?;
+        let from_did = message.sender()?;
 
         self.service
-            .send_message(&message, to_did, &SendOptions::default())
+            .send_message(
+                &message,
+                to_did,
+                &SendOptions {
+                    from: Some(&from_did),
+                    sign_by: None,
+                },
+            )
             .await
             .map_err(|err| {
                 protocol::Snafu {
