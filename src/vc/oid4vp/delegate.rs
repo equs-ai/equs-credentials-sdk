@@ -133,6 +133,36 @@ pub(crate) fn decode_delegate_payload_disclosure(
     Ok(payload)
 }
 
+/// Rejects the delegate payloads if any has an `exp` (RFC 7519 section 4.1.4) that has passed.
+/// A payload without `exp` never expires.
+///
+/// # Errors
+///
+/// * Returns [`Error::TransactionDataExpired`] if `exp` is now or earlier.
+/// * Returns [`Error::Protocol`] (`InvalidTransactionData`) if `exp` is not an integer.
+#[cfg(feature = "delegate-sd-jwt")]
+pub(crate) fn check_delegate_payloads_not_expired(
+    payloads: &[serde_json::Value],
+    state: &Option<String>,
+) -> Result<(), Error> {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    for payload in payloads {
+        let Some(exp) = payload.get("exp") else {
+            continue;
+        };
+        let exp = exp.as_i64().ok_or_else(|| Protocol {
+            source: ProtocolError::transaction_data(
+                "malformed delegate payload: exp is not an integer",
+                state.to_owned(),
+            ),
+        })?;
+        if now >= exp {
+            return Err(Error::TransactionDataExpired { exp });
+        }
+    }
+    Ok(())
+}
+
 /// Builds a `delegate` Transaction Data for Authorization Request.
 ///
 /// Assembles the Array Disclosure `base64url([salt, { cnf?, ...payload_claims }])`
@@ -181,8 +211,10 @@ pub async fn delegate_transaction_data_item(
 
 #[cfg(all(test, feature = "delegate-sd-jwt"))]
 mod tests {
+    use super::check_delegate_payloads_not_expired;
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::vc::oid4vp::api::{DelegationRequest, as_delegate, delegate_transaction_data_item};
+    use crate::vc::oid4vp::{Error, ErrorType};
     use base64::Engine;
     use base64::prelude::BASE64_URL_SAFE_NO_PAD;
     use rstest::*;
@@ -264,5 +296,49 @@ mod tests {
         let cnf = &arr[1]["cnf"];
         assert!(cnf.is_object(), "payload must contain cnf object");
         assert!(cnf["jwk"].is_object(), "cnf must contain jwk field");
+    }
+
+    #[rstest]
+    #[case::no_exp(serde_json::json!({ "scope": "purchase" }))]
+    #[case::future_exp(serde_json::json!({ "exp": i64::MAX }))]
+    fn unexpired_delegate_payload_passes(#[case] payload: serde_json::Value) {
+        check_delegate_payloads_not_expired(&[payload], &None).expect("payload must pass");
+    }
+
+    #[rstest]
+    #[case::past(1)]
+    #[case::now(now())]
+    fn expired_delegate_payload_is_rejected(#[case] exp: i64) {
+        let err = check_delegate_payloads_not_expired(&[serde_json::json!({ "exp": exp })], &None)
+            .expect_err("expired payload must be rejected");
+        assert!(matches!(err, Error::TransactionDataExpired { exp: e } if e == exp));
+    }
+
+    #[test]
+    fn one_expired_delegate_payload_rejects_all() {
+        let payloads = [
+            serde_json::json!({ "exp": i64::MAX }),
+            serde_json::json!({ "exp": 1 }),
+        ];
+        let err = check_delegate_payloads_not_expired(&payloads, &None)
+            .expect_err("an expired payload among several must be rejected");
+        assert!(matches!(err, Error::TransactionDataExpired { exp: 1 }));
+    }
+
+    #[rstest]
+    #[case::string(serde_json::json!("1"))]
+    #[case::fraction(serde_json::json!(1.5))]
+    #[case::null(serde_json::Value::Null)]
+    fn non_integer_exp_is_invalid_transaction_data(#[case] exp: serde_json::Value) {
+        let err = check_delegate_payloads_not_expired(&[serde_json::json!({ "exp": exp })], &None)
+            .expect_err("non-integer exp must be rejected");
+        assert!(matches!(
+            err,
+            Error::Protocol { source } if *source.error_type() == ErrorType::InvalidTransactionData
+        ));
+    }
+
+    fn now() -> i64 {
+        time::OffsetDateTime::now_utc().unix_timestamp()
     }
 }

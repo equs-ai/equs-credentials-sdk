@@ -4457,6 +4457,7 @@ mod grant_delegation_tests {
     use openid4vp::core::authorization_request::parameters::{
         DelegateSdJwtTransactionData, TransactionDataItemTypeContent,
     };
+    use rstest::rstest;
     use serde_json::json;
     use ssi::dids::DIDURLBuf;
     use std::str::FromStr;
@@ -4588,15 +4589,18 @@ mod grant_delegation_tests {
         (entry, holder_key_handle)
     }
 
+    #[rstest]
+    #[case::no_exp(json!({"scope": "purchase"}))]
+    #[case::future_exp(json!({"scope": "purchase", "exp": i64::MAX}))]
     #[tokio::test]
-    async fn delegate_request_produces_dsd_jwt_in_vp_token() {
+    async fn delegate_request_produces_dsd_jwt_in_vp_token(#[case] payload: serde_json::Value) {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
         let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
         let http_client = MockHttpClient::new();
         let holder = utils::holder_service(http_client, kms, vault).await;
 
-        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let disclosure = make_delegate_disclosure(payload);
         let auth_request = dcql_dc_api_auth_request_with_delegate(
             disclosure,
             DelegateSdJwtTransactionDataFormat::Open,
@@ -4629,6 +4633,35 @@ mod grant_delegation_tests {
             cred_arr[0].as_str().expect("dSD-JWT string").ends_with('~'),
             "plain dSD-JWT must end with '~'"
         );
+    }
+
+    #[tokio::test]
+    async fn expired_delegate_payload_rejects_presentation() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
+        let holder = utils::holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase", "exp": 1}));
+        let auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::Open,
+        );
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![cred_entry]);
+
+        let err = holder
+            .present_credentials(
+                &auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect_err("an expired delegate payload must reject the presentation");
+        assert!(matches!(
+            err,
+            crate::vc::oid4vp::Error::TransactionDataExpired { exp: 1 }
+        ));
     }
 
     #[tokio::test]
