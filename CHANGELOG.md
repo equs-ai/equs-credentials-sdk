@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The crate, the npm packages, the Android AAR
 and the iOS XCFramework share one version.
 
+## Unreleased
+
+### Changed
+
+- `equs-openid4vp` 0.1.1: DCQL credential queries parse `trusted_authorities` (OpenID4VP 1.0 §6.1).
+
 ## 1.2.0-rc.1
 
 ### Added

@@ -3205,9 +3205,9 @@ dependencies = [
 
 [[package]]
 name = "equs-openid4vp"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "461dd7147df5764fd3df3b93c98ca533d0c9cebfab010f0ba239ccbf024ecbbf"
+checksum = "be8219c7976ea708704d3312e23738e39db1641718587d78366a23e7737f8ba0"
 dependencies = [
  "anyhow",
  "async-trait",
