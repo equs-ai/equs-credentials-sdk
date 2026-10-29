@@ -65,6 +65,10 @@ Show the user what is delegated before presenting. A `delegate` item in `Authori
 `[salt, {cnf, ...claims}]`: the requester's key and claims such as a `purchase_id`. Every other item type arrives as
 `TransactionDataItemTypeContent.Unknown`, with its fields as a JSON object.
 
+A delegate payload's `exp` (Unix seconds) is checked on present. Once it has passed, `presentCredentials(Auto)` sends
+nothing and fails with `Exception.Oid4vpTransactionDataExpired` (Swift: `Error.Oid4vpTransactionDataExpired`), which
+carries `exp`. Answer it with `declineAuthorizationRequest` and reason `InvalidTransactionData`.
+
 `VCCoreHolder.createDelegatedCredential(credential, DelegationParams(...))` creates a grant from a stored SD-JWT without
 an OID4VP request.
 

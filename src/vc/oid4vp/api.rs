@@ -274,6 +274,10 @@ pub enum Error {
     Internal { source: InternalError },
     #[snafu(transparent)]
     Protocol { source: ProtocolError },
+    /// A `delegate` transaction-data item's payload has an `exp` (Unix seconds) that has passed.
+    /// Nothing is sent to the Verifier; decline with `InvalidTransactionData` to answer it.
+    #[snafu(display("transaction data expired at {exp}"))]
+    TransactionDataExpired { exp: i64 },
 }
 
 /// The `OID4VP` `Holder` API.

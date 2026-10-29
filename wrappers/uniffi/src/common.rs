@@ -15,6 +15,10 @@ pub enum OID4VCIProtocolErrorType {
 #[derive(uniffi::Error, Debug)]
 pub enum Error {
     OID4VPHolder(String),
+    /// A `delegate` transaction-data payload has expired; `exp` is its Unix-seconds `exp`.
+    OID4VPTransactionDataExpired {
+        exp: i64,
+    },
     OID4VCIInternal(String),
     OID4VCIProtocol {
         error: OID4VCIProtocolErrorType,
@@ -41,10 +45,24 @@ impl From<equs_sdk::vc::core::Error> for Error {
     }
 }
 
+impl From<equs_sdk::vc::oid4vp::Error> for Error {
+    fn from(err: equs_sdk::vc::oid4vp::Error) -> Self {
+        match err {
+            equs_sdk::vc::oid4vp::Error::TransactionDataExpired { exp } => {
+                Error::OID4VPTransactionDataExpired { exp }
+            }
+            err => Error::OID4VPHolder(format!("{err:?}")),
+        }
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::OID4VPHolder(s) => write!(f, "OID4VP Holder service error: {s}"),
+            Error::OID4VPTransactionDataExpired { exp } => {
+                write!(f, "OID4VP transaction data expired at {exp}")
+            }
             Error::DIDResolution { details } => write!(f, "DID resolution error: {details}"),
             Error::OID4VCIInternal(s) => write!(f, "OID4VCI Internal error: {s}"),
             Error::OID4VCIProtocol {
