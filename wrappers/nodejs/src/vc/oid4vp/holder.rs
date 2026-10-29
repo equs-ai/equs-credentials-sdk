@@ -7,7 +7,7 @@ use crate::vc::oid4vp::JsPresentationResult;
 use equs_sdk::vault::CredentialEntry;
 use equs_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
-    ResolvedAuthRequest,
+    DeclineAuthorizationRequest, DeclineAuthorizationRequestReason, ResolvedAuthRequest,
 };
 use equs_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -146,15 +146,18 @@ impl InnerOID4VPHolder {
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
     ///
     /// @param {_AuthorizationRequest} authRequest - the resolved authorization request.
+    /// @param {DeclineAuthorizationRequest | undefined} reason - the error code and description of the error response;
+    /// omitted, it sends `access_denied` with "consent to share the presentation is not given".
     #[napi]
     pub async fn decline_authorization_request(
         &self,
         auth_request: _AuthorizationRequest,
+        reason: Option<JsDeclineAuthorizationRequest>,
     ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
         let redirect_url = self
             .0
-            .decline_authorization_request(&auth_request)
+            .decline_authorization_request(&auth_request, reason.map(Into::into))
             .await
             .map_err(IntoNapiError::into_napi_error)?;
 
@@ -296,6 +299,42 @@ pub struct JsAuthorizationResponseMetadata {
 pub struct JsIdTokenMetadata {
     pub key_metadata: JsKeyMetadata,
     pub lifetime: i64,
+}
+
+#[napi(string_enum, js_name = "DeclineAuthorizationRequestReason")]
+pub enum JsDeclineAuthorizationRequestReason {
+    AccessDenied,
+    InvalidTransactionData,
+}
+
+impl From<JsDeclineAuthorizationRequestReason> for DeclineAuthorizationRequestReason {
+    fn from(value: JsDeclineAuthorizationRequestReason) -> Self {
+        match value {
+            JsDeclineAuthorizationRequestReason::AccessDenied => {
+                DeclineAuthorizationRequestReason::AccessDenied
+            }
+            JsDeclineAuthorizationRequestReason::InvalidTransactionData => {
+                DeclineAuthorizationRequestReason::InvalidTransactionData
+            }
+        }
+    }
+}
+
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-error-response>.
+#[napi(object, js_name = "DeclineAuthorizationRequest")]
+pub struct JsDeclineAuthorizationRequest {
+    pub error: JsDeclineAuthorizationRequestReason,
+    /// `error_description`: non-empty printable ASCII without `"` and `\`.
+    pub description: Option<String>,
+}
+
+impl From<JsDeclineAuthorizationRequest> for DeclineAuthorizationRequest {
+    fn from(value: JsDeclineAuthorizationRequest) -> Self {
+        Self {
+            error: value.error.into(),
+            description: value.description,
+        }
+    }
 }
 
 impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata {

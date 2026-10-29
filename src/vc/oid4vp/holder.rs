@@ -20,10 +20,11 @@ use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialMapping,
-    CredentialsFindResult, CredentialsMapping, ID_TOKEN, PRESENTATION_SUBMISSION,
-    PresentationResult, ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery,
-    ResponseMode, STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN,
-    as_delegate, get_transaction_data_hash,
+    CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequest,
+    DeclineAuthorizationRequestReason, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
+    ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, STATE,
+    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate,
+    get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{
@@ -511,7 +512,7 @@ where
         Ok(error)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, error), err())]
     async fn send_auth_error_resp(
         &self,
         response_uri: Option<&Url>,
@@ -1054,6 +1055,16 @@ fn validate_transaction_data_delegate(
     Ok(())
 }
 
+const DEFAULT_DECLINE_DESCRIPTION: &str = "consent to share the presentation is not given";
+
+/// RFC 6749, Section 4.1.2.1.
+fn is_valid_error_description(description: &str) -> bool {
+    !description.is_empty()
+        && description
+            .bytes()
+            .all(|b| matches!(b, 0x20..=0x21 | 0x23..=0x5B | 0x5D..=0x7E))
+}
+
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<HL, HC, KH, KMS> api::Holder for HolderService<HL, HC, KH, KMS>
@@ -1270,16 +1281,45 @@ where
         Ok(result)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, reason), err())]
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
+        reason: Option<DeclineAuthorizationRequest>,
     ) -> Result<Option<Url>> {
+        if reason.is_some()
+            && matches!(
+                auth_request.response_mode,
+                ResponseMode::DcApi | ResponseMode::DcApiJwt
+            )
+        {
+            return Err(AuthorizationResponseSnafu {
+                details: "a decline reason cannot be delivered in dc_api/dc_api.jwt response mode; return the error through the Digital Credentials API",
+            }
+            .build()
+            .into());
+        }
+
+        let reason = reason.unwrap_or_else(|| DeclineAuthorizationRequest {
+            error: DeclineAuthorizationRequestReason::AccessDenied,
+            description: Some(DEFAULT_DECLINE_DESCRIPTION.to_owned()),
+        });
+        if let Some(description) = &reason.description
+            && !is_valid_error_description(description)
+        {
+            return Err(AuthorizationResponseSnafu {
+                details: "decline description must be non-empty printable ASCII without `\"` and `\\`",
+            }
+            .build()
+            .into());
+        }
+
         info!(
             "presentation request is declined, sending an authorization error response to the verifier..."
         );
-        let err = ProtocolError::access_denied(
-            "consent to share the presentation is not given",
+        let err = ProtocolError::new(
+            reason.error.into(),
+            reason.description,
             auth_request.state.clone(),
         );
         let (err, response) = self
@@ -1488,8 +1528,9 @@ mod tests {
     };
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
-        CredentialsFindResult, Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError,
-        PresentationResult, ProtocolError, ResolvedPresentationQuery, ResponseType,
+        CredentialsFindResult, DeclineAuthorizationRequest, DeclineAuthorizationRequestReason,
+        Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
+        ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::status_formats::status_list_token_jwt;
@@ -2710,20 +2751,56 @@ mod tests {
             .unwrap();
     }
 
+    fn decline_reason(
+        error: DeclineAuthorizationRequestReason,
+        description: Option<&str>,
+    ) -> Option<DeclineAuthorizationRequest> {
+        Some(DeclineAuthorizationRequest {
+            error,
+            description: description.map(str::to_owned),
+        })
+    }
+
+    #[rstest]
+    #[case::default_reason(
+        None,
+        "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+    )]
+    #[case::access_denied(
+        decline_reason(
+            DeclineAuthorizationRequestReason::AccessDenied,
+            Some("amount exceeds the spending limit")
+        ),
+        "error=access_denied&error_description=amount+exceeds+the+spending+limit"
+    )]
+    #[case::invalid_transaction_data(
+        decline_reason(
+            DeclineAuthorizationRequestReason::InvalidTransactionData,
+            Some("unsupported currency")
+        ),
+        "error=invalid_transaction_data&error_description=unsupported+currency"
+    )]
+    #[case::without_description(
+        decline_reason(DeclineAuthorizationRequestReason::AccessDenied, None),
+        "error=access_denied"
+    )]
     #[tokio::test]
-    async fn decline_authorization_request_succeeds() {
+    async fn decline_authorization_request_succeeds(
+        #[case] reason: Option<DeclineAuthorizationRequest>,
+        #[case] expected_error: &'static str,
+    ) {
         let mut http_client = MockHttpClient::new();
 
         mock_http_fn(
             &mut http_client,
             Method::POST,
             build_url("http://127.0.0.1:55796", "/auth"),
-            |req| {
+            move |req| {
                 let body = String::from_utf8(req.body().to_owned()).unwrap();
 
                 assert_eq!(
                     body,
-                    "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
+                    format!("{expected_error}&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3")
                 );
 
                 Ok(HttpResponse::default())
@@ -2734,9 +2811,43 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         holder
-            .decline_authorization_request(&serde_json::from_value(auth_request_json()).unwrap())
+            .decline_authorization_request(
+                &serde_json::from_value(auth_request_json()).unwrap(),
+                reason,
+            )
             .await
             .unwrap();
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::double_quote("say \"no\"")]
+    #[case::backslash("no\\thanks")]
+    #[case::control_character("no\nthanks")]
+    #[tokio::test]
+    async fn decline_authorization_request_rejects_description_outside_rfc6749_charset(
+        #[case] description: &str,
+    ) {
+        let holder =
+            holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+
+        let err = holder
+            .decline_authorization_request(
+                &serde_json::from_value(auth_request_json()).unwrap(),
+                decline_reason(
+                    DeclineAuthorizationRequestReason::InvalidTransactionData,
+                    Some(description),
+                ),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::Internal { .. }));
+        assert!(
+            err.to_string()
+                .contains("decline description must be non-empty"),
+            "{err}"
+        );
     }
 
     #[rstest]
@@ -2763,7 +2874,10 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         let err = holder
-            .decline_authorization_request(&serde_json::from_value(auth_request_json()).unwrap())
+            .decline_authorization_request(
+                &serde_json::from_value(auth_request_json()).unwrap(),
+                None,
+            )
             .await
             .unwrap_err();
 
@@ -2776,8 +2890,23 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::default_reason(
+        None,
+        "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+    )]
+    #[case::invalid_transaction_data(
+        decline_reason(
+            DeclineAuthorizationRequestReason::InvalidTransactionData,
+            Some("unsupported currency")
+        ),
+        "error=invalid_transaction_data&error_description=unsupported+currency"
+    )]
     #[tokio::test]
-    async fn decline_authorization_request_returns_url_in_same_device_flow() {
+    async fn decline_authorization_request_returns_url_in_same_device_flow(
+        #[case] reason: Option<DeclineAuthorizationRequest>,
+        #[case] expected_error: &'static str,
+    ) {
         let holder =
             holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let mut auth_req: serde_json::Map<String, Value> =
@@ -2790,6 +2919,7 @@ mod tests {
         let redirect_url = holder
             .decline_authorization_request(
                 &serde_json::from_str(&serde_json::to_string(&auth_req).unwrap()).unwrap(),
+                reason,
             )
             .await
             .unwrap()
@@ -2797,7 +2927,46 @@ mod tests {
 
         assert_eq!(
             redirect_url.fragment().unwrap(),
-            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
+            format!("{expected_error}&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3")
+        );
+    }
+
+    #[rstest]
+    #[case::dc_api("dc_api")]
+    #[case::dc_api_jwt("dc_api.jwt")]
+    #[tokio::test]
+    async fn decline_authorization_request_rejects_reason_in_dc_api_mode(
+        #[case] response_mode: &str,
+    ) {
+        let holder =
+            holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let mut auth_req: serde_json::Map<String, Value> =
+            serde_json::from_value(auth_request_json()).unwrap();
+        auth_req.insert(
+            "response_mode".to_string(),
+            Value::String(response_mode.to_string()),
+        );
+        let auth_req = serde_json::from_str(&serde_json::to_string(&auth_req).unwrap()).unwrap();
+
+        let err = holder
+            .decline_authorization_request(
+                &auth_req,
+                decline_reason(DeclineAuthorizationRequestReason::AccessDenied, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::Internal { .. }));
+        assert!(
+            err.to_string().contains("cannot be delivered in dc_api"),
+            "{err}"
+        );
+        assert_eq!(
+            holder
+                .decline_authorization_request(&auth_req, None)
+                .await
+                .unwrap(),
+            None
         );
     }
 

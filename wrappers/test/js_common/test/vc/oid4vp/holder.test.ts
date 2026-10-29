@@ -4,6 +4,7 @@ import {
   Credential,
   CredentialEntry,
   CredentialMetadata,
+  DeclineAuthorizationRequestReason,
   DIDKey,
   FindVCsFailReason,
   FindVCsFailReasonType,
@@ -287,6 +288,34 @@ describe("OID4VP Holder: ", () => {
       error_description: "consent to share the presentation is not given",
       state: STATE,
     });
+  });
+
+  it("decline authorization request with a reason", async () => {
+    let response;
+    await mockServer.forPost("/response").thenCallback(async (request): Promise<any> => {
+      response = await request.body.getFormData();
+      return {};
+    });
+
+    await holder.declineAuthorizationRequest(new AuthorizationRequest(AUTH_REQUEST), {
+      error: DeclineAuthorizationRequestReason.InvalidTransactionData,
+      description: "unsupported currency",
+    });
+
+    expect(response).toEqual({
+      error: "invalid_transaction_data",
+      error_description: "unsupported currency",
+      state: STATE,
+    });
+  });
+
+  it("decline authorization request rejects a non-ASCII description", async () => {
+    await expect(
+      holder.declineAuthorizationRequest(new AuthorizationRequest(AUTH_REQUEST), {
+        error: DeclineAuthorizationRequestReason.AccessDenied,
+        description: "отказано",
+      }),
+    ).rejects.toThrow("decline description must be non-empty");
   });
 });
 

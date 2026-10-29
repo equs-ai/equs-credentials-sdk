@@ -685,6 +685,40 @@ import Testing
 		}
 	}
 
+	@Test func declineAuthorizationRequestWithReason() async throws {
+		let expectedResponse =
+			"error=invalid_transaction_data&error_description=unsupported+currency&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
+
+		try await confirmation("Decline Response is not received") { confirmResponse in
+			self.http["/response"] = { request in
+				#expect(request.body! == expectedResponse)
+
+				confirmResponse()
+
+				return MockHttpRouter.ok("", contentType: "text/plain")
+			}
+
+			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
+
+			let _ = try await holder.declineAuthorizationRequest(
+				authRequest: Oid4vpHolderTestConstants.authRequest,
+				reason: DeclineAuthorizationRequest(error: .invalidTransactionData, description: "unsupported currency"))
+		}
+	}
+
+	@Test func declineAuthorizationRequestRejectsNonAsciiDescription() async throws {
+		do {
+			let _ = try await self.holder.declineAuthorizationRequest(
+				authRequest: Oid4vpHolderTestConstants.authRequest,
+				reason: DeclineAuthorizationRequest(error: .accessDenied, description: "отказано"))
+			Issue.record("expected the non-ASCII description to be rejected")
+		} catch EqusSdk.Error.Oid4vpHolder(let message) {
+			#expect(message.contains("decline description must be non-empty"), "\(message)")
+		} catch {
+			Issue.record("expected the non-ASCII description to be rejected, got \(error)")
+		}
+	}
+
 	@Test func getCredentialStatus() async throws {
         self.http["/status_list"] = { request in
             return MockHttpRouter.ok(Oid4vpHolderTestConstants.statusList, contentType: "application/statuslist+jwt")
