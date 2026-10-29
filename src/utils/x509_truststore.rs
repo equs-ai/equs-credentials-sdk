@@ -83,23 +83,26 @@ impl<T: CertificateValidator> Truststore<T> {
         iss: &str,
     ) -> Result<ParsedCertificate, TruststoreError> {
         let leaf_certificate = match self.anchor_policy {
-            AnchorPolicy::Require => validate_chain_against_trust_anchors(
-                &self.cert_validator,
-                pem_chain,
-                &self.trusted_roots,
-                || {
-                    CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
-                        EnforceKeyUsage::DigitalSignature,
-                    ]))
-                },
-            )
-            .await
-            .map_err(|e| {
-                UntrustedChainSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?,
+            AnchorPolicy::Require => match self.held_leaf(pem_chain).await? {
+                Some(leaf) => leaf,
+                None => validate_chain_against_trust_anchors(
+                    &self.cert_validator,
+                    pem_chain,
+                    &self.trusted_roots,
+                    || {
+                        CertificateValidationOptions::signature_and_revocation_below_anchor(Some(
+                            vec![EnforceKeyUsage::DigitalSignature],
+                        ))
+                    },
+                )
+                .await
+                .map_err(|e| {
+                    UntrustedChainSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?,
+            },
             AnchorPolicy::IntegrityOnly => {
                 let leaf = verify_chain_integrity(&self.cert_validator, pem_chain)
                     .await
@@ -116,6 +119,51 @@ impl<T: CertificateValidator> Truststore<T> {
         }
 
         Ok(leaf_certificate)
+    }
+
+    /// The leaf of `pem_chain` when it is itself a held anchor, checked for validity and key usage
+    /// only. A self-signed leaf is left to path validation.
+    async fn held_leaf(
+        &self,
+        pem_chain: &str,
+    ) -> Result<Option<ParsedCertificate>, TruststoreError> {
+        let first_der = |pem: &str| {
+            x509_parser::pem::Pem::iter_from_buffer(pem.as_bytes())
+                .next()
+                .and_then(Result::ok)
+                .map(|pem| pem.contents)
+        };
+        let Some(leaf) = first_der(pem_chain) else {
+            return Ok(None);
+        };
+        let Some(anchor_pem) = self
+            .trusted_roots
+            .values()
+            .find(|anchor| first_der(anchor).as_ref() == Some(&leaf))
+        else {
+            return Ok(None);
+        };
+        let self_signed = x509_parser::parse_x509_certificate(&leaf).is_ok_and(|(_, cert)| {
+            cert.subject() == cert.issuer() && cert.verify_signature(None).is_ok()
+        });
+        if self_signed {
+            return Ok(None);
+        }
+        self.cert_validator
+            .parse_pem_chain(
+                anchor_pem,
+                CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
+                    EnforceKeyUsage::DigitalSignature,
+                ])),
+            )
+            .await
+            .map(Some)
+            .map_err(|e| {
+                UntrustedChainSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })
     }
 
     /// Checks revocation below the held anchor a chain reaches; a chain reaching none passes, as
@@ -302,6 +350,11 @@ pub(crate) mod tests {
     #[case::issuer_chain(anchors(&[test_root_ca()]), test_issuer_cert(), "https://issuer.example/vc")]
     #[case::web_pki_chain(anchors(&[github_root_ca()]), github_cert_chain(), "https://github.com")]
     #[case::iss_is_not_a_url(anchors(&[test_root_ca()]), test_issuer_cert(), "urn:example:issuer")]
+    #[case::leaf_held_as_its_own_anchor(
+        anchors(&[test_issuer_cert()]),
+        test_issuer_cert(),
+        "https://issuer.example/vc"
+    )]
     #[tokio::test]
     async fn trusts_chain_signed_up_to_held_anchor(
         #[case] trusted_roots: HashMap<String, String>,
@@ -338,6 +391,49 @@ pub(crate) mod tests {
             .verify_chain_trust(cert_chain, "https://issuer.example")
             .await
             .unwrap();
+    }
+
+    #[rstest]
+    #[case::expired(json!({ "not_before": "2024-01-01", "not_after": "2025-01-01",
+        "key_usages": ["digital_signature"] }))]
+    #[case::without_digital_signature(json!({ "not_before": "2026-01-01",
+        "not_after": "2046-01-01", "key_usages": ["key_encipherment"] }))]
+    #[tokio::test]
+    async fn a_held_leaf_is_still_checked_for_validity_and_key_usage(
+        #[case] spec: serde_json::Value,
+    ) {
+        let ca_key = test_fixtures::JWK::generate_p256();
+        let ca = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Held Leaf CA"]],
+                "not_before": "2024-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &ca_key,
+            None,
+        );
+        let mut leaf_spec = json!({
+            "subject": [["CN", "Held Leaf"]], "ca": false, "authority_key_identifier": true
+        });
+        if let (Some(leaf_spec), Some(spec)) = (leaf_spec.as_object_mut(), spec.as_object()) {
+            leaf_spec.extend(spec.clone());
+        }
+        let leaf = test_fixtures::x509(
+            &leaf_spec,
+            &test_fixtures::keys().issuer,
+            Some((&ca, &ca_key)),
+        );
+
+        let error = truststore(anchors(&[&leaf]))
+            .verify_chain_trust(&leaf, "https://issuer.example")
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Certificate chain is not trusted"),
+            "{error}"
+        );
     }
 
     #[rstest]

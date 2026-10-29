@@ -871,7 +871,7 @@ mod tests {
         use crate::vc::formats::mso_mdoc::tests::{sample_binder, sample_mso_mdoc_vp_with_status};
         use crate::vc::status_formats::status_list_token_jwt;
         use crate::vc::status_formats::status_list_token_jwt::tests::{
-            status_list_root_ca, x5c_status_list_token,
+            status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
         };
         use crate::vc::trust::issuer::{
             IssuerTrustConfig, IssuerTrustMode, IssuerTrustStatus, IssuerTrustVerification,
@@ -918,10 +918,17 @@ mod tests {
             mode: IssuerTrustMode,
             status_list_anchored: bool,
         ) -> VerifierService {
+            verifier_with(iaca, mode, status_list_anchored.then(status_list_root_ca))
+        }
+
+        /// [verifier] with an optional status-list anchor.
+        fn verifier_with(
+            iaca: &str,
+            mode: IssuerTrustMode,
+            status_list_anchor: Option<&str>,
+        ) -> VerifierService {
             let mut trusted = vec![iaca];
-            if status_list_anchored {
-                trusted.push(status_list_root_ca());
-            }
+            trusted.extend(status_list_anchor);
             VerifierService::new(mso_mdoc::tests::VERIFIER, UniversalResolver::default())
                 .with_verification_params(VerificationParams {
                     trusted_certs: Some(anchors(&trusted)),
@@ -1003,6 +1010,29 @@ mod tests {
             .await;
 
             assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn status_list_signer_held_as_a_revocation_anchor_passes_under_enforce() {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+
+            let verified = verifier_with(
+                &iaca,
+                IssuerTrustMode::Enforce,
+                Some(status_list_signer_cert()),
+            )
+            .verify_presentation_with_issuer_trust(
+                Some(sample_binder()),
+                &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                    value: vp,
+                    enc_pub_key: None,
+                }),
+                &serving_status_list(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
         }
 
         #[tokio::test]

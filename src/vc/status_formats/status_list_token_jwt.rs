@@ -727,6 +727,18 @@ pub(crate) mod tests {
         assert_eq!(vc_status, Some(expected_status));
     }
 
+    #[tokio::test]
+    async fn x5c_signed_status_list_is_verified_against_its_signer_held_as_an_anchor() {
+        // e.g. a revocation service listing the signer
+        let token = x5c_signed_status_list("statuslist+jwt", true);
+
+        let vc_status = x5c_status_of(token, 2, Some(anchors(&[status_list_signer_cert()])))
+            .await
+            .unwrap();
+
+        assert_eq!(vc_status, Some(VCStatus::Invalid));
+    }
+
     #[rstest]
     #[case::no_trusted_anchors(None)]
     #[case::unrelated_anchor(Some(anchors(&[pki().unrelated_root_ca.as_str()])))]
@@ -805,6 +817,11 @@ pub(crate) mod tests {
         pki().root_ca.as_str()
     }
 
+    /// Signer certificate of the fixture status list token.
+    pub(crate) fn status_list_signer_cert() -> &'static str {
+        pki().signer_cert.as_str()
+    }
+
     /// A root CA, the certificate it issued for the fixture issuer key, and an unrelated root CA.
     struct StatusListPki {
         root_ca: String,
@@ -828,7 +845,8 @@ pub(crate) mod tests {
                     "subject": [["CN", "Test Status List Signer"]],
                     "sans": ["status.example"],
                     "not_before": "2025-01-01", "not_after": "2046-01-01",
-                    "key_usages": ["digital_signature"], "authority_key_identifier": true
+                    "ca": false, "key_usages": ["digital_signature"],
+                    "authority_key_identifier": true
                 }),
                 &test_fixtures::keys().issuer,
                 Some((&root_ca, &root_key)),
