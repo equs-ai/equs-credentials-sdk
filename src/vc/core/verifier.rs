@@ -314,7 +314,7 @@ impl VerifierService {
                 .context(VCSnafu)?;
 
                 let category = config.classification.classify_claims(&claims);
-                let (outcome, issuer_chain_akis) = match sd_jwt_issuer_key(vp) {
+                let (outcome, issuer_chain_akis) = match sd_jwt_issuer_key(vp).context(VCSnafu)? {
                     SdJwtIssuerKey::X5c(chain) => (
                         evaluate_chain_for_category(
                             &certificate_validator,

@@ -361,25 +361,24 @@ pub enum SdJwtIssuerKey {
 }
 
 /// The issuer key source of a compact SD-JWT VC presentation (`issuer-jwt~disclosures~kb-jwt`).
+/// Fails when the issuer JWT or its `x5c` cannot be read, rather than falling back to `Other`.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn sd_jwt_issuer_key(presentation: &str) -> SdJwtIssuerKey {
+pub fn sd_jwt_issuer_key(presentation: &str) -> Result<SdJwtIssuerKey, crate::vc::formats::Error> {
+    let invalid = |details: String| crate::vc::formats::VerifyingSnafu { details }.build();
     let issuer_jwt = presentation.split('~').next().unwrap_or_default();
-    let Ok((header, payload)) = ssi::claims::jws::decode_unverified(issuer_jwt) else {
-        return SdJwtIssuerKey::Other;
-    };
-    let iss_is_did = serde_json::from_slice::<serde_json::Value>(&payload)
-        .ok()
-        .and_then(|claims| {
-            claims
-                .get("iss")
-                .and_then(|iss| iss.as_str().map(str::to_owned))
-        })
+    let (header, payload) = ssi::claims::jws::decode_unverified(issuer_jwt)
+        .map_err(|e| invalid(format!("Issuer JWT cannot be decoded: {e}")))?;
+    let claims = serde_json::from_slice::<serde_json::Value>(&payload)
+        .map_err(|e| invalid(format!("Issuer JWT payload is not JSON: {e}")))?;
+    let iss_is_did = claims
+        .get("iss")
+        .and_then(serde_json::Value::as_str)
         .is_some_and(|iss| iss.starts_with("did:"));
     match header.x509_certificate_chain {
         Some(x5c) if !iss_is_did => one_core::mapper::x509::x5c_into_pem_chain(&x5c)
             .map(SdJwtIssuerKey::X5c)
-            .unwrap_or(SdJwtIssuerKey::Other),
-        _ => SdJwtIssuerKey::Other,
+            .map_err(|e| invalid(format!("Issuer x5c is not a certificate chain: {e}"))),
+        _ => Ok(SdJwtIssuerKey::Other),
     }
 }
 
@@ -1533,13 +1532,85 @@ mod tests {
             assert!(error.contains("Certificate is expired"), "{error}");
         }
 
+        #[tokio::test]
+        async fn an_undecodable_issuer_jwt_fails_rather_than_passing_as_a_did_issuer() {
+            // the SD-JWT verifier ignores an unknown `crit`, the issuer key decoder rejects it
+            let vp = x5c_sd_jwt_vc_with(
+                serde_json::json!({ "crit": ["x"], "x": true }),
+                "urn:example:eaa:1",
+            );
+            let eaa_anchor = TrustAnchor {
+                role: Some("eaa_provider".to_string()),
+                ..anchor(github_root_ca(), "list:1")
+            };
+
+            let result = verify_with_anchors(vp, IssuerTrustMode::Enforce, vec![eaa_anchor]).await;
+
+            let error = format!(
+                "{:?}",
+                result.expect_err("an undecodable issuer JWT must fail")
+            );
+            assert!(error.contains("Issuer JWT cannot be decoded"), "{error}");
+        }
+
         #[test]
         fn issuer_key_source() {
             assert!(matches!(
                 sd_jwt_issuer_key(&sd_jwt_vc()),
-                SdJwtIssuerKey::X5c(_)
+                Ok(SdJwtIssuerKey::X5c(_))
             ));
-            assert_eq!(sd_jwt_issuer_key("not-a-jwt~"), SdJwtIssuerKey::Other);
+            assert_eq!(
+                sd_jwt_issuer_key(&did_sd_jwt_vc()).unwrap(),
+                SdJwtIssuerKey::Other
+            );
+        }
+
+        #[rstest::rstest]
+        #[case::not_a_jwt("not-a-jwt~".to_string())]
+        #[case::unknown_crit_header(x5c_sd_jwt_vc_with(
+            serde_json::json!({ "crit": ["x"], "x": true }),
+            "urn:eudi:pid:1",
+        ))]
+        #[case::x5c_not_a_certificate(x5c_sd_jwt_vc_with(
+            serde_json::json!({ "x5c": ["%not base64%"] }),
+            "urn:eudi:pid:1",
+        ))]
+        fn an_issuer_key_that_cannot_be_read_is_an_error(#[case] vp: String) {
+            assert!(sd_jwt_issuer_key(&vp).is_err());
+        }
+
+        /// A `vct` credential under the fixture `x5c` chain, with `extra_header` merged in.
+        fn x5c_sd_jwt_vc_with(extra_header: serde_json::Value, vct: &str) -> String {
+            let keys = test_fixtures::keys();
+            let now = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+            let mut header = serde_json::json!({
+                "typ": "dc+sd-jwt", "alg": "ES256",
+                "x5c": pem_chain_into_x5c(test_issuer_cert()).unwrap()
+            });
+            if let (Some(header), Some(extra)) = (header.as_object_mut(), extra_header.as_object())
+            {
+                header.extend(extra.clone());
+            }
+            let sd_jwt = test_fixtures::sd_jwt(
+                &header,
+                &serde_json::json!({
+                    "vct": vct,
+                    "iss": "https://localhost.emobix.co.uk:9443/test/a/asdk-vci-verifier-test-asdk-598",
+                    "cnf": { "jwk": keys.holder.to_public() },
+                    "exp": now + 3600,
+                    "iat": now - 60
+                }),
+                &[],
+                &keys.issuer,
+            );
+            test_fixtures::sd_jwt_kb(
+                &sd_jwt,
+                &serde_json::json!({ "typ": "kb+jwt", "alg": "ES256" }),
+                &serde_json::json!({
+                    "aud": "x509_san_dns:verifier-asdk", "iat": now - 60, "nonce": NONCE
+                }),
+                &keys.holder,
+            )
         }
     }
 }
