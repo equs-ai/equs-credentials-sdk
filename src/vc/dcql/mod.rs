@@ -399,6 +399,15 @@ pub(crate) fn resolve_presentation_response(
             }
             .fail()?
         }
+        if extracted_presentations.len() > 1 && !credential_query.multiple().unwrap_or_default() {
+            ParseSnafu {
+                details: format!(
+                    "Multiple presentations for credential query \"{}\" that does not allow multiple",
+                    credential_query.id().as_str()
+                ),
+            }
+            .fail()?
+        }
 
         let mut presentation_results = Vec::new();
         match credential_query.format() {
@@ -1099,6 +1108,32 @@ mod tests {
         let err = resolve_presentation_response(vp_token, &dcql, &Default::default()).unwrap_err();
 
         assert!(err.to_string().contains(expected), "{err}");
+    }
+
+    #[rstest]
+    #[case::omitted(json!({"id": "a"}), false)]
+    #[case::not_allowed(json!({"id": "a", "multiple": false}), false)]
+    #[case::allowed(json!({"id": "a", "multiple": true}), true)]
+    fn resolve_presentation_response_accepts_several_presentations_only_when_multiple(
+        #[case] query: Value,
+        #[case] accepted: bool,
+    ) {
+        let dcql = sd_jwt_dcql(json!([query]), Value::Null);
+        let token = sample_sdjwt_presentation_token();
+        let vp_token = json!({ "a": [token, token] });
+
+        let result = resolve_presentation_response(vp_token, &dcql, &Default::default());
+
+        match accepted {
+            true => assert_eq!(result.unwrap().len(), 2),
+            false => {
+                let err = result.unwrap_err().to_string();
+                assert!(
+                    err.contains("Multiple presentations for credential query \"a\""),
+                    "{err}"
+                );
+            }
+        }
     }
 
     #[rstest]
