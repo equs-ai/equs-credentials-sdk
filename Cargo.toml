@@ -156,13 +156,10 @@ opt-level = 3
 # require 0.2.0 (and equs-one-core-crypto 0.1.1). Until then every equs-one-core crate is built from
 # the equs-ai/one-core commit below, so they all come from one source.
 [patch.crates-io]
-equs-one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-standardized-types = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-crypto = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-dcql = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-equs-one-core-proc-macros = { git = "https://github.com/equs-ai/one-core.git", rev = "cf7b0acbcb17e8cd20d4b5776efe5b43529510b0" }
-# TODO: remove this patch once equs-openid4vp 0.1.1 is released; the dependency above already
-# requires 0.1.1, which adds DCQL trusted_authorities.
-equs-openid4vp = { git = "https://github.com/equs-ai/openid4vp.git", rev = "6d7b7b3e84422b3d4961ec973d964feb875185b2" }
+equs-one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-standardized-types = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-crypto = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-dcql = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
+equs-one-core-proc-macros = { git = "https://github.com/equs-ai/one-core.git", rev = "7b4830f4d0f597deef29c0153de8bd252a569e1c" }
