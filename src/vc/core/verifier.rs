@@ -277,7 +277,7 @@ impl VerifierService {
     }
 
     /// Verifies with an integrity-only issuer chain, then evaluates it against the anchors. The
-    /// status-list chain is anchored under `Enforce` and integrity-only under `Report`.
+    /// status-list chain is checked per [status_anchor_policy].
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
     async fn verify_with_issuer_trust(
@@ -525,8 +525,8 @@ fn ensure_valid(status: Option<VCStatus>) -> Result<()> {
     Ok(())
 }
 
-/// How the status list signer is checked: anchored under `Enforce`, integrity-only under `Report`,
-/// and not at all when `Enforce` has already rejected the issuer.
+/// How the status list signer is checked: anchored for a trusted issuer and under `Enforce`,
+/// integrity-only for an untrusted issuer under `Report`, skipped once `Enforce` rejected it.
 #[cfg(not(target_arch = "wasm32"))]
 fn status_anchor_policy(
     mode: IssuerTrustMode,
@@ -535,6 +535,11 @@ fn status_anchor_policy(
     match mode {
         IssuerTrustMode::Enforce if outcome.rejected_when_enforced() => None,
         IssuerTrustMode::Enforce => Some(AnchorPolicy::Require),
+        IssuerTrustMode::Report
+            if outcome.status == crate::vc::trust::issuer::IssuerTrustStatus::Trusted =>
+        {
+            Some(AnchorPolicy::Require)
+        }
         IssuerTrustMode::Report => Some(AnchorPolicy::IntegrityOnly),
     }
 }
@@ -1036,17 +1041,36 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn status_list_signer_under_no_anchor_passes_under_report() {
-            let verified = verify(
+        async fn status_list_signer_under_no_anchor_fails_for_a_trusted_issuer_under_report() {
+            let result = verify(
                 status_list(VALID),
                 IssuerTrustMode::Report,
                 false,
                 serving_status_list(),
             )
-            .await
-            .unwrap();
+            .await;
 
-            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn status_list_signer_under_no_anchor_passes_for_an_untrusted_issuer_under_report() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
+                .verify_presentation_with_issuer_trust(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
         }
 
         #[rstest]
