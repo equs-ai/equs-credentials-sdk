@@ -135,6 +135,7 @@ impl MsoMdocAPI {
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<VerifiedMdoc> {
+        let anchor_policy = opts.anchor_policy;
         let certificate_validator: Arc<dyn CertificateValidator> =
             Arc::new(SharedCertificateValidator::get());
 
@@ -243,6 +244,21 @@ impl MsoMdocAPI {
             IdentifierDetails::Certificate(certificate) => Some(certificate.chain.clone()),
             _ => None,
         };
+        // one-core does not reject a self-signed leaf without anchors
+        if let (AnchorPolicy::IntegrityOnly, Some(chain)) = (anchor_policy, issuer_chain.as_deref())
+        {
+            crate::utils::x509_truststore::verify_chain_integrity(
+                certificate_validator.as_ref(),
+                chain,
+            )
+            .await
+            .map_err(|details| {
+                PresentationSnafu {
+                    details: format!("Issuer certificate chain is not valid: {details}"),
+                }
+                .build()
+            })?;
+        }
         let status = MdocStatus::from_credential_status(&verified_claims.status)?;
         Ok(VerifiedMdoc {
             claims: verified_claims.try_into()?,
@@ -390,8 +406,8 @@ pub mod tests {
     use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
-    use crate::vc::formats::VerifyOptions;
-    use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
+    use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation, VerifiedMdoc};
+    use crate::vc::formats::{AnchorPolicy, VerifyOptions};
     use std::collections::HashMap;
 
     pub const NONCE: &str = "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM";
@@ -512,6 +528,53 @@ pub mod tests {
         assert_binding(result, valid);
     }
 
+    #[tokio::test]
+    async fn integrity_only_rejects_a_self_signed_document_signer() {
+        let ds_key = test_fixtures::JWK::generate_p256();
+        let self_signed_ds = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["CN", "Self-signed DS"], ["C", "US"]],
+                "not_before": "2026-01-01", "not_after": "2046-01-01",
+                "key_usages": ["digital_signature"]
+            }),
+            &ds_key,
+            None,
+        );
+
+        let result =
+            verify_integrity_only(mdoc_vp_under(&self_signed_ds, &ds_key, None, None, None)).await;
+
+        let error = format!("{:?}", result.expect_err("a self-signed DS must fail"));
+        assert!(
+            error.contains("the leaf certificate is self-signed"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn integrity_only_accepts_a_document_signer_issued_by_an_iaca() {
+        let verified = verify_integrity_only(sample_mso_mdoc_vp()).await.unwrap();
+
+        assert!(verified.issuer_chain.is_some());
+    }
+
+    async fn verify_integrity_only(vp: String) -> crate::vc::formats::Result<VerifiedMdoc> {
+        MsoMdocAPI::verify_vp_with_issuer(
+            &Presentation {
+                value: vp,
+                enc_pub_key: None,
+            },
+            Some(binder(None)),
+            VerifyOptions {
+                trusted_certs: None,
+                selective_claims: None,
+                anchor_policy: AnchorPolicy::IntegrityOnly,
+            },
+            UniversalResolver::default(),
+        )
+        .await
+    }
+
     /// [sample_mso_mdoc_vp] together with the IACA (PEM) that issued its Document Signer.
     pub fn sample_mso_mdoc_vp_with_iaca() -> (String, String) {
         mdoc_vp_with_iaca(None, None)
@@ -544,7 +607,19 @@ pub mod tests {
         status: Option<serde_json::Value>,
     ) -> (String, String) {
         let (iaca, ds, ds_key) = mdl_chain();
-        let vp = test_fixtures::mdoc(
+        let vp = mdoc_vp_under(&ds, &ds_key, response_uri, verifier_key, status);
+        (vp, iaca)
+    }
+
+    /// A presentation signed by `ds_key` under `x5chain`.
+    fn mdoc_vp_under(
+        x5chain: &str,
+        ds_key: &test_fixtures::JWK,
+        response_uri: Option<&str>,
+        verifier_key: Option<&test_fixtures::JWK>,
+        status: Option<serde_json::Value>,
+    ) -> String {
+        test_fixtures::mdoc(
             &serde_json::json!({
                 "doc_type": "org.iso.18013.5.1.mDL",
                 "name_spaces": { "org.iso.18013.5.1": {
@@ -552,17 +627,16 @@ pub mod tests {
                 } },
                 "valid_from": "2026-01-01T00:00:00Z",
                 "valid_until": "2046-01-01T00:00:00Z",
-                "x5chain": ds,
+                "x5chain": x5chain,
                 "client_id": VERIFIER,
                 "nonce": NONCE,
                 "response_uri": response_uri,
                 "verifier_key": verifier_key.map(test_fixtures::JWK::to_public),
                 "status": status
             }),
-            &ds_key,
+            ds_key,
             &test_fixtures::keys().holder,
-        );
-        (vp, iaca)
+        )
     }
 
     /// Ok, or the DeviceSigned failure of a wrong binding.
