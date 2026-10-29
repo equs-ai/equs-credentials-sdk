@@ -2666,11 +2666,11 @@ mod tests {
         #[case] credential_sets: Value,
         #[case] expected_error: Option<&str>,
     ) {
-        let (verifier, _) = verifier_service().await;
+        let (verifier, response) = anchored_mso_mdoc_response(None).await;
 
         let result = verifier
             .verify_presentation(
-                &AuthorizationResponse::Plain(mso_mdoc_response(None)),
+                &AuthorizationResponse::Plain(response),
                 &pid_sd_jwt_or_mdl_session(credential_sets),
                 &CredentialVerificationMetadata {
                     transaction_data: None,
@@ -2715,7 +2715,6 @@ mod tests {
         #[case] credential_sets: Value,
         #[case] expected_error: Option<&str>,
     ) {
-        let (verifier, _) = verifier_service().await;
         let item = TransactionDataItem {
             credential_ids: vec![credential_id.to_string()],
             transaction_data_hashes_alg: None,
@@ -2730,10 +2729,11 @@ mod tests {
             ]),
             transaction_data_hashes_alg: None,
         };
+        let (verifier, response) = anchored_mso_mdoc_response(Some(hashes)).await;
 
         let result = verifier
             .verify_presentation(
-                &AuthorizationResponse::Plain(mso_mdoc_response(Some(hashes))),
+                &AuthorizationResponse::Plain(response),
                 &pid_sd_jwt_or_mdl_session(credential_sets),
                 &CredentialVerificationMetadata {
                     transaction_data: Some(vec![item]),
@@ -2754,7 +2754,7 @@ mod tests {
     #[tokio::test]
     async fn verify_presentation_rejects_unanswered_query_before_verifying_presentations() {
         let (verifier, _) = verifier_service().await;
-        let mut response = mso_mdoc_response(None);
+        let mut response = mso_mdoc_response(mdoc::sample_mso_mdoc_vp(), None);
         response.vp_token = json!({ "mDL": ["not a device response"] });
 
         let err = verifier
@@ -3401,11 +3401,25 @@ mod tests {
     }
 
     /// The mdoc fixture presented for the `mDL` query only.
+    /// A verifier enforcing issuer trust, anchored on the IACA of the mDL in the response.
+    async fn anchored_mso_mdoc_response(
+        transaction_data_response: Option<TransactionDataResponse>,
+    ) -> (TestVerifierService, AuthorizationResponseObject) {
+        let (vp, iaca) = mdoc::sample_mso_mdoc_vp_with_iaca();
+        let verifier = verifier_service_with_issuer_trust(trust(
+            IssuerTrustMode::Enforce,
+            vec![iaca_anchor(iaca)],
+        ))
+        .await;
+        (verifier, mso_mdoc_response(vp, transaction_data_response))
+    }
+
     fn mso_mdoc_response(
+        vp: String,
         transaction_data_response: Option<TransactionDataResponse>,
     ) -> AuthorizationResponseObject {
         AuthorizationResponseObject {
-            vp_token: json!({ "mDL": [mdoc::sample_mso_mdoc_vp()] }),
+            vp_token: json!({ "mDL": [vp] }),
             presentation_submission: None,
             id_token: None,
             state: None,
