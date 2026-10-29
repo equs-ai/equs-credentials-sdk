@@ -116,13 +116,15 @@ The Node.js wrapper, the askar plugin (each with its three platform packages) an
 [`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) and
 [`publish-wasm.yml`](../../.github/workflows/publish-wasm.yml) and
 [`publish-askar-nodejs.yml`](../../.github/workflows/publish-askar-nodejs.yml). Each runs on its own tag, pushed to the GitHub
-remote:
+remote one at a time, with [`DRY_RUN`](#dry_run) set before each push:
 
 ```shell
 git tag -a nodejs/v<version> -F NOTES.md
 git tag -a wasm/v<version> -F NOTES.md
 git tag -a askar-nodejs/v<version> -F NOTES.md
-git push origin tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
+git push origin tag nodejs/v<version>
+git push origin tag wasm/v<version>
+git push origin tag askar-nodejs/v<version>
 ```
 
 The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc.N`
@@ -134,7 +136,7 @@ An npmjs version can never be republished, even after an unpublish, so a bad tag
 
 The Android AAR is also published to Maven Central as
 `ai.equs:equs-credentials-sdk-android` by
-[`publish-android.yml`](../../.github/workflows/publish-android.yml), on its own tag:
+[`publish-android.yml`](../../.github/workflows/publish-android.yml), on its own tag, with [`DRY_RUN`](#dry_run) set first:
 
 ```shell
 git tag -a android/v<version> -F NOTES.md
@@ -144,10 +146,20 @@ git push origin tag android/v<version>
 The published version is the tag; `X.Y.Z-rc.N` is accepted. A Maven Central version can never be
 replaced or deleted, so a bad tag costs a version number.
 
-To release on GitHub only, set the repository variable `DRY_RUN` to `true` (Settings → Secrets and variables → Actions → Variables): every tag then
-runs the full pipeline but touches no public registry (`cargo publish --dry-run`, `npm publish --dry-run`, no Maven Central upload, no
-already-published check); the GitHub release is still created with its manifests, the AAR, the iOS zip, the npm tarballs and the `.crate`.
-Delete the variable, or set it to anything else, to publish again.
+### `DRY_RUN`
+
+Every GitHub tag but `ios/v<version>` needs the repository variable `DRY_RUN` (Settings → Secrets and variables → Actions → Variables),
+set right before the tag is pushed:
+
+- `false` publishes to the registries.
+- `true` releases on GitHub only: the full pipeline runs but touches no public registry (`cargo publish --dry-run`, `npm publish --dry-run`,
+  no Maven Central upload, no already-published check); the GitHub release is still created with its manifests, the AAR, the iOS zip, the
+  npm tarballs and the `.crate`.
+
+The run reads the variable first and deletes it, so it covers exactly one run. Unset or any other value fails the run before anything
+builds: set it and use **Re-run failed jobs**. Several tags pushed at once start several runs, and only one of them gets the variable;
+set it again and re-run each of the others. Once the check has passed, **Re-run failed jobs** keeps the run's mode and needs no variable;
+**Re-run all jobs** needs it set again.
 
 ### Everything at once
 
@@ -155,7 +167,7 @@ The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/releas
 `equs-credentials-sdk` to crates.io, all three npm packages above under `latest` and the Android AAR to
 Maven Central, all at the same version, attaches the [iOS XCFramework](#ios-on-github-releases), and attaches
 one manifest per package to the `vX.Y.Z` release
-(`release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`).
+(`release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`). Set [`DRY_RUN`](#dry_run) first.
 
 ```shell
 git tag -a v<version> -F NOTES.md

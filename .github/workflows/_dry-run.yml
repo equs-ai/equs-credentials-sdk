@@ -1,0 +1,39 @@
+name: dry run
+
+on:
+  workflow_call:
+    inputs:
+      dry-run: {type: string, default: ''}
+    secrets:
+      token: {required: false}
+    outputs:
+      dry-run:
+        value: ${{ jobs.run.outputs.dry-run }}
+
+permissions: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      dry-run: ${{ inputs.dry-run || steps.consume.outputs.dry-run }}
+    steps:
+      - id: consume
+        if: ${{ !inputs.dry-run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+        run: |
+          set -euo pipefail
+          [ -n "${GH_TOKEN:-}" ] || { echo "secret EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          api="repos/$GITHUB_REPOSITORY/actions/variables/DRY_RUN"
+          if ! value=$(gh api "$api" --jq .value 2>"$RUNNER_TEMP/gh-err.txt"); then
+            grep -q 'HTTP 404' "$RUNNER_TEMP/gh-err.txt" && { echo "repository variable DRY_RUN is not set: set it to true (GitHub release only) or false (publish to the registries), then re-run" >&2; exit 1; }
+            cat "$RUNNER_TEMP/gh-err.txt" >&2; exit 1
+          fi
+          gh api -X DELETE "$api"
+          case "$value" in
+            true|false) echo "DRY_RUN=$value, variable deleted"; echo "dry-run=$value" >> "$GITHUB_OUTPUT" ;;
+            *) echo "repository variable DRY_RUN was '$value', not true or false (deleted)" >&2; exit 1 ;;
+          esac

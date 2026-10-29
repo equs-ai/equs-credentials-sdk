@@ -15,15 +15,22 @@ env:
   RUST_VERSION: "1.97.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
 
 jobs:
+  dry-run:
+    uses: ./.github/workflows/_dry-run.yml
+    secrets:
+      token: ${{ secrets.EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN }}
+
   publish:
+    needs: [dry-run]
     runs-on: ubuntu-latest
-    environment: ${{ vars.DRY_RUN != 'true' && 'crates-io' || '' }}
+    environment: ${{ needs.dry-run.outputs.dry-run != 'true' && 'crates-io' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 30
+    env:
+      DRY_RUN: ${{ needs.dry-run.outputs.dry-run == 'true' && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

@@ -2,6 +2,10 @@ name: Publish crate
 
 on:
   workflow_call:
+    inputs:
+      dry-run:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -14,12 +18,12 @@ env:
   RUST_VERSION: "1.97.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  DRY_RUN: ${{ vars.DRY_RUN == 'true' && '1' || '' }}
+  DRY_RUN: ${{ inputs.dry-run == 'true' && '1' || '' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: ${{ vars.DRY_RUN != 'true' && 'crates-io' || '' }}
+    environment: ${{ inputs.dry-run != 'true' && 'crates-io' || '' }}
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
