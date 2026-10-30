@@ -439,9 +439,15 @@ describe("OID4VP Verifier: ", () => {
     expect(presentations[0]).toEqual(DSD_JWT_GRANT_CREDENTIAL);
     expect(presentations[0] as string).toMatch(/~$/);
 
-    // A grant is signed by the delegating holder's key, not an issuer certificate chain.
+    // The grant's issued credential is DID-issued and classified like a presented one: an EAA.
     expect(verified.issuerTrust).toEqual([
-      { credentialId: DSD_JWT_GRANT_CRED_ID, index: 0, status: "not_evaluated", reason: "did_issuer" },
+      {
+        credentialId: DSD_JWT_GRANT_CRED_ID,
+        index: 0,
+        status: "not_evaluated",
+        reason: "did_issuer",
+        category: "eaa",
+      },
     ]);
   });
 
