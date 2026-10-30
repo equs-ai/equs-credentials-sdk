@@ -152,15 +152,3 @@ strip = "none"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
-
-# TODO: remove this patch once equs-one-core 0.2.0 is released; the dependencies above already
-# require 0.2.0 (and equs-one-core-crypto 0.1.1). Until then every equs-one-core crate is built from
-# the equs-ai/one-core commit below, so they all come from one source.
-[patch.crates-io]
-equs-one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-standardized-types = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-crypto = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-dcql = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }
-equs-one-core-proc-macros = { git = "https://github.com/equs-ai/one-core.git", rev = "c009295b82124d41e428e111f4522c50129025f9" }

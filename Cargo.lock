@@ -2888,7 +2888,7 @@ dependencies = [
  "equs-one-core",
  "equs-one-core-portable",
  "equs-one-core-shared-types",
- "equs-one-core-standardized-types",
+ "equs-one-core-standardized-types 0.2.0",
  "equs-openid4vp",
  "equs-sd-jwt-rs",
  "equs-test-fixtures",
@@ -2994,7 +2994,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941d31b6a5368579480c79e4d9d4fd6ff8b52390e479e2be73006cb7de5c58d5"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3011,11 +3012,11 @@ dependencies = [
  "crc",
  "ct-codecs",
  "dashmap",
- "equs-one-core-crypto",
+ "equs-one-core-crypto 0.2.0",
  "equs-one-core-dcql",
  "equs-one-core-portable",
  "equs-one-core-shared-types",
- "equs-one-core-standardized-types",
+ "equs-one-core-standardized-types 0.2.0",
  "figment",
  "flate2",
  "futures",
@@ -3078,8 +3079,9 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-crypto"
-version = "0.1.1"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63f89b2447a70d76d04af06fc7c8dfac01abc4ee45356be4d50e210a89e08fe"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3092,7 +3094,44 @@ dependencies = [
  "concat-kdf",
  "ct-codecs",
  "ed25519-compact",
- "equs-one-core-standardized-types",
+ "equs-one-core-standardized-types 0.1.0",
+ "equs-pairing-crypto",
+ "hmac 0.12.1",
+ "ml-dsa",
+ "p256",
+ "pbkdf2 0.12.2",
+ "rand 0.10.1",
+ "rand 0.8.6",
+ "rand_chacha 0.10.0",
+ "rand_chacha 0.3.1",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with 3.14.1",
+ "sha1",
+ "sha2 0.10.9",
+ "strum 0.27.2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "equs-one-core-crypto"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d7a084e31e621c0cec0d13c93f780c7053aa9347fc8d34fc6250753b00b275a"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "aes-kw",
+ "async-trait",
+ "blstrs",
+ "cbc",
+ "chacha20poly1305",
+ "cocoon",
+ "concat-kdf",
+ "ct-codecs",
+ "ed25519-compact",
+ "equs-one-core-standardized-types 0.2.0",
  "equs-pairing-crypto",
  "hmac 0.12.1",
  "ml-dsa",
@@ -3115,10 +3154,11 @@ dependencies = [
 [[package]]
 name = "equs-one-core-dcql"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ccbe36b9904b8530f0dd3076f452af246e07ec5a1823bbf36852b19a9d0ea8c"
 dependencies = [
  "bon",
- "equs-one-core-standardized-types",
+ "equs-one-core-standardized-types 0.2.0",
  "serde",
  "similar-asserts",
  "thiserror 2.0.18",
@@ -3127,17 +3167,18 @@ dependencies = [
 [[package]]
 name = "equs-one-core-portable"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40eec5598def11171ad8dbb9cf737b970d8a4bd082134fdb591f1d903861128c"
 dependencies = [
  "anyhow",
  "async-trait",
  "bs58 0.5.1",
  "ciborium",
  "ct-codecs",
- "equs-one-core-crypto",
+ "equs-one-core-crypto 0.2.0",
  "equs-one-core-dcql",
  "equs-one-core-shared-types",
- "equs-one-core-standardized-types",
+ "equs-one-core-standardized-types 0.2.0",
  "figment",
  "hex",
  "hex-literal 1.1.0",
@@ -3162,7 +3203,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3174,7 +3216,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
 dependencies = [
  "regex",
  "serde",
@@ -3185,8 +3228,27 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-standardized-types"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac0ac3b192367782e1c970d2f26557f92dbd165ef9aa6a509f05bf80aa97b2d"
+dependencies = [
+ "anyhow",
+ "ct-codecs",
+ "equs-one-core-proc-macros",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with 3.14.1",
+ "strum 0.27.2",
+ "time",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "equs-one-core-standardized-types"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=c009295b82124d41e428e111f4522c50129025f9#c009295b82124d41e428e111f4522c50129025f9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e261b6a6b8aaf436cf1fcda31c12c0de3fd50f6ed41787d0724585c956e4a8c"
 dependencies = [
  "anyhow",
  "ct-codecs",
@@ -3279,8 +3341,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "equs-one-core-crypto",
- "equs-one-core-standardized-types",
+ "equs-one-core-crypto 0.1.0",
+ "equs-one-core-standardized-types 0.2.0",
  "jsonwebtoken",
  "p256",
  "pem 3.0.6",
@@ -5488,15 +5550,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lzma-rust2"
-version = "0.15.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e20f57f9918e5bd7bc58c22cdd70a6afc7375d4dd9683af5f2b34bd3d2bba619"
-dependencies = [
- "sha2 0.10.9",
-]
-
-[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5817,6 +5870,18 @@ dependencies = [
  "byteorder",
  "strum 0.26.3",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.9.4",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -10179,9 +10244,9 @@ dependencies = [
 
 [[package]]
 name = "typed-path"
-version = "0.12.4"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
 name = "typenum"
@@ -11508,16 +11573,18 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "7.3.0"
+version = "9.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "268bf6f9ceb991e07155234071501490bb41fd1e39c6a588106dad10ae2a5804"
+checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
 dependencies = [
  "crc32fast",
  "flate2",
+ "getrandom 0.4.2",
  "indexmap 2.14.0",
- "lzma-rust2",
  "memchr",
+ "nix",
  "typed-path",
+ "windows-sys 0.61.2",
  "zopfli",
 ]
 
