@@ -1,4 +1,6 @@
 //! Adapter from the SDK [`HttpClient`] to one-core's HTTP client interface.
+//!
+//! TODO: find a way to drop this adapter and one-core's `HttpClient` from the SDK.
 
 use crate::http::HttpClient;
 use async_trait::async_trait;
@@ -11,10 +13,6 @@ use std::sync::Arc;
 use time::Duration;
 
 /// Adapts [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
-///
-/// This is an internal implementation detail; callers interact only with [`HttpClient`].
-/// A failure keeps its cause as [`OneCoreHttpError::Transport`]. No per-request timeout is applied;
-/// the inner client's own governs.
 #[derive(Clone)]
 pub(crate) struct OneCoreHttpClientAdapter {
     inner: Arc<dyn HttpClient>,

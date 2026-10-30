@@ -197,6 +197,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             did_resolver,
             cached_urls_per_status_jwts,
             None,
+            AnchorPolicy::Require,
         )
         .await
     }
@@ -204,7 +205,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
 
 impl StatusListJwt {
     /// [API::get_vc_status], additionally trusting a status list token signed by an `x5c` chain
-    /// that validates up to one of `trusted_certs`.
+    /// checked against `trusted_certs` under `anchor_policy`.
     #[instrument(
         level = Level::TRACE,
         skip(vc_claims, http_client, did_resolver, trusted_certs),
@@ -212,32 +213,6 @@ impl StatusListJwt {
         ret()
     )]
     pub async fn get_vc_status_with_trusted_certs(
-        vc_claims: &Claims,
-        http_client: &dyn HttpClient,
-        did_resolver: UniversalResolver,
-        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
-        trusted_certs: Option<&HashMap<String, String>>,
-    ) -> Result<Option<VCStatus>> {
-        Self::get_vc_status_with_anchor_policy(
-            vc_claims,
-            http_client,
-            did_resolver,
-            cached_urls_per_status_jwts,
-            trusted_certs,
-            AnchorPolicy::Require,
-        )
-        .await
-    }
-
-    /// [Self::get_vc_status_with_trusted_certs] with an explicit `AnchorPolicy` for the status
-    /// list token's `x5c` chain.
-    #[instrument(
-        level = Level::TRACE,
-        skip(vc_claims, http_client, did_resolver, trusted_certs),
-        err(),
-        ret()
-    )]
-    pub async fn get_vc_status_with_anchor_policy(
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
@@ -706,6 +681,7 @@ pub(crate) mod tests {
             UniversalResolver::default(),
             None,
             trusted_certs.as_ref(),
+            crate::vc::formats::AnchorPolicy::Require,
         )
         .await
     }

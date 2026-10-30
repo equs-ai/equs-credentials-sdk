@@ -53,7 +53,7 @@ impl VCCoreVerifier {
             )
             .await
             .map_err(IntoNapiError::into_napi_error)
-            .and_then(to_json_object)
+            .and_then(|verified| to_json_object(verified.claims))
     }
 
     /// Obtains the status for presented VC.

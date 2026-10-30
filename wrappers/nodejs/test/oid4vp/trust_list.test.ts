@@ -265,7 +265,7 @@ describe("issuer trust from an exported LoTE", () => {
     const error = await expectSdkError(verifyMdl(undefined));
 
     expect(error.code).toBe(VpInternalError.IssuerNotTrusted);
-    expect(error.message).toMatch(/^issuer_not_trusted/);
+    expect(error.message).toBe("Issuer not trusted: `mDL` (no_anchors_configured)");
     // the same shape as `issuerTrust` on success
     expect(error.details).toEqual([
       { credentialId: "mDL", index: 0, status: "not_evaluated", reason: "no_anchors_configured", category: "pid" },
@@ -361,6 +361,6 @@ describe("DCQL trusted authorities", () => {
     const error = await expectSdkError(verifyMdl(exported, "report", [{ type: "aki", values }]));
 
     expect(error.code).toBe(VpInternalError.TrustedAuthorityMismatch);
-    expect(error.message).toMatch(/^trusted_authority_mismatch/);
+    expect(error.message).toMatch(/matches none of the requested trusted authorities$/);
   });
 });

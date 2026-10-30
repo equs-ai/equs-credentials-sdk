@@ -35,14 +35,13 @@ pub enum InternalError {
     },
     #[snafu(display("Credential not found"))]
     CredentialNotFound,
-    #[snafu(display(
-        "issuer_not_trusted: {}",
-        serde_json::to_string(issuer_trust).unwrap_or_default()
-    ))]
+    #[snafu(display("Issuer not trusted: {}", untrusted_credentials(issuer_trust)))]
     IssuerNotTrusted {
         issuer_trust: Vec<crate::vc::trust::issuer::IssuerTrust>,
     },
-    #[snafu(display("trusted_authority_mismatch: credential query `{credential_id}`"))]
+    #[snafu(display(
+        "Issuer of credential query `{credential_id}` matches none of the requested trusted authorities"
+    ))]
     TrustedAuthorityMismatch { credential_id: String },
     #[snafu(display("Please provide the metadata required to generate the ID token"))]
     IdTokenMetadataNotFound,
@@ -184,6 +183,21 @@ pub enum InternalError {
     },
 }
 
+/// Each credential whose issuer is not trusted, with the reason, e.g. "`mDL` (no_anchor_match)".
+fn untrusted_credentials(issuer_trust: &[crate::vc::trust::issuer::IssuerTrust]) -> String {
+    issuer_trust
+        .iter()
+        .filter(|trust| {
+            trust.outcome.status != crate::vc::trust::issuer::IssuerTrustStatus::Trusted
+        })
+        .map(|trust| match trust.outcome.reason {
+            Some(reason) => format!("`{}` ({reason})", trust.credential_id),
+            None => format!("`{}`", trust.credential_id),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +269,31 @@ mod tests {
         }
         .build();
         assert!(format!("{e}").contains("Transaction data error: hash mismatch"));
+    }
+
+    #[test]
+    fn issuer_not_trusted_names_each_untrusted_credential_and_its_reason() {
+        use crate::vc::trust::issuer::{IssuerTrust, IssuerTrustOutcome, NotTrustedReason};
+        let entry = |credential_id: &str, outcome| IssuerTrust {
+            credential_id: credential_id.to_string(),
+            index: 0,
+            outcome,
+        };
+        let e = InternalError::IssuerNotTrusted {
+            issuer_trust: vec![
+                entry(
+                    "pid",
+                    IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorMatch),
+                ),
+                entry(
+                    "mDL",
+                    IssuerTrustOutcome::not_evaluated(NotTrustedReason::NoAnchorsConfigured),
+                ),
+            ],
+        };
+        assert_eq!(
+            e.to_string(),
+            "Issuer not trusted: `pid` (no_anchor_match), `mDL` (no_anchors_configured)"
+        );
     }
 }

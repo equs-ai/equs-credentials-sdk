@@ -49,6 +49,7 @@ did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
 did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
 did_parser_nom = { package = "equs-vcx-did-parser-nom", version = "0.1.0" }
 one-core-portable = { package = "equs-one-core-portable", version = "0.2.0" }
+standardized-types = { package = "equs-one-core-standardized-types", version = "0.2.0" }
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
