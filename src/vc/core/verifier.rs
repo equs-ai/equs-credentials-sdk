@@ -8,8 +8,8 @@ use crate::vc::core::api::{
     CredentialExpiredSnafu, ExpirationCheckSnafu, ParseSnafu, VCNotValidSnafu,
 };
 use crate::vc::core::{
-    ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, HolderBinder, VCSnafu,
-    VCStatusSnafu, Verifier,
+    ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, HolderBinder,
+    IssuerNotTrustedSnafu, VCSnafu, VCStatusSnafu, Verifier,
 };
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
@@ -35,7 +35,7 @@ use tracing::{Level, info, instrument};
 pub struct VerificationParams {
     // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
     pub trusted_certs: Option<HashMap<String, String>>,
-    /// Issuer-trust anchors and mode for [Verifier::verify_presentation_with_issuer_trust]. When
+    /// Issuer-trust anchors and mode for [Verifier::verify_presentation]. When
     /// unset, `trusted_certs` are used as anchors in [IssuerTrustMode::Enforce].
     pub issuer_trust: Option<IssuerTrustConfig>,
 }
@@ -50,8 +50,128 @@ pub struct VerifierService {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Verifier for VerifierService {
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn verify_presentation(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<IssuerTrustVerification> {
+        #[cfg(target_arch = "wasm32")]
+        let verified = {
+            // wasm has no `x5c` or mdoc issuer chain
+            let claims = self
+                .verify_claims(holder_binder, presentation, http_client)
+                .await?;
+            let category = self
+                .issuer_trust_config()
+                .classification
+                .classify_claims(&claims);
+            IssuerTrustVerification::without_chain(
+                claims,
+                IssuerTrustOutcome::without_chain(category),
+            )
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let verified = self
+            .verify_with_issuer_trust(holder_binder, presentation, http_client)
+            .await?;
+
+        self.enforce_issuer_trust(verified)
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    async fn verify_delegation(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<IssuerTrustVerification> {
+        let Presentation::SdJwtVp(vp) = presentation else {
+            return FormatNotSupportedSnafu {
+                format: presentation.format().to_string(),
+            }
+            .fail();
+        };
+
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            vp,
+            self.did_resolver.clone(),
+            DsdJwtPurpose::Delegation(holder_binder),
+        )
+        .await
+        .context(VCSnafu)?;
+
+        let issued_vc = Claims::try_from(view.verified_claims).context(ClaimsSnafu)?;
+        // a grant's issued credential is signed through a DID
+        let category = self
+            .issuer_trust_config()
+            .classification
+            .classify_claims(&issued_vc);
+
+        let delegations = Value::Array(
+            view.delegate_payloads
+                .into_iter()
+                .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
+                .collect(),
+        );
+        let mut claims = Claims::new();
+        claims.insert(ISSUED_VC_CLAIM.to_string(), issued_vc.clone().into());
+        claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
+
+        let verified = self.enforce_issuer_trust(IssuerTrustVerification::without_chain(
+            claims,
+            IssuerTrustOutcome::without_chain(category),
+        ))?;
+        self.check_sd_jwt_expiry_and_status(&issued_vc, vp, http_client, AnchorPolicy::Require)
+            .await?;
+        Ok(verified)
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    async fn obtain_credential_status(
+        &self,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<Option<VCStatus>> {
+        match presentation {
+            Presentation::SdJwtVp(vp) => {
+                self.obtain_sd_jwt_vc_status(vp, http_client, AnchorPolicy::Require)
+                    .await
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            Presentation::MsoMdoc(vp) => {
+                use crate::vc::formats::mso_mdoc::MsoMdocAPI;
+
+                let status = MsoMdocAPI::status_unverified(vp).await.context(VCSnafu)?;
+                self.obtain_mdoc_status(&status, http_client, AnchorPolicy::Require)
+                    .await
+            }
+            _ => CredentialStatusNotSupportedSnafu.fail(),
+        }
+    }
+}
+
+impl VerifierService {
+    #[instrument(level = Level::TRACE, skip(did_resolver))]
+    pub fn new(verifier_id: &str, did_resolver: UniversalResolver) -> Self {
+        Self {
+            verifier_id: verifier_id.to_owned(),
+            did_resolver,
+            verification_params: Default::default(),
+        }
+    }
+
+    #[instrument(level = Level::TRACE, skip(self))]
+    pub fn with_verification_params(mut self, opts: VerificationParams) -> Self {
+        self.verification_params = opts;
+        self
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    /// Verifies against `trusted_certs`, without evaluating issuer trust.
+    async fn verify_claims(
         &self,
         holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
@@ -72,8 +192,13 @@ impl Verifier for VerifierService {
                 .await
                 .context(VCSnafu)?;
 
-                self.check_expiry_and_status(&claims, presentation, http_client)
-                    .await?;
+                self.check_sd_jwt_expiry_and_status(
+                    &claims,
+                    vp,
+                    http_client,
+                    AnchorPolicy::Require,
+                )
+                .await?;
 
                 claims
             }
@@ -128,119 +253,21 @@ impl Verifier for VerifierService {
         Ok(cred_claims)
     }
 
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
-    async fn verify_presentation_with_issuer_trust(
+    fn enforce_issuer_trust(
         &self,
-        holder_binder: Option<HolderBinder>,
-        presentation: &Presentation,
-        http_client: &dyn HttpClient,
+        verified: IssuerTrustVerification,
     ) -> Result<IssuerTrustVerification> {
-        #[cfg(target_arch = "wasm32")]
+        if self.issuer_trust_config().mode == IssuerTrustMode::Enforce
+            && verified.outcome.rejected_when_enforced()
         {
-            // wasm resolves an issuer key from a DID only (no `x5c`, no mdoc)
-            let claims = self
-                .verify_presentation(holder_binder, presentation, http_client)
-                .await?;
-            let category = self
-                .issuer_trust_config()
-                .classification
-                .classify_claims(&claims);
-            return Ok(IssuerTrustVerification::without_chain(
-                claims,
-                IssuerTrustOutcome::without_chain(category),
-            ));
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        self.verify_with_issuer_trust(holder_binder, presentation, http_client)
-            .await
-    }
-
-    fn issuer_trust_mode(&self) -> IssuerTrustMode {
-        self.issuer_trust_config().mode
-    }
-
-    #[cfg(feature = "delegate-sd-jwt")]
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
-    async fn verify_delegation(
-        &self,
-        holder_binder: Option<HolderBinder>,
-        presentation: &Presentation,
-        http_client: &dyn HttpClient,
-    ) -> Result<Claims> {
-        let Presentation::SdJwtVp(vp) = presentation else {
-            return FormatNotSupportedSnafu {
-                format: presentation.format().to_string(),
+            return IssuerNotTrustedSnafu {
+                verified: Box::new(verified),
             }
             .fail();
-        };
-
-        let view = DsdJwtAPI::verify_dsd_jwt(
-            vp,
-            self.did_resolver.clone(),
-            DsdJwtPurpose::Delegation(holder_binder),
-        )
-        .await
-        .context(VCSnafu)?;
-
-        let issued_vc = Claims::try_from(view.verified_claims).context(ClaimsSnafu)?;
-        self.check_expiry_and_status(&issued_vc, presentation, http_client)
-            .await?;
-
-        let delegations = Value::Array(
-            view.delegate_payloads
-                .into_iter()
-                .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
-                .collect(),
-        );
-        let mut claims = Claims::new();
-        claims.insert(ISSUED_VC_CLAIM.to_string(), issued_vc.into());
-        claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
-
-        Ok(claims)
-    }
-
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
-    async fn obtain_credential_status(
-        &self,
-        presentation: &Presentation,
-        http_client: &dyn HttpClient,
-    ) -> Result<Option<VCStatus>> {
-        match presentation {
-            Presentation::SdJwtVp(vp) => {
-                self.obtain_sd_jwt_vc_status(vp, http_client, AnchorPolicy::Require)
-                    .await
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            Presentation::MsoMdoc(vp) => {
-                use crate::vc::formats::mso_mdoc::MsoMdocAPI;
-
-                let status = MsoMdocAPI::status_unverified(vp).await.context(VCSnafu)?;
-                self.obtain_mdoc_status(&status, http_client, AnchorPolicy::Require)
-                    .await
-            }
-            _ => CredentialStatusNotSupportedSnafu.fail(),
         }
-    }
-}
-
-impl VerifierService {
-    #[instrument(level = Level::TRACE, skip(did_resolver))]
-    pub fn new(verifier_id: &str, did_resolver: UniversalResolver) -> Self {
-        Self {
-            verifier_id: verifier_id.to_owned(),
-            did_resolver,
-            verification_params: Default::default(),
-        }
+        Ok(verified)
     }
 
-    #[instrument(level = Level::TRACE, skip(self))]
-    pub fn with_verification_params(mut self, opts: VerificationParams) -> Self {
-        self.verification_params = opts;
-        self
-    }
-
-    /// The configured issuer trust, defaulting to `trusted_certs` as anchors under
-    /// [IssuerTrustMode::Enforce].
     fn issuer_trust_config(&self) -> IssuerTrustConfig {
         self.verification_params
             .issuer_trust
@@ -276,10 +303,8 @@ impl VerifierService {
             })
     }
 
-    /// Verifies with an integrity-only issuer chain, then evaluates it against the anchors. The
-    /// status-list chain is checked per [status_anchor_policy].
     #[cfg(not(target_arch = "wasm32"))]
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn verify_with_issuer_trust(
         &self,
         holder_binder: Option<HolderBinder>,
@@ -331,7 +356,7 @@ impl VerifierService {
                 };
 
                 if let Some(policy) = status_anchor_policy(config.mode, &outcome) {
-                    self.check_expiry_and_status_with(&claims, presentation, http_client, policy)
+                    self.check_sd_jwt_expiry_and_status(&claims, vp, http_client, policy)
                         .await?;
                 }
                 Ok(IssuerTrustVerification::new(
@@ -378,7 +403,7 @@ impl VerifierService {
             }
             _ => {
                 let claims = self
-                    .verify_presentation(holder_binder, presentation, http_client)
+                    .verify_claims(holder_binder, presentation, http_client)
                     .await?;
                 let category = config.classification.classify_claims(&claims);
                 Ok(IssuerTrustVerification::without_chain(
@@ -389,22 +414,11 @@ impl VerifierService {
         }
     }
 
-    #[instrument(level = Level::TRACE, skip(self, http_client), err())]
-    async fn check_expiry_and_status(
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    async fn check_sd_jwt_expiry_and_status(
         &self,
         claims: &Claims,
-        presentation: &Presentation,
-        http_client: &dyn HttpClient,
-    ) -> Result<()> {
-        self.check_expiry_and_status_with(claims, presentation, http_client, AnchorPolicy::Require)
-            .await
-    }
-
-    #[instrument(level = Level::TRACE, skip(self, http_client), err())]
-    async fn check_expiry_and_status_with(
-        &self,
-        claims: &Claims,
-        presentation: &Presentation,
+        presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
         http_client: &dyn HttpClient,
         anchor_policy: AnchorPolicy,
     ) -> Result<()> {
@@ -412,14 +426,10 @@ impl VerifierService {
             CredentialExpiredSnafu.fail()?
         };
 
-        let status = match presentation {
-            Presentation::SdJwtVp(vp) => {
-                self.obtain_sd_jwt_vc_status(vp, http_client, anchor_policy)
-                    .await?
-            }
-            _ => CredentialStatusNotSupportedSnafu.fail()?,
-        };
-        ensure_valid(status)
+        ensure_valid(
+            self.obtain_sd_jwt_vc_status(presentation, http_client, anchor_policy)
+                .await?,
+        )
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -473,7 +483,7 @@ impl VerifierService {
         }
     }
 
-    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn obtain_sd_jwt_vc_status(
         &self,
         presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
@@ -482,7 +492,7 @@ impl VerifierService {
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        let status = StatusListJwt::get_vc_status_with_anchor_policy(
+        let status = StatusListJwt::get_vc_status_with_trusted_certs(
             &claims,
             http_client,
             self.did_resolver.clone(),
@@ -505,7 +515,6 @@ impl VerifierService {
     }
 }
 
-/// Fails unless the credential has no status or a valid one.
 fn ensure_valid(status: Option<VCStatus>) -> Result<()> {
     match status {
         None => {
@@ -606,7 +615,7 @@ mod tests {
             .await
             .unwrap();
 
-        case.assert_verified_claims(&claims).await;
+        case.assert_verified_claims(&claims.claims).await;
     }
 
     #[tokio::test]
@@ -628,7 +637,7 @@ mod tests {
             .await
             .unwrap();
 
-        case.assert_verified_claims(&claims).await;
+        case.assert_verified_claims(&claims.claims).await;
     }
 
     #[should_panic(expected = "Verification error: invalid input: InvalidToken")]
@@ -656,7 +665,7 @@ mod tests {
             .await
             .unwrap();
 
-        case.assert_verified_claims(&claims).await;
+        case.assert_verified_claims(&claims.claims).await;
     }
 
     #[rstest]
@@ -695,7 +704,7 @@ mod tests {
             .await
             .unwrap();
 
-        case.assert_verified_claims(&claims).await;
+        case.assert_verified_claims(&claims.claims).await;
     }
 
     #[rstest]
@@ -759,7 +768,7 @@ mod tests {
             .await
             .unwrap();
 
-        case.assert_verified_claims(&claims).await;
+        case.assert_verified_claims(&claims.claims).await;
     }
 
     #[rstest]
@@ -926,7 +935,6 @@ mod tests {
             verifier_with(iaca, mode, status_list_anchored.then(status_list_root_ca))
         }
 
-        /// [verifier] with an optional status-list anchor.
         fn verifier_with(
             iaca: &str,
             mode: IssuerTrustMode,
@@ -958,7 +966,7 @@ mod tests {
         ) -> crate::vc::core::Result<IssuerTrustVerification> {
             let (vp, iaca) = sample_mso_mdoc_vp_with_status(status);
             verifier(&iaca, mode, status_list_anchored)
-                .verify_presentation_with_issuer_trust(
+                .verify_presentation(
                     Some(sample_binder()),
                     &Presentation::MsoMdoc(mso_mdoc::Presentation {
                         value: vp,
@@ -1026,7 +1034,7 @@ mod tests {
                 IssuerTrustMode::Enforce,
                 Some(status_list_signer_cert()),
             )
-            .verify_presentation_with_issuer_trust(
+            .verify_presentation(
                 Some(sample_binder()),
                 &Presentation::MsoMdoc(mso_mdoc::Presentation {
                     value: vp,
@@ -1059,7 +1067,7 @@ mod tests {
             let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
 
             let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
-                .verify_presentation_with_issuer_trust(
+                .verify_presentation(
                     Some(sample_binder()),
                     &Presentation::MsoMdoc(mso_mdoc::Presentation {
                         value: vp,
@@ -1168,8 +1176,8 @@ mod tests {
             let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
 
             // no status list is served: a fetch would panic
-            let verified = verifier(&unrelated_iaca, IssuerTrustMode::Enforce, true)
-                .verify_presentation_with_issuer_trust(
+            let error = verifier(&unrelated_iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation(
                     Some(sample_binder()),
                     &Presentation::MsoMdoc(mso_mdoc::Presentation {
                         value: vp,
@@ -1178,8 +1186,11 @@ mod tests {
                     &MockHttpClient::new(),
                 )
                 .await
-                .unwrap();
+                .unwrap_err();
 
+            let crate::vc::core::Error::IssuerNotTrusted { verified } = error else {
+                panic!("expected IssuerNotTrusted, got {error}");
+            };
             assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
         }
 
@@ -1230,7 +1241,7 @@ mod tests {
             let (vp, iaca) = mso_mdoc::tests::sample_mso_mdoc_vp_with_iaca();
 
             let verified = verifier(&iaca, IssuerTrustMode::Enforce, true)
-                .verify_presentation_with_issuer_trust(
+                .verify_presentation(
                     Some(sample_binder()),
                     &Presentation::MsoMdoc(mso_mdoc::Presentation {
                         value: vp,

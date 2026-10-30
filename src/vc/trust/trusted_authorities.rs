@@ -184,7 +184,6 @@ mod tests {
 
         let derived = derive_trusted_authority_akis(&[anchor(&ca, "ca"), anchor(&leaf, "leaf")]);
 
-        // the leaf's AKI is the CA's SKI: one value, deduplicated
         assert_eq!(derived.values.len(), 1, "{derived:?}");
         assert_eq!(derived.values[0].as_bytes(), ski_of(&ca));
         assert!(derived.skipped.is_empty());
@@ -285,7 +284,6 @@ mod tests {
             Some(&chain_akis)
         ));
         assert!(!matches_required_akis(&[&other], Some(&chain_akis)));
-        // a DID issuer has no chain
         assert!(!matches_required_akis(&[&requested], None));
     }
 }

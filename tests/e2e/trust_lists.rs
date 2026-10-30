@@ -15,8 +15,8 @@ use equs_sdk::vc::oid4vp::{
     ResolvedPresentationQuery, VerifiedPresentationResponse, Verifier, VerifierBuilder,
 };
 use equs_sdk::vc::trust::issuer::{
-    CredentialCategory, CredentialClassification, IssuerTrustMode, IssuerTrustReason,
-    IssuerTrustStatus, TrustAnchor,
+    CredentialCategory, CredentialClassification, IssuerTrustMode, IssuerTrustStatus,
+    NotTrustedReason, TrustAnchor,
 };
 use equs_sdk::vc::trust::list::{
     AnchorRole, ExportOptions, TrustListExport, TrustListKind, export_trust_list_with_client,
@@ -136,7 +136,7 @@ async fn verify_mdl_classified(
             .unwrap();
 
     verifier
-        .verify_and_extract_presentation_with_issuer_trust(
+        .verify_and_extract_presentation(
             &auth_response,
             &session,
             &CredentialVerificationMetadata {
@@ -195,10 +195,7 @@ async fn an_mdl_is_not_trusted_under_pid_provider_anchors_by_default() {
 
     let outcome = &verified.issuer_trust[0].outcome;
     assert_eq!(outcome.status, IssuerTrustStatus::Untrusted);
-    assert_eq!(
-        outcome.reason,
-        Some(IssuerTrustReason::NoAnchorsForCategory)
-    );
+    assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorsForCategory));
     assert_eq!(outcome.category, Some(CredentialCategory::Eaa));
 }
 
@@ -221,7 +218,7 @@ async fn mdl_issued_under_an_unlisted_iaca_is_rejected_under_enforce() {
     assert_eq!(issuer_trust[0].outcome.status, IssuerTrustStatus::Untrusted);
     assert_eq!(
         issuer_trust[0].outcome.reason,
-        Some(IssuerTrustReason::NoAnchorMatch)
+        Some(NotTrustedReason::NoAnchorMatch)
     );
 }
 
@@ -238,6 +235,6 @@ async fn mdl_issued_under_an_unlisted_iaca_is_reported_under_report() {
     assert_eq!(claims["given_name"].as_str(), Some("Erika"));
     let outcome = &verified.issuer_trust[0].outcome;
     assert_eq!(outcome.status, IssuerTrustStatus::Untrusted);
-    assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
+    assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
     assert_eq!(outcome.source_ref, None);
 }

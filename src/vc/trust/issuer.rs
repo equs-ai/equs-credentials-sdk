@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use standardized_types::etsi_119_612::ServiceType as TslServiceType;
 
 /// What an untrusted issuer does to a verification.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,7 +42,11 @@ impl TrustAnchor {
                 service_type
                     .strip_prefix(LOTE_SERVICE_TYPE_PREFIX)
                     .is_some_and(|kind| kind.ends_with("/Issuance"))
-                    || ISSUING_TSL_SERVICE_TYPES.contains(&service_type)
+                    || service_type == PILOT_PID_PROVIDER_SERVICE_TYPE
+                    || !matches!(
+                        TslServiceType::from(service_type.to_string()),
+                        TslServiceType::Other(_)
+                    )
             }
         }
     }
@@ -64,13 +69,9 @@ impl TrustAnchor {
 /// Prefix of TS 119 602 service types (`…/<kind>/Issuance`, `…/<kind>/Revocation`).
 const LOTE_SERVICE_TYPE_PREFIX: &str = "http://uri.etsi.org/19602/SvcType/";
 
-/// TS 119 612 service types that issue attestations, plus the EUDI pilot PID provider type.
-pub const ISSUING_TSL_SERVICE_TYPES: [&str; 4] = [
-    "http://uri.etsi.org/TrstSvc/Svctype/EAA",
-    "http://uri.etsi.org/TrstSvc/Svctype/EAA/Q",
-    "http://uri.etsi.org/TrstSvc/Svctype/EAA/Pub-EAA",
-    "http://uri.etsi.org/Svc/Svctype/Provider/PID",
-];
+/// The EUDI pilot PID provider type, which TS 119 612 does not name; the EAA types it names issue
+/// attestations too.
+pub const PILOT_PID_PROVIDER_SERVICE_TYPE: &str = "http://uri.etsi.org/Svc/Svctype/Provider/PID";
 
 /// EUDI attestation category; decides which anchors may anchor the issuer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -219,9 +220,10 @@ pub enum IssuerTrustStatus {
     NotEvaluated,
 }
 
+/// Why an issuer is not trusted, in an `untrusted` or `not_evaluated` outcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum IssuerTrustReason {
+pub enum NotTrustedReason {
     /// The chain is valid but reaches none of the anchors.
     NoAnchorMatch,
     /// The chain cannot be validated.
@@ -236,7 +238,20 @@ pub enum IssuerTrustReason {
     DidIssuerNotAllowed,
 }
 
-/// A presentation verified by [crate::vc::core::Verifier::verify_presentation_with_issuer_trust].
+impl std::fmt::Display for NotTrustedReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NoAnchorMatch => "no_anchor_match",
+            Self::ChainInvalid => "chain_invalid",
+            Self::NoAnchorsConfigured => "no_anchors_configured",
+            Self::NoAnchorsForCategory => "no_anchors_for_category",
+            Self::DidIssuer => "did_issuer",
+            Self::DidIssuerNotAllowed => "did_issuer_not_allowed",
+        })
+    }
+}
+
+/// A presentation verified by [crate::vc::core::Verifier::verify_presentation].
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct IssuerTrustVerification {
@@ -278,7 +293,7 @@ pub struct IssuerTrustOutcome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reason: Option<IssuerTrustReason>,
+    pub reason: Option<NotTrustedReason>,
     /// Category the credential was evaluated under.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<CredentialCategory>,
@@ -299,9 +314,9 @@ impl IssuerTrustOutcome {
     /// The outcome for an issuer without a certificate chain.
     pub fn without_chain(category: CredentialCategory) -> Self {
         let outcome = if category.is_regulated() {
-            Self::untrusted(IssuerTrustReason::DidIssuerNotAllowed)
+            Self::untrusted(NotTrustedReason::DidIssuerNotAllowed)
         } else {
-            Self::not_evaluated(IssuerTrustReason::DidIssuer)
+            Self::not_evaluated(NotTrustedReason::DidIssuer)
         };
         outcome.with_category(category)
     }
@@ -312,15 +327,15 @@ impl IssuerTrustOutcome {
         self
     }
 
-    pub fn untrusted(reason: IssuerTrustReason) -> Self {
+    pub fn untrusted(reason: NotTrustedReason) -> Self {
         Self::without_anchor(IssuerTrustStatus::Untrusted, reason)
     }
 
-    pub fn not_evaluated(reason: IssuerTrustReason) -> Self {
+    pub fn not_evaluated(reason: NotTrustedReason) -> Self {
         Self::without_anchor(IssuerTrustStatus::NotEvaluated, reason)
     }
 
-    fn without_anchor(status: IssuerTrustStatus, reason: IssuerTrustReason) -> Self {
+    fn without_anchor(status: IssuerTrustStatus, reason: NotTrustedReason) -> Self {
         Self {
             status,
             anchor_ski: None,
@@ -336,7 +351,7 @@ impl IssuerTrustOutcome {
         match self.status {
             IssuerTrustStatus::Trusted => false,
             IssuerTrustStatus::Untrusted => true,
-            IssuerTrustStatus::NotEvaluated => self.reason != Some(IssuerTrustReason::DidIssuer),
+            IssuerTrustStatus::NotEvaluated => self.reason != Some(NotTrustedReason::DidIssuer),
         }
     }
 }
@@ -405,7 +420,7 @@ pub async fn evaluate_chain(
 
     if anchors.is_empty() {
         return Ok(IssuerTrustOutcome::not_evaluated(
-            IssuerTrustReason::NoAnchorsConfigured,
+            NotTrustedReason::NoAnchorsConfigured,
         ));
     }
 
@@ -496,8 +511,8 @@ pub async fn evaluate_chain(
         )
         .await
         {
-            Ok(_) => IssuerTrustOutcome::untrusted(IssuerTrustReason::NoAnchorMatch),
-            Err(_) => IssuerTrustOutcome::untrusted(IssuerTrustReason::ChainInvalid),
+            Ok(_) => IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorMatch),
+            Err(_) => IssuerTrustOutcome::untrusted(NotTrustedReason::ChainInvalid),
         },
     )
 }
@@ -514,7 +529,7 @@ pub async fn evaluate_chain_for_category(
     let anchors = config.anchors_for(category);
     let issuing = |anchors: &[TrustAnchor]| anchors.iter().any(TrustAnchor::anchors_issuers);
     let outcome = if !issuing(&anchors) && issuing(&config.anchors) {
-        IssuerTrustOutcome::untrusted(IssuerTrustReason::NoAnchorsForCategory)
+        IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorsForCategory)
     } else {
         evaluate_chain(certificate_validator, chain_pem, &anchors).await?
     };
@@ -547,7 +562,7 @@ mod tests {
         let untrusted = IssuerTrust {
             credential_id: "mDL".to_string(),
             index: 0,
-            outcome: IssuerTrustOutcome::untrusted(IssuerTrustReason::NoAnchorMatch),
+            outcome: IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorMatch),
         };
 
         assert_eq!(
@@ -633,7 +648,6 @@ mod tests {
             classification.classify(Some("eu.example.pub.1"), None),
             CredentialCategory::PubEaa
         );
-        // a listed type wins over a contradicting category claim
         assert_eq!(
             classification.classify(Some("eu.example.pub.1"), Some(QUALIFIED_EAA_CATEGORY)),
             CredentialCategory::PubEaa
@@ -651,12 +665,10 @@ mod tests {
         let qualified_sd_jwt = claims(serde_json::json!({
             "vct": "https://example.com/diploma", "category": QUALIFIED_EAA_CATEGORY
         }));
-        // an SD-JWT VC's `category` counts only at the top level
         let nested = claims(serde_json::json!({
             "vct": "https://example.com/diploma",
             "address": { "category": QUALIFIED_EAA_CATEGORY }
         }));
-        // any mdoc namespace may mark the credential qualified
         let mdoc = claims(serde_json::json!({
             "doctype": "eu.example.diploma.1",
             "eu.example.a": { "category": "other" },
@@ -665,7 +677,6 @@ mod tests {
         let public_sd_jwt = claims(serde_json::json!({
             "vct": "https://example.gov/permit", "category": PUB_EAA_CATEGORY
         }));
-        // a qualified mark in one namespace wins over a public mark in another
         let mixed_mdoc = claims(serde_json::json!({
             "doctype": "eu.example.permit.1",
             "eu.example.a": { "category": PUB_EAA_CATEGORY },
@@ -714,11 +725,11 @@ mod tests {
             CredentialCategory::PubEaa,
         ] {
             let outcome = IssuerTrustOutcome::without_chain(category);
-            assert_eq!(outcome.reason, Some(IssuerTrustReason::DidIssuerNotAllowed));
+            assert_eq!(outcome.reason, Some(NotTrustedReason::DidIssuerNotAllowed));
             assert!(outcome.rejected_when_enforced());
         }
         let eaa = IssuerTrustOutcome::without_chain(CredentialCategory::Eaa);
-        assert_eq!(eaa.reason, Some(IssuerTrustReason::DidIssuer));
+        assert_eq!(eaa.reason, Some(NotTrustedReason::DidIssuer));
         assert!(!eaa.rejected_when_enforced());
     }
 
@@ -785,7 +796,7 @@ mod tests {
             outcome,
             IssuerTrustOutcome {
                 category: Some(CredentialCategory::Pid),
-                ..IssuerTrustOutcome::untrusted(IssuerTrustReason::NoAnchorsForCategory)
+                ..IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorsForCategory)
             }
         );
         assert!(outcome.rejected_when_enforced());
@@ -851,7 +862,7 @@ mod tests {
     async fn valid_chain_reaching_no_anchor_is_untrusted() {
         let outcome = evaluate(test_issuer_cert(), &[anchor(github_root_ca(), "list:1")]).await;
         assert_eq!(outcome.status, IssuerTrustStatus::Untrusted);
-        assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
+        assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
         assert!(outcome.rejected_when_enforced());
     }
 
@@ -859,7 +870,7 @@ mod tests {
     async fn no_anchors_is_not_evaluated_and_rejected_when_enforced() {
         let outcome = evaluate(test_issuer_cert(), &[]).await;
         assert_eq!(outcome.status, IssuerTrustStatus::NotEvaluated);
-        assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorsConfigured));
+        assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorsConfigured));
         assert!(outcome.rejected_when_enforced());
     }
 
@@ -879,7 +890,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_listed_certificate_in_the_chain_is_an_anchor() {
-        // a trust list may publish the issuer's own (non-CA) certificate
         let leaf = x509_parser::pem::Pem::iter_from_buffer(test_issuer_cert().as_bytes())
             .next()
             .unwrap()
@@ -943,7 +953,7 @@ mod tests {
         let untrusted = evaluate(test_issuer_cert(), std::slice::from_ref(&revocation)).await;
         let trusted = evaluate(test_issuer_cert(), &[revocation, issuance]).await;
 
-        assert_eq!(untrusted.reason, Some(IssuerTrustReason::NoAnchorMatch));
+        assert_eq!(untrusted.reason, Some(NotTrustedReason::NoAnchorMatch));
         assert_eq!(trusted.source_ref.as_deref(), Some("list:issuance"));
     }
 
@@ -973,17 +983,16 @@ mod tests {
             &[anchor(github_root_ca(), "list:0"), anchor(&ca, "list:1")],
         )
         .await;
-        // an anchor whose subject is not the chain's issuer is not tried
         let unnamed = evaluate(&leaf, &[anchor(github_root_ca(), "list:0")]).await;
 
         assert_eq!(outcome.status, IssuerTrustStatus::Trusted);
         assert_eq!(outcome.source_ref.as_deref(), Some("list:1"));
-        assert_eq!(unnamed.reason, Some(IssuerTrustReason::NoAnchorMatch));
+        assert_eq!(unnamed.reason, Some(NotTrustedReason::NoAnchorMatch));
     }
 
     #[test]
     fn did_issuer_is_never_rejected() {
-        let outcome = IssuerTrustOutcome::not_evaluated(IssuerTrustReason::DidIssuer);
+        let outcome = IssuerTrustOutcome::not_evaluated(NotTrustedReason::DidIssuer);
         assert!(!outcome.rejected_when_enforced());
     }
 
@@ -1008,7 +1017,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
+            assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
             crl.assert_calls_async(0).await;
         }
 
@@ -1057,7 +1066,6 @@ mod tests {
             let pki = CrlPki::start().await;
             pki.serve_crl(true).await;
             let chain = format!("{}{}", pki.issuer, pki.ca);
-            // the issuer certificate is itself listed by a later anchor
             let issuer_only = anchor(&pki.issuer, "list:2");
 
             let outcome = evaluate_result(&chain, &[anchor(&pki.ca, "list:1"), issuer_only])
@@ -1137,7 +1145,7 @@ mod tests {
                     }),
                 });
             service
-                .verify_presentation_with_issuer_trust(
+                .verify_presentation(
                     Some(HolderBinder {
                         nonce: Nonce::from_secret(NONCE.to_string()),
                         verifier_id: "x509_san_dns:verifier-asdk".to_string(),
@@ -1190,7 +1198,7 @@ mod tests {
                     verified.outcome,
                     IssuerTrustOutcome {
                         category: Some(CredentialCategory::Pid),
-                        ..IssuerTrustOutcome::untrusted(IssuerTrustReason::NoAnchorsForCategory)
+                        ..IssuerTrustOutcome::untrusted(NotTrustedReason::NoAnchorsForCategory)
                     }
                 );
             }
@@ -1198,7 +1206,6 @@ mod tests {
 
         #[tokio::test]
         async fn trusted_certificates_alone_anchor_a_pid() {
-            // without an issuer trust config, the trusted certificates are role-less anchors
             let service = VerifierService::new("verifier", Default::default())
                 .with_verification_params(VerificationParams {
                     trusted_certs: Some(anchors(&[test_root_ca()])),
@@ -1206,7 +1213,7 @@ mod tests {
                 });
 
             let verified = service
-                .verify_presentation_with_issuer_trust(
+                .verify_presentation(
                     Some(HolderBinder {
                         nonce: Nonce::from_secret(NONCE.to_string()),
                         verifier_id: "x509_san_dns:verifier-asdk".to_string(),
@@ -1223,19 +1230,28 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn issuer_under_no_anchor_is_untrusted_but_still_verified() {
-            for mode in [IssuerTrustMode::Enforce, IssuerTrustMode::Report] {
-                let (_, outcome) = verify(sd_jwt_vc(), mode, &[github_root_ca()])
-                    .await
-                    .unwrap();
-                assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
-                assert!(outcome.rejected_when_enforced());
-            }
+        async fn issuer_under_no_anchor_is_untrusted_and_rejected_under_enforce() {
+            let (_, outcome) = verify(sd_jwt_vc(), IssuerTrustMode::Report, &[github_root_ca()])
+                .await
+                .unwrap();
+            assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
+            assert!(outcome.rejected_when_enforced());
+
+            let error = verify(sd_jwt_vc(), IssuerTrustMode::Enforce, &[github_root_ca()])
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), "Issuer not trusted: no_anchor_match");
+            let crate::vc::core::Error::IssuerNotTrusted { verified } = error else {
+                panic!("expected IssuerNotTrusted, got {error}");
+            };
+            assert_eq!(
+                verified.outcome.reason,
+                Some(NotTrustedReason::NoAnchorMatch)
+            );
         }
 
         #[tokio::test]
         async fn forged_issuer_signature_fails_under_report() {
-            // swap the issuer JWT's payload; its signature no longer verifies
             let vp = sd_jwt_vc();
             let mut parts: Vec<String> = vp.split('~').map(str::to_string).collect();
             let mut jwt: Vec<String> = parts[0].split('.').map(str::to_string).collect();
@@ -1251,7 +1267,7 @@ mod tests {
 
         #[tokio::test]
         async fn issuer_with_a_crl_and_no_anchor_match_is_verified_under_report() {
-            // regression: the integrity check must not fetch the CRL of an unanchored chain
+            // the integrity check must not fetch the CRL of an unanchored chain
             let pki = CrlPki::start().await;
             let crl = pki.serve_crl(false).await;
 
@@ -1263,7 +1279,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
+            assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
             crl.assert_calls_async(0).await;
         }
 
@@ -1302,13 +1318,12 @@ mod tests {
                 assert_eq!(outcome.status, IssuerTrustStatus::Trusted);
             }
 
-            // integrity and issuer trust share one validator and its CRL cache
             crl.assert_calls_async(1).await;
         }
 
         #[tokio::test]
         async fn a_chain_reaching_only_a_revocation_service_is_untrusted_without_a_crl_fetch() {
-            // regression: the integrity pre-check must use issuer anchors only
+            // the integrity pre-check must use issuer anchors only
             let pki = CrlPki::start().await;
             let unreachable_crl = pki
                 .server
@@ -1332,7 +1347,7 @@ mod tests {
 
             assert_eq!(
                 verified.outcome.reason,
-                Some(IssuerTrustReason::NoAnchorMatch)
+                Some(NotTrustedReason::NoAnchorMatch)
             );
             unreachable_crl.assert_calls_async(0).await;
         }
@@ -1390,7 +1405,7 @@ mod tests {
             let (_, outcome) = verify(sd_jwt_vc_under(&issuer), IssuerTrustMode::Report, &[&root])
                 .await
                 .unwrap();
-            assert_eq!(outcome.reason, Some(IssuerTrustReason::NoAnchorMatch));
+            assert_eq!(outcome.reason, Some(NotTrustedReason::NoAnchorMatch));
         }
 
         /// The `aki` value a verifier requests for `anchor_pem`.
@@ -1422,7 +1437,6 @@ mod tests {
                 &[&requested_aki(&intermediate)],
                 chain_akis
             ));
-            // the root names no certificate in `x5c`: requesting it alone misses
             assert!(!matches_required_akis(&[&requested_aki(&root)], chain_akis));
         }
 
@@ -1471,7 +1485,7 @@ mod tests {
                 verified.outcome,
                 IssuerTrustOutcome {
                     category: Some(CredentialCategory::Pid),
-                    ..IssuerTrustOutcome::untrusted(IssuerTrustReason::DidIssuerNotAllowed)
+                    ..IssuerTrustOutcome::untrusted(NotTrustedReason::DidIssuerNotAllowed)
                 }
             );
             assert!(verified.outcome.rejected_when_enforced());
@@ -1491,7 +1505,7 @@ mod tests {
                 verified.outcome,
                 IssuerTrustOutcome {
                     category: Some(CredentialCategory::Eaa),
-                    ..IssuerTrustOutcome::not_evaluated(IssuerTrustReason::DidIssuer)
+                    ..IssuerTrustOutcome::not_evaluated(NotTrustedReason::DidIssuer)
                 }
             );
             assert!(!verified.outcome.rejected_when_enforced());
@@ -1508,7 +1522,7 @@ mod tests {
 
             assert_eq!(
                 verified.outcome.reason,
-                Some(IssuerTrustReason::DidIssuerNotAllowed)
+                Some(NotTrustedReason::DidIssuerNotAllowed)
             );
             assert_eq!(verified.issuer_chain_akis, None);
             assert!(!matches_required_akis(
@@ -1534,7 +1548,6 @@ mod tests {
 
         #[tokio::test]
         async fn an_undecodable_issuer_jwt_fails_rather_than_passing_as_a_did_issuer() {
-            // the SD-JWT verifier ignores an unknown `crit`, the issuer key decoder rejects it
             let vp = x5c_sd_jwt_vc_with(
                 serde_json::json!({ "crit": ["x"], "x": true }),
                 "urn:example:eaa:1",

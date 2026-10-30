@@ -244,7 +244,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
 
 #[rstest]
 #[case::ds_cert_of_vp_was_signed_by_trusted_cert(true)]
-#[should_panic(expected = "issuer_not_trusted")]
+#[should_panic(expected = "Issuer not trusted")]
 #[case::ds_cert_of_vp_was_signed_by_untrusted_cert(false)]
 #[tokio::test]
 async fn presentation_verification_flow_with_mdl(#[case] trusted: bool) {

@@ -1,5 +1,5 @@
 use crate::vc::oid4vp::internal_error::IssuerNotTrustedSnafu;
-use crate::vc::trust::issuer::{IssuerTrust, IssuerTrustMode, IssuerTrustOutcome};
+use crate::vc::trust::issuer::IssuerTrust;
 
 /// vp_token claims, raw presentations by credential id, and the issuer trust of each credential.
 type VerifiedPresentations = (
@@ -16,7 +16,7 @@ use openid4vp::core::metadata::parameters::wallet::Issuer;
 use openid4vp::verifier::by_reference::ByReference;
 use openid4vp::verifier::request_builder::RequestType;
 use serde_json::{Value as Json, Value};
-use snafu::{ResultExt, ensure};
+use snafu::{IntoError, ResultExt, ensure};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use tracing::{Level, debug, info, instrument, trace};
@@ -41,8 +41,6 @@ use crate::vc::oid4vp::api::VerifiedPresentationResponse;
 use crate::vc::oid4vp::api::as_delegate;
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::oid4vp::delegate::decode_delegate_payload_disclosure;
-#[cfg(feature = "delegate-sd-jwt")]
-use crate::vc::oid4vp::internal_error::VCSnafu;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
     DidUrlResolutionSnafu, FormatNotSupportedSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
@@ -222,7 +220,7 @@ where
         Ok((request_url, session))
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn verify_presentation(
         &self,
         authorization_response: &AuthorizationResponse,
@@ -232,28 +230,11 @@ where
         Ok(self
             .verify_and_extract_presentation(authorization_response, session, verification_metadata)
             .await?
-            .0)
+            .claims)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn verify_and_extract_presentation(
-        &self,
-        authorization_response: &AuthorizationResponse,
-        session: &PresentationSession,
-        verification_metadata: &CredentialVerificationMetadata,
-    ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>)> {
-        let verified = self
-            .verify_and_extract_presentation_with_issuer_trust(
-                authorization_response,
-                session,
-                verification_metadata,
-            )
-            .await?;
-        Ok((verified.claims, verified.presentations))
-    }
-
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn verify_and_extract_presentation_with_issuer_trust(
         &self,
         authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
@@ -321,7 +302,7 @@ where
     NG: NonceHandler,
     HC: HttpClient,
 {
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn resolve_authorization_response(
         &self,
         response: &AuthorizationResponse,
@@ -588,47 +569,52 @@ where
         holder_binder: Option<HolderBinder>,
         transaction_data: Option<&Vec<TransactionDataItem>>,
         state: &Option<String>,
-    ) -> Result<crate::vc::trust::issuer::IssuerTrustVerification> {
+    ) -> Result<(crate::vc::trust::issuer::IssuerTrustVerification, bool)> {
         let delegate_items = Self::delegate_items_for(transaction_data, &requested_presentation.id);
 
         if delegate_items.is_empty() {
-            self.verifier
-                .verify_presentation_with_issuer_trust(
-                    holder_binder,
-                    &requested_presentation.presentation,
-                    &self.http_client,
-                )
-                .await
-                .context(VCSnafu)
-                .map_err(From::from)
+            Self::verified_or_rejected(
+                self.verifier
+                    .verify_presentation(
+                        holder_binder,
+                        &requested_presentation.presentation,
+                        &self.http_client,
+                    )
+                    .await,
+            )
         } else {
-            let claims = self
-                .verifier
-                .verify_delegation(
-                    holder_binder.clone(),
-                    &requested_presentation.presentation,
-                    &self.http_client,
-                )
-                .await
-                .context(VCSnafu)?;
+            let (verified, rejected) = Self::verified_or_rejected(
+                self.verifier
+                    .verify_delegation(
+                        holder_binder.clone(),
+                        &requested_presentation.presentation,
+                        &self.http_client,
+                    )
+                    .await,
+            )?;
 
             Self::validate_delegate_transaction_data_content(
                 delegate_items,
                 &requested_presentation.id,
-                &claims,
+                &verified.claims,
                 holder_binder.as_ref(),
                 state,
             )?;
 
-            // a delegation grant is signed by the delegating holder's key, not an issuer chain
-            Ok(
-                crate::vc::trust::issuer::IssuerTrustVerification::without_chain(
-                    claims,
-                    IssuerTrustOutcome::not_evaluated(
-                        crate::vc::trust::issuer::IssuerTrustReason::DidIssuer,
-                    ),
-                ),
-            )
+            Ok((verified, rejected))
+        }
+    }
+
+    /// A verification and whether `Enforce` rejected its issuer.
+    fn verified_or_rejected(
+        result: vc::core::Result<crate::vc::trust::issuer::IssuerTrustVerification>,
+    ) -> Result<(crate::vc::trust::issuer::IssuerTrustVerification, bool)> {
+        match result {
+            Ok(verified) => Ok((verified, false)),
+            Err(vc::core::Error::IssuerNotTrusted { verified }) => Ok((*verified, true)),
+            Err(error) => Err(crate::vc::oid4vp::internal_error::VCSnafu
+                .into_error(error)
+                .into()),
         }
     }
 
@@ -1072,7 +1058,7 @@ where
         Ok((auth_request_url, auth_req_jwt))
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     async fn do_verify_presentation(
         &self,
         resolved_presentation_query: &ResolvedPresentationQuery,
@@ -1083,6 +1069,7 @@ where
     ) -> Result<VerifiedPresentations> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut issuer_trust: Vec<IssuerTrust> = vec![];
+        let mut issuer_rejected = false;
         let mut validated: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut presentations: HashMap<String, Vec<crate::vc::Presentation>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
@@ -1138,11 +1125,11 @@ where
                     })
                 };
 
-            let verified: crate::vc::trust::issuer::IssuerTrustVerification;
+            let (verified, rejected): (crate::vc::trust::issuer::IssuerTrustVerification, bool);
 
             #[cfg(feature = "delegate-sd-jwt")]
             {
-                verified = self
+                (verified, rejected) = self
                     .verify_presentation_or_delegation(
                         &requested_presentation,
                         holder_binder,
@@ -1153,15 +1140,15 @@ where
             }
             #[cfg(not(feature = "delegate-sd-jwt"))]
             {
-                verified = self
-                    .verifier
-                    .verify_presentation_with_issuer_trust(
-                        holder_binder,
-                        &requested_presentation.presentation,
-                        &self.http_client,
-                    )
-                    .await
-                    .context(crate::vc::oid4vp::internal_error::VCSnafu)?;
+                (verified, rejected) = Self::verified_or_rejected(
+                    self.verifier
+                        .verify_presentation(
+                            holder_binder,
+                            &requested_presentation.presentation,
+                            &self.http_client,
+                        )
+                        .await,
+                )?;
             }
 
             let id = requested_presentation.id;
@@ -1171,6 +1158,7 @@ where
                 verified.issuer_chain_akis.as_deref(),
             )?;
             let claims = verified.claims;
+            issuer_rejected |= rejected;
             issuer_trust.push(IssuerTrust {
                 credential_id: id.clone(),
                 index: ids.iter().filter(|seen| **seen == id).count(),
@@ -1196,11 +1184,7 @@ where
             ids,
         )?;
 
-        if self.verifier.issuer_trust_mode() == IssuerTrustMode::Enforce
-            && issuer_trust
-                .iter()
-                .any(|entry| entry.outcome.rejected_when_enforced())
-        {
+        if issuer_rejected {
             tracing::warn!("presentation rejected: a credential issuer is not trusted");
             return Err(IssuerNotTrustedSnafu { issuer_trust }.build().into());
         }
@@ -1355,6 +1339,7 @@ mod tests {
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::oid4vp::{VerifierInfo, VerifierInfoEntry};
     use crate::vc::presentation_exchange::PresentationDefinition;
+    use crate::vc::trust::issuer::IssuerTrustMode;
     use base64::Engine;
     use base64::prelude::BASE64_URL_SAFE_NO_PAD;
     use openid4vp::core::authorization_request::parameters::{Audience, VerifierInfoData};
@@ -2176,7 +2161,7 @@ mod tests {
     ) -> Result<crate::vc::oid4vp::VerifiedPresentationResponse> {
         verifier_service_with_issuer_trust(config)
             .await
-            .verify_and_extract_presentation_with_issuer_trust(
+            .verify_and_extract_presentation(
                 &mdoc_response(vp),
                 &mdoc_session(),
                 &CredentialVerificationMetadata {
@@ -2254,7 +2239,7 @@ mod tests {
         };
         assert_eq!(
             issuer_trust[0].outcome.reason,
-            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorsConfigured)
+            Some(crate::vc::trust::issuer::NotTrustedReason::NoAnchorsConfigured)
         );
     }
 
@@ -2305,7 +2290,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             reported.issuer_trust[0].outcome.reason,
-            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorMatch)
+            Some(crate::vc::trust::issuer::NotTrustedReason::NoAnchorMatch)
         );
     }
 
@@ -2341,7 +2326,7 @@ mod tests {
 
         verifier_service_with_issuer_trust(trust(mode, vec![iaca_anchor(iaca)]))
             .await
-            .verify_and_extract_presentation_with_issuer_trust(
+            .verify_and_extract_presentation(
                 &response,
                 &session,
                 &CredentialVerificationMetadata {
@@ -2436,7 +2421,7 @@ mod tests {
 
         verifier_service_with_issuer_trust(trust(mode, anchors(&iaca, &unrelated)))
             .await
-            .verify_and_extract_presentation_with_issuer_trust(
+            .verify_and_extract_presentation(
                 &mdoc_response(vp),
                 &session,
                 &CredentialVerificationMetadata {
@@ -2525,7 +2510,7 @@ mod tests {
 
         assert_eq!(
             verified.issuer_trust[0].outcome.reason,
-            Some(crate::vc::trust::issuer::IssuerTrustReason::NoAnchorMatch)
+            Some(crate::vc::trust::issuer::NotTrustedReason::NoAnchorMatch)
         );
     }
 
@@ -2553,7 +2538,6 @@ mod tests {
         .unwrap();
         let query = ResolvedPresentationQuery::DCQL(dcql);
 
-        // a DID issuer has no chain
         let error = TestVerifierService::check_trusted_authorities(&query, "pid", None)
             .expect_err("a DID issuer must miss an aki query");
 
@@ -2629,7 +2613,7 @@ mod tests {
             vec![iaca_anchor(iaca)],
         ))
         .await
-        .verify_and_extract_presentation_with_issuer_trust(
+        .verify_and_extract_presentation(
             &mdoc_response(vp),
             &session,
             &CredentialVerificationMetadata {

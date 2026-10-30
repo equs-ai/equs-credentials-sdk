@@ -169,8 +169,7 @@ impl MsoMdocAPI {
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
             client_id: holder_binder.map(|b| b.origin_or_verifier_id().to_owned()),
-            // integrity-only: one-core validates the issuer chain without an anchor; the caller
-            // evaluates issuer trust
+            // the caller evaluates the chain against its anchors
             trusted_certs: match opts.anchor_policy {
                 AnchorPolicy::Require => opts.trusted_certs.filter(|certs| !certs.is_empty()),
                 AnchorPolicy::IntegrityOnly => None,

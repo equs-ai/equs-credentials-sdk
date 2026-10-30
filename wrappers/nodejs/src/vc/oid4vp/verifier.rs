@@ -121,7 +121,7 @@ impl InternalOID4VPVerifier {
     ) -> Result<JsClaimsPresentations> {
         let verified = self
             .0
-            .verify_and_extract_presentation_with_issuer_trust(
+            .verify_and_extract_presentation(
                 &authorization_response.try_into()?,
                 &session.try_into()?,
                 &verification_metadata.try_into()?,

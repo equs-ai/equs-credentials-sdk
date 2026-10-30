@@ -2888,6 +2888,7 @@ dependencies = [
  "equs-one-core",
  "equs-one-core-portable",
  "equs-one-core-shared-types",
+ "equs-one-core-standardized-types",
  "equs-openid4vp",
  "equs-sd-jwt-rs",
  "equs-test-fixtures",

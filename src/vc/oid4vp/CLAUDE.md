@@ -52,6 +52,10 @@ Implements the OpenID for Verifiable Presentations (OID4VP) protocol layer, prov
 - `VerifierBuilder::add_trust_anchor(pem, source_ref, role, service_type)` adds anchors that may be intermediates or
   listed signing certificates, tried in order. Only an anchor without a `service_type`, or of an issuing service
   (`TrustAnchor::anchors_issuers`), anchors issuers; others, e.g. a revocation service's, only check status lists. `add_trusted_root_certificate` still adds self-signed CA roots.
+  Both also hold the anchor in `trusted_certs`, keyed by SKI (`sha256:<digest>` for an anchor without one) for status
+  lists and chains (`hold_anchor`): of two anchors with one SKI, e.g. a CA renewed with the same key, the one valid longer
+  is kept, so an expired one added later cannot replace it. Anchors still live in two stores (`trusted_certs` and
+  `trust_anchors`); deriving the SKI map from `trust_anchors` alone is a follow-up.
   `with_issuer_trust_mode(Enforce | Report)` sets the mode; the default is `Enforce`.
 - Issuer trust is per credential category (EUDI ARF OIA_12 to OIA_15): `CredentialClassification` (set with
   `with_credential_classification`; default PID types `urn:eudi:pid:*` and `eu.europa.ec.eudi.pid.1`, a `category`
@@ -61,23 +65,26 @@ Implements the OpenID for Verifiable Presentations (OID4VP) protocol layer, prov
   every category unless `with_roleless_anchors(RolelessAnchors::EaaOnly)`. None fitting is `untrusted` /
   `no_anchors_for_category`. A PID, QEAA or PuB-EAA issuer without a certificate chain (a DID, even with `x5c`
   beside it) is `untrusted` / `did_issuer_not_allowed` (`IssuerTrustOutcome::without_chain`).
-- `verify_and_extract_presentation_with_issuer_trust` returns `VerifiedPresentationResponse { claims, presentations,
+- `verify_and_extract_presentation` returns `VerifiedPresentationResponse { claims, presentations,
   issuer_trust }`, with one `IssuerTrust { credential_id, index, status, anchor_ski, source_ref, role, reason, category }` per
   presented credential. In `Enforce` mode, any certificate-identified issuer that is `untrusted`, or that has no anchors,
-  fails with `InternalError::IssuerNotTrusted`. Its message is `issuer_not_trusted: <JSON entries>`.
-- DID-identified EAA issuers and dSD-JWT delegation grants are `not_evaluated/did_issuer` and are never rejected
-  (known limitation); a DID-identified PID, QEAA or PuB-EAA issuer is `untrusted/did_issuer_not_allowed`. An mdoc with no anchors is `not_evaluated/no_anchors_configured`, like any certificate-identified issuer.
+  fails with `InternalError::IssuerNotTrusted`. The core verifier rejects such an issuer per credential with
+  `vc::core::Error::IssuerNotTrusted`; `verified_or_rejected` keeps that verification, so the error is raised once every
+  credential is verified and lists all of them. Its message names each untrusted credential query and its reason, e.g. ``Issuer not trusted: `mDL` (no_anchor_match)``; the entries themselves are on the error.
+- DID-identified EAA issuers are `not_evaluated/did_issuer` and are never rejected (known limitation). A dSD-JWT
+  delegation grant is classified by its `issued_vc` in core `verify_delegation`, so a delegated EAA passes the same way
+  and a delegated PID, QEAA or PuB-EAA is refused; a DID-identified PID, QEAA or PuB-EAA issuer is `untrusted/did_issuer_not_allowed`. An mdoc with no anchors is `not_evaluated/no_anchors_configured`, like any certificate-identified issuer.
 - DCQL `trusted_authorities` on a credential query is kept through the signed request and the session. After a
   credential is verified, `check_trusted_authorities` requires one certificate of its issuer chain to carry a requested
   `aki` value, when the query requests only `aki` entries; otherwise `TrustedAuthorityMismatch { credential_id }`, in
   either issuer-trust mode (OpenID4VP §8.6). A DID issuer has no chain and does not match. A match never makes the
-  issuer trusted. `verify_presentation_with_issuer_trust` returns `IssuerTrustVerification { claims, outcome,
+  issuer trusted. The core `Verifier::verify_presentation` returns `IssuerTrustVerification { claims, outcome,
   issuer_chain_akis }` for this.
   - Precedence: the check runs per credential inside the verification loop, before the `Enforce` decision, so an
     untrusted issuer that also misses the requested values fails with `TrustedAuthorityMismatch`, not
     `IssuerNotTrusted`.
   - It is a filter, not a trust signal: the topmost certificate's AKI is not authenticated by any anchor.
-  - On wasm, and in the trait default of `verify_presentation_with_issuer_trust`, `issuer_chain_akis` is `None`, so a
+  - On wasm `issuer_chain_akis` is `None`, so a
     credential presented for a query with only `aki` entries always fails there.
   - A failing credential fails the whole response. Discarding only that credential and re-checking `credential_sets`
     (OpenID4VP §8.6) is a follow-up.

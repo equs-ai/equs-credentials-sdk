@@ -21,6 +21,7 @@ use one_core::provider::key_algorithm::ecdsa::Ecdsa;
 use one_core::provider::key_algorithm::eddsa::Eddsa;
 use one_core::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
 use one_core::provider::remote_entity_storage::in_memory::InMemoryStorage;
+use tracing::error;
 
 /// Largest CRL read; a larger one leaves revocation unknown.
 const MAX_CRL_BYTES: usize = 32 * 1024 * 1024;
@@ -33,15 +34,26 @@ const CRL_EXPIRY: time::Duration = time::Duration::hours(1);
 /// After this long a cached CRL is refetched; on failure the cached one is kept until it expires.
 const CRL_REFRESH_AFTER: time::Duration = time::Duration::minutes(15);
 
-static SHARED: LazyLock<Arc<CertificateValidatorImpl>> = LazyLock::new(|| Arc::new(build()));
+static SHARED: LazyLock<Result<Arc<CertificateValidatorImpl>, String>> = LazyLock::new(|| {
+    build().map(Arc::new).inspect_err(|details| {
+        error!(%details, "Certificate validator could not be built");
+    })
+});
 
 /// A handle on the process-wide certificate validator.
 #[derive(Clone)]
-pub(crate) struct SharedCertificateValidator(Arc<CertificateValidatorImpl>);
+pub(crate) struct SharedCertificateValidator(Result<Arc<CertificateValidatorImpl>, String>);
 
 impl SharedCertificateValidator {
     pub(crate) fn get() -> Self {
         Self(SHARED.clone())
+    }
+
+    /// The validator, or why it could not be built.
+    fn validator(&self) -> Result<&CertificateValidatorImpl, Error> {
+        self.0
+            .as_deref()
+            .map_err(|details| Error::CRLCheckFailed(details.clone()))
     }
 }
 
@@ -52,7 +64,9 @@ impl CertificateValidator for SharedCertificateValidator {
         pem_chain: &str,
         validation: CertificateValidationOptions,
     ) -> Result<ParsedCertificate, Error> {
-        self.0.parse_pem_chain(pem_chain, validation).await
+        self.validator()?
+            .parse_pem_chain(pem_chain, validation)
+            .await
     }
 
     async fn validate_chain_against_ca_chain(
@@ -62,14 +76,14 @@ impl CertificateValidator for SharedCertificateValidator {
         validation: CertificateValidationOptions,
         cert_selection: CertSelection,
     ) -> Result<ParsedCertificate, Error> {
-        self.0
+        self.validator()?
             .validate_chain_against_ca_chain(pem_chain, ca_pem_chain, validation, cert_selection)
             .await
     }
 }
 
 /// A validator fetching CRLs over http(s) without redirects, bounded in size and time, and cached.
-fn build() -> CertificateValidatorImpl {
+fn build() -> Result<CertificateValidatorImpl, String> {
     let key_algorithm_provider = Arc::new(KeyAlgorithmProviderImpl::new(
         HashMap::from_iter([
             (
@@ -83,10 +97,8 @@ fn build() -> CertificateValidatorImpl {
         ]),
         Default::default(),
     ));
-    // fails only when the TLS backend cannot be initialised, as `ReqwestClient::default` would
-    #[allow(clippy::expect_used)]
     let crl_client = ReqwestClient::for_revocation_data(MAX_CRL_BYTES, CRL_TIMEOUT)
-        .expect("the CRL HTTP client could not be built");
+        .map_err(|e| format!("the CRL HTTP client could not be built: {e}"))?;
     let crl_cache = Arc::new(X509CrlCache::new(
         Arc::new(X509CrlResolver::new(Some(Arc::new(crl_client)))),
         Arc::new(InMemoryStorage::new(HashMap::new())),
@@ -103,11 +115,31 @@ fn build() -> CertificateValidatorImpl {
         time::Duration::hours(1),
         time::Duration::hours(1),
     ));
-    CertificateValidatorImpl::new(
+    Ok(CertificateValidatorImpl::new(
         key_algorithm_provider,
         crl_cache,
         Arc::new(DefaultClock),
         time::Duration::minutes(1),
         android_attestation_crl_cache,
-    )
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_validator_that_could_not_be_built_fails_each_call() {
+        let validator = SharedCertificateValidator(Err("no TLS backend".to_string()));
+
+        let error = validator
+            .parse_pem_chain("", CertificateValidationOptions::no_validation())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&error, Error::CRLCheckFailed(details) if details == "no TLS backend"),
+            "{error:?}"
+        );
+    }
 }

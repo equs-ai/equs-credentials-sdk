@@ -85,18 +85,7 @@ impl<T: CertificateValidator> Truststore<T> {
         let leaf_certificate = match self.anchor_policy {
             AnchorPolicy::Require => match self.held_leaf(pem_chain).await? {
                 Some(leaf) => leaf,
-                None => validate_chain_against_trust_anchors(
-                    &self.cert_validator,
-                    pem_chain,
-                    &self.trusted_roots,
-                    || {
-                        CertificateValidationOptions::signature_and_revocation_below_anchor(Some(
-                            vec![EnforceKeyUsage::DigitalSignature],
-                        ))
-                    },
-                )
-                .await
-                .map_err(|e| {
+                None => self.validate_to_held_anchor(pem_chain).await.map_err(|e| {
                     UntrustedChainSnafu {
                         details: e.to_string(),
                     }
@@ -121,8 +110,7 @@ impl<T: CertificateValidator> Truststore<T> {
         Ok(leaf_certificate)
     }
 
-    /// The leaf of `pem_chain` when it is itself a held anchor, checked for validity and key usage
-    /// only. A self-signed leaf is left to path validation.
+    /// The leaf when it is itself a held anchor; a self-signed one is left to path validation.
     async fn held_leaf(
         &self,
         pem_chain: &str,
@@ -150,12 +138,7 @@ impl<T: CertificateValidator> Truststore<T> {
             return Ok(None);
         }
         self.cert_validator
-            .parse_pem_chain(
-                anchor_pem,
-                CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
-                    EnforceKeyUsage::DigitalSignature,
-                ])),
-            )
+            .parse_pem_chain(anchor_pem, below_anchor_validation())
             .await
             .map(Some)
             .map_err(|e| {
@@ -166,8 +149,7 @@ impl<T: CertificateValidator> Truststore<T> {
             })
     }
 
-    /// Checks revocation below the held anchor a chain reaches; a chain reaching none passes, as
-    /// the caller decides whether it must.
+    /// Fails only on a path to a held anchor that [is_rejected_path] rejects.
     async fn check_revocation_under_held_anchor(
         &self,
         pem_chain: &str,
@@ -175,25 +157,37 @@ impl<T: CertificateValidator> Truststore<T> {
         if self.trusted_roots.is_empty() {
             return Ok(());
         }
-        match validate_chain_against_trust_anchors(
+        if let Err(error) = self.validate_to_held_anchor(pem_chain).await
+            && is_rejected_path(&error)
+        {
+            return UntrustedChainSnafu {
+                details: error.to_string(),
+            }
+            .fail();
+        }
+        Ok(())
+    }
+
+    async fn validate_to_held_anchor(
+        &self,
+        pem_chain: &str,
+    ) -> Result<ParsedCertificate, one_core::proto::certificate_validator::Error> {
+        validate_chain_against_trust_anchors(
             &self.cert_validator,
             pem_chain,
             &self.trusted_roots,
-            || {
-                CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
-                    EnforceKeyUsage::DigitalSignature,
-                ]))
-            },
+            below_anchor_validation,
         )
         .await
-        {
-            Err(error) if is_rejected_path(&error) => Err(UntrustedChainSnafu {
-                details: error.to_string(),
-            }
-            .build()),
-            _ => Ok(()),
-        }
     }
+}
+
+/// Signatures, plus validity and revocation of the certificates below the anchor; the leaf must
+/// allow `digitalSignature`.
+fn below_anchor_validation() -> CertificateValidationOptions {
+    CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
+        EnforceKeyUsage::DigitalSignature,
+    ]))
 }
 
 /// A failure `report` mode cannot relax: a certificate on the path to an anchor is revoked,

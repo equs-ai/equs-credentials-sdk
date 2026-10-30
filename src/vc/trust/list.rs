@@ -245,7 +245,6 @@ pub async fn export_trust_list_with_client(
     export(Arc::new(client), &url, kind, &policy).await
 }
 
-/// Validates the root location and `options`.
 fn validate(url: &str, options: &ExportOptions) -> Result<(Url, ExportPolicy), TrustListError> {
     let url = Url::parse(url).map_err(|e| {
         InvalidUrlSnafu {
@@ -307,6 +306,7 @@ fn validate(url: &str, options: &ExportOptions) -> Result<(Url, ExportPolicy), T
     Ok((url, policy))
 }
 
+// TODO: take an SDK `HttpClient` here once one-core's `HttpClient` is gone from the SDK.
 async fn export(
     client: Arc<dyn OneCoreHttpClient>,
     url: &Url,
@@ -570,7 +570,6 @@ mod tests {
     async fn lotl_kind_reads_the_root_as_a_list_of_trusted_lists() {
         let (lote, signer, _) = pid_lote(json!({}));
 
-        // a LoTE JWT is not a TS 119 612 XML list
         let error = export_trust_list_with_client(
             serving(lote, "application/vnd.etsi.tsl+xml"),
             "https://lotl.example.com/eu-lotl.xml",
