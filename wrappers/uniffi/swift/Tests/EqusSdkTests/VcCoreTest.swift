@@ -458,7 +458,7 @@ class VcCoreTests {
         }
     }
 
-    @Test func verifierVerifiesPresentation() async throws {
+    @Test @MainActor func verifierVerifiesPresentation() async throws {
         let vault = InMemVault()
         let resolver = try UniversalDidResolver(resolvers: nil)
         let issuer = try VcCoreIssuer(
