@@ -2315,7 +2315,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.117",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2888,6 +2888,7 @@ dependencies = [
  "equs-one-core",
  "equs-one-core-portable",
  "equs-one-core-shared-types",
+ "equs-one-core-standardized-types",
  "equs-openid4vp",
  "equs-sd-jwt-rs",
  "equs-test-fixtures",
@@ -2992,14 +2993,15 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core"
-version = "0.1.2"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b038b7a1e915c406e6261dad90b0308d71ef231013a15cbdd59de350a74782"
+checksum = "2433065fe168c05b46104944ef4fbbb9789e7c634ce568075f61d93fb2eec9eb"
 dependencies = [
  "aes-gcm",
  "anyhow",
  "asn1-rs 0.7.1",
  "async-trait",
+ "aws-lc-rs",
  "bincode",
  "bit-vec 0.8.0",
  "bon",
@@ -3037,10 +3039,12 @@ dependencies = [
  "one-dto-mapper",
  "ouroboros",
  "pem 3.0.6",
+ "quick-xml",
  "rand 0.8.6",
  "rcgen",
  "regex",
  "reqwest 0.13.3",
+ "roxmltree",
  "rumqttc-next",
  "rustls",
  "rustls-pki-types",
@@ -3075,9 +3079,9 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-crypto"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f63f89b2447a70d76d04af06fc7c8dfac01abc4ee45356be4d50e210a89e08fe"
+checksum = "4d7a084e31e621c0cec0d13c93f780c7053aa9347fc8d34fc6250753b00b275a"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3112,9 +3116,9 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-dcql"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b91b175642d96ad6d999a5aff4e0677e9a47c6689717e1be9fa734e27cdfbbf"
+checksum = "3ccbe36b9904b8530f0dd3076f452af246e07ec5a1823bbf36852b19a9d0ea8c"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3125,9 +3129,9 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-portable"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85614c49d560af51a68cb45a55603c4a225c23af7b824a51b1fc4f7005adc549"
+checksum = "40eec5598def11171ad8dbb9cf737b970d8a4bd082134fdb591f1d903861128c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3187,13 +3191,15 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core-standardized-types"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ac0ac3b192367782e1c970d2f26557f92dbd165ef9aa6a509f05bf80aa97b2d"
+checksum = "5e261b6a6b8aaf436cf1fcda31c12c0de3fd50f6ed41787d0724585c956e4a8c"
 dependencies = [
  "anyhow",
  "ct-codecs",
  "equs-one-core-proc-macros",
+ "one-dto-mapper",
+ "quick-xml",
  "secrecy",
  "serde",
  "serde_json",
@@ -5373,9 +5379,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.28"
+version = "1.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc3a226e576f50782b3305c5ccf458698f92798987f551c6a02efe8276721e22"
+checksum = "ff20308ecabd635a2dc1dd5834a86c462cca20efba1d5d3ddab1f8aea3455cb2"
 dependencies = [
  "cc",
  "libc",
@@ -5840,6 +5846,7 @@ dependencies = [
  "snafu 0.8.9",
  "strum_macros 0.27.2",
  "time",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -6011,7 +6018,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http 1.3.1",
@@ -6716,6 +6723,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7242,6 +7259,12 @@ dependencies = [
  "rmp",
  "serde",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "rsa"
@@ -10837,7 +10860,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11495,9 +11518,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.1.1"
+version = "9.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518b847fd864440c379748ad684c449f293af68978a485a4ff16f7c901c1f7c4"
+checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
 dependencies = [
  "crc32fast",
  "flate2",

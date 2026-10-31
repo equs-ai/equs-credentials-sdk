@@ -21,4 +21,4 @@ Implements all DID (Decentralised Identifier) methods supported by EQUS Credenti
 - `DIDResolver` trait requires two methods: `resolve_representation(&self, did, options) → Result<...>` and `method_name() → &str`.
 - `did:webvh` and `did:ethr` are **non-wasm only** — gated with `#[cfg(not(target_arch = "wasm32"))]` because they perform HTTP I/O using `one-core`'s HTTP client which requires `Send`.
 - New DID method resolvers should follow the `didethr/` directory pattern: a `mod.rs` re-exporting submodules and a `client.rs` containing the resolver struct with embedded `#[cfg(test)] mod tests`.
-- The `one-core` `HttpClient` trait (`get/post/send` pattern) is incompatible with the SDK's (`async_call` pattern); bridging requires an adapter — see `src/did/webvh/client.rs` for the reference pattern.
+- The `one-core` `HttpClient` trait (`get/post/send` pattern) is incompatible with the SDK's (`async_call` pattern); bridging requires an adapter — use `src/utils/one_core_http.rs` (`OneCoreHttpClientAdapter`).

@@ -522,26 +522,29 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<Claims, Error>;
 
-    /// Verify a presentation response and return both
-    ///     - the verified claims;
-    ///     - the raw presentations, keyed by credential id, for a later processing.
+    /// Verify a presentation response and return the verified claims, the presentations keyed
+    /// by credential id, and the issuer trust of every presented credential.
     ///
     /// Runs the same verification as [`Verifier::verify_presentation`].
-    ///
-    /// # Returns
-    ///
-    /// * The verified claims as a JSON object.
-    /// * Credential presentations mapped by credential id from Authorization Request.
     ///
     /// # Errors
     ///
     /// * [ProtocolError] / [InternalError] - same conditions as [`Verifier::verify_presentation`].
+    /// * [InternalError::IssuerNotTrusted] - in issuer-trust mode `Enforce`, a certificate-identified
+    ///   issuer is untrusted or no anchor is configured; carries every credential's issuer trust.
     async fn verify_and_extract_presentation(
         &self,
         authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
-    ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>), Error>;
+    ) -> Result<VerifiedPresentationResponse, Error>;
+}
+
+#[derive(Debug, Clone)]
+pub struct VerifiedPresentationResponse {
+    pub claims: Claims,
+    pub presentations: HashMap<String, Vec<crate::vc::Presentation>>,
+    pub issuer_trust: Vec<crate::vc::trust::issuer::IssuerTrust>,
 }
 
 impl From<SpruceErr> for Error {

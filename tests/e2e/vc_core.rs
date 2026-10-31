@@ -143,7 +143,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
         .await;
     assert!(ver_res.is_ok());
 
-    let res_claims = ver_res.unwrap();
+    let res_claims = ver_res.unwrap().claims;
     println!("Presentation claims {:?}", res_claims);
 
     // tests claim expiration. It was set during issuer creation
@@ -268,7 +268,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
         .await;
     assert!(ver_res.is_ok());
 
-    let res_claims = ver_res.unwrap();
+    let res_claims = ver_res.unwrap().claims;
     println!(
         "Presentation claims {}",
         serde_json::to_string_pretty(&res_claims).unwrap()
@@ -395,7 +395,7 @@ async fn credential_issuance_and_status_verification() {
         .await;
     assert!(ver_res.is_ok());
 
-    let res_claims = ver_res.unwrap();
+    let res_claims = ver_res.unwrap().claims;
     println!("Presentation claims {:?}", res_claims);
 
     assert!(res_claims.get("given_name").is_some());
