@@ -458,7 +458,8 @@ class VcCoreTests {
         }
     }
 
-    @Test @MainActor func verifierVerifiesPresentation() async throws {
+    @available(iOS 18.0, macOS 15.0, *)
+    @Test func verifierVerifiesPresentation() async throws {
         let vault = InMemVault()
         let resolver = try UniversalDidResolver(resolvers: nil)
         let issuer = try VcCoreIssuer(
@@ -496,10 +497,12 @@ class VcCoreTests {
             presentationInput: VcCoreFixtures.presentationInput()
         )
 
-        let claimsJson = try await verifier.verifyPresentation(
-            holderBinder: binder,
-            presentation: presentation
-        )
+        let claimsJson = try await withTaskExecutorPreference(LargeStackExecutor.shared) {
+            try await verifier.verifyPresentation(
+                holderBinder: binder,
+                presentation: presentation
+            )
+        }
         #expect(claimsJson.contains("221B Baker Street"))
         #expect(claimsJson.contains(VcCoreFixtures.vct))
     }
