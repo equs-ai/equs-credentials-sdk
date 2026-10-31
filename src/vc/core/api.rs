@@ -340,6 +340,15 @@ pub enum Error {
     #[snafu(display("Credential is expired"))]
     CredentialExpired,
 
+    /// The issuer is not trusted in `Enforce` mode; carries the verification.
+    #[snafu(display(
+        "Issuer not trusted{}",
+        verified.outcome.reason.map(|reason| format!(": {reason}")).unwrap_or_default()
+    ))]
+    IssuerNotTrusted {
+        verified: Box<crate::vc::trust::issuer::IssuerTrustVerification>,
+    },
+
     #[snafu(display("Error during expiration check"))]
     ExpirationCheck {
         source: vc::formats::Error,
@@ -692,7 +701,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Verifier: WasmNotSend + WasmNotSync {
-    /// Verify a `Presentation`.
+    /// Verify a `Presentation` and evaluate its issuer against the trust anchors.
     ///
     /// # Arguments
     ///
@@ -701,18 +710,19 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     ///
     /// # Returns
     ///
-    /// Verified `Claims` on success.
+    /// The verified claims, the issuer trust of the presentation and the issuer chain's AKIs.
     ///
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
     /// * [Error::VC] - internal error [VCFormatError](vc::VCFormatError).
+    /// * [Error::IssuerNotTrusted] - in `Enforce` mode, the issuer is untrusted or has no anchor.
     async fn verify_presentation(
         &self,
         holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
-    ) -> Result<Claims>;
+    ) -> Result<crate::vc::trust::issuer::IssuerTrustVerification>;
 
     /// Verify a dSD-JWT delegation grant received in response to a `delegate`
     /// transaction-data request.
@@ -724,21 +734,23 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     ///
     /// # Returns
     ///
-    /// Verified `Claims`: `issued_vc` (issuer-signed claims) and `delegations`
-    /// (per-hop Delegate Payloads).
+    /// Verified claims: `issued_vc` (issuer-signed claims) and `delegations` (per-hop Delegate
+    /// Payloads), with the issuer trust of the issued credential, whose issuer is a DID.
     ///
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - the presentation is not an SD-JWT-family
     ///   one, or the implementation does not support delegation grants.
     /// * [Error::VC] - internal error [VCFormatError](vc::VCFormatError).
+    /// * [Error::IssuerNotTrusted] - in `Enforce` mode, the issued credential is a PID, QEAA or
+    ///   PuB-EAA, which a DID may not issue.
     #[cfg(feature = "delegate-sd-jwt")]
     async fn verify_delegation(
         &self,
         holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
-    ) -> Result<Claims> {
+    ) -> Result<crate::vc::trust::issuer::IssuerTrustVerification> {
         unimplemented!();
     }
 

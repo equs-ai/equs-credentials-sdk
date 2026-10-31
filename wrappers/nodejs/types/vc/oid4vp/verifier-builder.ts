@@ -4,11 +4,13 @@ import {
   ClientMetadata,
   contextEnsuredKms,
   contextEnsuredNonceHandler,
+  CredentialClassification,
   DIDResolver,
   KeyMetadata,
   Kms,
   NonceHandler,
   ReqwestHttpClient,
+  TrustAnchor,
 } from "../../../";
 import { OID4VPVerifier } from "./verifier";
 
@@ -22,6 +24,10 @@ export class OID4VPVerifierBuilder {
   private didResolver?: DIDResolver;
   private trustedRootCertificates?: Array<Uint8Array>;
   private x509CertificateChain?: Uint8Array;
+  private trustAnchors?: Array<TrustAnchor>;
+  private issuerTrustMode?: "enforce" | "report";
+  private credentialClassification?: CredentialClassification;
+  private rolelessAnchors?: "all_categories" | "eaa_only";
 
   constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: ClientId) {
     this.kms = kms;
@@ -55,6 +61,69 @@ export class OID4VPVerifierBuilder {
   }
 
   /**
+   * Adds a certificate trusted to anchor credential issuers, e.g. one from
+   * {@link exportTrustList}. Unlike {@link addTrustedRootCertificate}, it may be an intermediate
+   * or a listed signing certificate. Anchors are tried in order, after the trusted roots; the
+   * first match's `sourceRef` and `role` are echoed in the issuer trust.
+   *
+   * Only issuing services, or anchors without a `serviceType`, anchor issuers; others only check
+   * status lists, so pass an exported anchor's `serviceType` along.
+   *
+   * @param {TrustAnchor} anchor - the PEM, with optional `sourceRef`, `role` and `serviceType`.
+   */
+  addTrustAnchor(anchor: TrustAnchor): this {
+    if (!this.trustAnchors) {
+      this.trustAnchors = [];
+    }
+
+    this.trustAnchors.push(anchor);
+    return this;
+  }
+
+  /**
+   * Sets what an untrusted credential issuer does to a verification.
+   *
+   * - `enforce` (default): an untrusted issuer fails the verification with `IssuerNotTrusted`.
+   * - `report`: issuer trust is only reported in `issuerTrust`; other checks still fail.
+   *
+   * @param {"enforce" | "report"} mode - the issuer trust mode.
+   */
+  withIssuerTrustMode(mode: "enforce" | "report"): this {
+    this.issuerTrustMode = mode;
+    return this;
+  }
+
+  /**
+   * Sets which credential types are PIDs, QEAAs and PuB-EAAs, in addition to the EUDI PID types.
+   * A credential is trusted only under anchors whose `role` fits its category (`pid_provider`,
+   * `qeaa_provider`, `pub_eaa_provider`, `eaa_provider`); anchors without a role fit every
+   * category unless {@link withRolelessAnchors} says otherwise.
+   *
+   * A trailing `*` matches by prefix. Unlisted credentials fall back to their `category` claim
+   * (`urn:etsi:esi:eaa:eu:qualified`, `urn:etsi:esi:eaa:eu:pub`), then to EAA; request that claim
+   * when relying on it.
+   *
+   * @param {CredentialClassification} classification - the credential types of each category.
+   */
+  withCredentialClassification(classification: CredentialClassification): this {
+    this.credentialClassification = classification;
+    return this;
+  }
+
+  /**
+   * Sets which categories anchors without a role (e.g. trusted root certificates) may anchor.
+   *
+   * - `all_categories` (default): every category.
+   * - `eaa_only`: only EAAs; other categories need an anchor with a matching role.
+   *
+   * @param {"all_categories" | "eaa_only"} scope - the categories role-less anchors may anchor.
+   */
+  withRolelessAnchors(scope: "all_categories" | "eaa_only"): this {
+    this.rolelessAnchors = scope;
+    return this;
+  }
+
+  /**
    * Sets the X.509 certificate chain emitted in the `x5c` header of the signed
    * Authorization Request Object.
    *
@@ -83,6 +152,10 @@ export class OID4VPVerifierBuilder {
       this.didResolver,
       this.trustedRootCertificates,
       this.x509CertificateChain,
+      this.trustAnchors,
+      this.issuerTrustMode,
+      this.credentialClassification,
+      this.rolelessAnchors,
     );
     return new OID4VPVerifier(inner);
   }

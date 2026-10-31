@@ -1,10 +1,14 @@
 pub mod b64;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod certificate_validator;
 pub mod chrono_time_mapping;
 pub mod data_size;
 pub mod http;
 pub mod json;
 pub mod jwk;
 pub mod logs;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod one_core_http;
 pub mod serde;
 #[cfg(test)]
 pub(crate) mod test_utils;

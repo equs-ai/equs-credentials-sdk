@@ -7,11 +7,12 @@ Top-level VC module for the Node.js wrapper. Declares the `JsonObject` type alia
 
 | File | Role |
 |------|------|
-| `mod.rs` | Declares `pub mod core`, `pub mod oid4vci`, `pub mod oid4vp`, `pub mod status_formats`; defines `pub type JsonObject = serde_json::Map<String, serde_json::Value>` used as the universal JSON interchange type across the Node.js wrapper. |
+| `mod.rs` | Declares `pub mod core`, `pub mod oid4vci`, `pub mod oid4vp`, `pub mod status_formats`, `pub mod trust`; defines `pub type JsonObject = serde_json::Map<String, serde_json::Value>` used as the universal JSON interchange type across the Node.js wrapper. |
 | `core/` | Protocol-agnostic VC issuer, holder, verifier, and status issuer — see [core/CLAUDE.md](core/CLAUDE.md) |
 | `oid4vci/` | OID4VCI issuance protocol bindings — see [oid4vci/CLAUDE.md](oid4vci/CLAUDE.md) |
 | `oid4vp/` | OID4VP presentation protocol bindings — see [oid4vp/CLAUDE.md](oid4vp/CLAUDE.md) |
 | `status_formats/` | Status list format types — see [status_formats/CLAUDE.md](status_formats/CLAUDE.md) |
+| `trust/` | Bindings for `equs_sdk::vc::trust`: the trust-list export and DCQL `aki` derivation — see [trust/CLAUDE.md](trust/CLAUDE.md) |
 
 ## Key types / traits
 - `JsonObject` — `serde_json::Map<String, serde_json::Value>`; the canonical opaque JSON object type passed between Rust and TypeScript across all VC and DID APIs.

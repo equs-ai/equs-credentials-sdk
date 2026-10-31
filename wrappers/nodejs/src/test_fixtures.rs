@@ -135,3 +135,33 @@ pub fn fixture_x509(
         issuer,
     ))
 }
+
+/// ETSI TS 119 602 LoTE JWT under `spec_json`, signed by the `signer_role` key with the
+/// `signer_pem` certificate in `x5c`.
+#[napi(catch_unwind)]
+pub fn fixture_lote(
+    spec_json: String,
+    signer_pem: String,
+    signer_role: FixtureKey,
+) -> napi::Result<String> {
+    Ok(test_fixtures::lote(
+        &json("spec", &spec_json)?,
+        &signer_pem,
+        signer_role.jwk(),
+    ))
+}
+
+/// mso_mdoc DeviceResponse under `spec_json`, issuer-signed by the `ds_role` key and
+/// device-signed by the `device_role` key.
+#[napi(catch_unwind)]
+pub fn fixture_mdoc(
+    spec_json: String,
+    ds_role: FixtureKey,
+    device_role: FixtureKey,
+) -> napi::Result<String> {
+    Ok(test_fixtures::mdoc(
+        &json("spec", &spec_json)?,
+        ds_role.jwk(),
+        device_role.jwk(),
+    ))
+}

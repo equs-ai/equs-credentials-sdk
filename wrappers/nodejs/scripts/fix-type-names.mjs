@@ -56,6 +56,16 @@ const replacements = [
   { from: "JsX509Variant", to: "X509Variant" },
   { from: "JsDeclineAuthorizationRequestReason", to: "DeclineAuthorizationRequestReason" },
   { from: "JsDeclineAuthorizationRequest", to: "DeclineAuthorizationRequest" },
+  { from: "JsTrustAnchor", to: "TrustAnchor" },
+  { from: "JsIssuerTrust", to: "IssuerTrust" },
+  { from: "JsTrustListExportOptions", to: "TrustListExportOptions" },
+  { from: "JsTrustListExport", to: "TrustListExport" },
+  { from: "JsTrustListAnchor", to: "TrustListAnchor" },
+  { from: "JsSkippedMember", to: "SkippedTrustListMember" },
+  { from: "JsExcludedService", to: "ExcludedTrustListService" },
+  { from: "JsSkippedTrustedAuthorityAnchor", to: "SkippedTrustedAuthorityAnchor" },
+  { from: "JsTrustedAuthorityAkis", to: "TrustedAuthorityAkis" },
+  { from: "JsTrustListError", to: "TrustListError" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 
