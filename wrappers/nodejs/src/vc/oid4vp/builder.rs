@@ -11,9 +11,67 @@ use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use equs_sdk::vc::core::KeyMetadata;
 use equs_sdk::vc::oid4vp::ClientMetadata;
+use equs_sdk::vc::trust::issuer::{CredentialClassification, IssuerTrustMode, RolelessAnchors};
 use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Result, Status};
 use napi_derive::napi;
+
+/// A certificate trusted to anchor credential issuers, e.g. one exported from a trust list.
+#[napi(object, js_name = "TrustAnchor")]
+pub struct JsTrustAnchor {
+    /// PEM of the anchor certificate: a root, an intermediate CA or a listed signing certificate.
+    pub pem: String,
+    /// Opaque reference echoed in the issuer trust result (e.g. the source trust list).
+    pub source_ref: Option<String>,
+    /// Role the anchor is trusted for (e.g. `pid_provider`), echoed in the result.
+    #[napi(
+        ts_type = "'pid_provider' | 'qeaa_provider' | 'pub_eaa_provider' | 'eaa_provider' | 'wallet_provider' | 'wrp_ac_provider' | 'wrp_rc_provider' | 'registrar' | (string & {}) | undefined"
+    )]
+    pub role: Option<String>,
+    /// Type of the granting trust-list service. Only issuing services, or no type, anchor issuers;
+    /// other anchors only check status lists.
+    pub service_type: Option<String>,
+}
+
+/// Credential types (`vct`, docType) classified as PIDs, QEAAs and PuB-EAAs, in addition to the
+/// EUDI PID types. A trailing `*` matches by prefix. Unlisted credentials fall back to their
+/// `category` claim (`urn:etsi:esi:eaa:eu:qualified`, `urn:etsi:esi:eaa:eu:pub`), then to EAA.
+#[napi(object, js_name = "CredentialClassification")]
+pub struct JsCredentialClassification {
+    pub pid: Option<Vec<String>>,
+    pub qeaa: Option<Vec<String>>,
+    pub pub_eaa: Option<Vec<String>>,
+}
+
+impl From<JsCredentialClassification> for CredentialClassification {
+    fn from(value: JsCredentialClassification) -> Self {
+        Self {
+            pid: value.pid.unwrap_or_default(),
+            qeaa: value.qeaa.unwrap_or_default(),
+            pub_eaa: value.pub_eaa.unwrap_or_default(),
+        }
+    }
+}
+
+fn parse_roleless_anchors(scope: &str) -> Result<RolelessAnchors> {
+    serde_json::from_value(serde_json::Value::String(scope.to_string())).map_err(|_| {
+        Error::new(
+            Status::InvalidArg,
+            format!(
+                "unknown role-less anchor scope `{scope}`, expected `all_categories` or `eaa_only`"
+            ),
+        )
+    })
+}
+
+fn parse_issuer_trust_mode(mode: &str) -> Result<IssuerTrustMode> {
+    serde_json::from_value(serde_json::Value::String(mode.to_string())).map_err(|_| {
+        Error::new(
+            Status::InvalidArg,
+            format!("unknown issuer trust mode `{mode}`, expected `enforce` or `report`"),
+        )
+    })
+}
 
 #[napi]
 #[allow(clippy::too_many_arguments)]
@@ -27,6 +85,13 @@ pub async fn _build_vp_verifier(
     did_resolver: Option<JsDIDResolver>,
     trusted_root_certificates: Option<Vec<Uint8Array>>,
     x509_certificate_chain: Option<Uint8Array>,
+    trust_anchors: Option<Vec<JsTrustAnchor>>,
+    #[napi(ts_arg_type = "'enforce' | 'report' | null | undefined")] issuer_trust_mode: Option<
+        String,
+    >,
+    credential_classification: Option<JsCredentialClassification>,
+    #[napi(ts_arg_type = "'all_categories' | 'eaa_only' | null | undefined")]
+    roleless_anchors: Option<String>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder = equs_sdk::vc::oid4vp::VerifierBuilder::new(
@@ -64,6 +129,28 @@ pub async fn _build_vp_verifier(
         builder = builder
             .with_x509_certificate_chain(&x509_certificate_chain)
             .map_err(|err| Error::new(Status::InvalidArg, err))?;
+    }
+
+    // trusted roots first, then trust anchors
+    for anchor in trust_anchors.unwrap_or_default() {
+        builder = builder
+            .add_trust_anchor(
+                anchor.pem.as_bytes(),
+                anchor.source_ref,
+                anchor.role,
+                anchor.service_type,
+            )
+            .map_err(|err| Error::new(Status::InvalidArg, err))?;
+    }
+
+    if let Some(mode) = issuer_trust_mode {
+        builder = builder.with_issuer_trust_mode(parse_issuer_trust_mode(&mode)?);
+    }
+    if let Some(classification) = credential_classification {
+        builder = builder.with_credential_classification(classification.into());
+    }
+    if let Some(scope) = roleless_anchors {
+        builder = builder.with_roleless_anchors(parse_roleless_anchors(&scope)?);
     }
 
     let verifier = builder

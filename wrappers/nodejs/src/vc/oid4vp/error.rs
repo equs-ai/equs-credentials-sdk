@@ -15,6 +15,13 @@ impl IntoNapiError for Error {
 
 impl From<InternalError> for EncodableError {
     fn from(value: InternalError) -> Self {
+        // the same camelCase shape as `ClaimsPresentations.issuerTrust`
+        let details = match &value {
+            InternalError::IssuerNotTrusted { issuer_trust } => {
+                serde_json::to_value(issuer_trust).ok()
+            }
+            _ => None,
+        };
         let code = match value {
             InternalError::AuthorizationResponse { .. } => JsInternalError::AuthorizationResponse,
             InternalError::AuthorizationResponseUnsupportedMode { .. } => {
@@ -48,8 +55,16 @@ impl From<InternalError> for EncodableError {
             InternalError::Client { .. } => JsInternalError::Client,
             InternalError::TransactionData { .. } => JsInternalError::TransactionData,
             InternalError::X509 { .. } => JsInternalError::X509,
+            InternalError::IssuerNotTrusted { .. } => JsInternalError::IssuerNotTrusted,
+            InternalError::TrustedAuthorityMismatch { .. } => {
+                JsInternalError::TrustedAuthorityMismatch
+            }
         };
-        Self::new(code.to_string(), value.to_string())
+        let error = Self::new(code.to_string(), value.to_string());
+        match details {
+            Some(details) => error.with_details(details),
+            None => error,
+        }
     }
 }
 
@@ -84,6 +99,12 @@ pub enum JsInternalError {
     Client,
     TransactionData,
     X509,
+    /// A presented credential's issuer is not trusted; `details` holds every credential's issuer
+    /// trust.
+    IssuerNotTrusted,
+    /// A credential matches none of its DCQL query's `aki` trusted authorities; the message names
+    /// the query. Fails in either issuer-trust mode.
+    TrustedAuthorityMismatch,
 }
 
 impl From<ProtocolError> for EncodableError {

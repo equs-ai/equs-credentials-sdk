@@ -3,6 +3,7 @@
 use crate::crypto::Signer;
 use crate::did::DIDURL;
 use crate::vc::claims::{Claim, Claims};
+use crate::vc::formats::AnchorPolicy;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +51,7 @@ const STATUS_CLAIM: &str = "status";
 
 const STATUS_LIST_TYPE: &str = "statuslist+jwt";
 const CONTENT_TYPE_HEADER: &str = "application/statuslist+jwt";
+const CWT_CONTENT_TYPE: &str = "application/statuslist+cwt";
 pub type StatusList = String;
 
 /// # Status type values.
@@ -195,6 +197,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             did_resolver,
             cached_urls_per_status_jwts,
             None,
+            AnchorPolicy::Require,
         )
         .await
     }
@@ -202,7 +205,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
 
 impl StatusListJwt {
     /// [API::get_vc_status], additionally trusting a status list token signed by an `x5c` chain
-    /// that validates up to one of `trusted_certs`.
+    /// checked against `trusted_certs` under `anchor_policy`.
     #[instrument(
         level = Level::TRACE,
         skip(vc_claims, http_client, did_resolver, trusted_certs),
@@ -213,8 +216,9 @@ impl StatusListJwt {
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
-        mut cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
+        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
         trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
         let Some(status_claim) = vc_claims.get(STATUS_CLAIM) else {
             return Ok(None);
@@ -223,39 +227,59 @@ impl StatusListJwt {
         let status_value = Value::try_from(status_claim.clone()).context(ClaimsSnafu)?;
         let status: Status = serde_json::from_value(status_value).context(ParseSnafu)?;
 
+        Self::get_status_list_entry(
+            status.status_list.uri.as_str(),
+            status.status_list.idx,
+            http_client,
+            did_resolver,
+            cached_urls_per_status_jwts,
+            trusted_certs,
+            anchor_policy,
+        )
+        .await
+        .map(Some)
+    }
+
+    /// The status at `idx` of the status list token served at `uri`, its `x5c` chain checked under
+    /// `anchor_policy`.
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    pub async fn get_status_list_entry(
+        uri: &str,
+        idx: usize,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+        mut cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
+        trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<VCStatus> {
         let status_list_jwt = match cached_urls_per_status_jwts
             .as_ref()
-            .and_then(|m| m.get(status.status_list.uri.as_str()).cloned())
+            .and_then(|m| m.get(uri).cloned())
         {
             Some(bitstring) => bitstring,
-            _ => {
-                StatusListJwt::fetch_bitstring_status_list_jwt(
-                    http_client,
-                    status.status_list.uri.as_str(),
-                )
-                .await?
-            }
+            _ => StatusListJwt::fetch_bitstring_status_list_jwt(http_client, uri).await?,
         };
 
         let status_list = StatusListJwt::extract_bitstring_status_list(
-            status.status_list.uri.as_str(),
+            uri,
             did_resolver,
             status_list_jwt.clone(),
             trusted_certs,
+            anchor_policy,
         )
         .await?;
-        let cred_status = status_list.get(status.status_list.idx).ok_or_else(|| {
+        let cred_status = status_list.get(idx).ok_or_else(|| {
             VCStatusSnafu {
-                details: format!("failed to get index {}", status.status_list.idx),
+                details: format!("failed to get index {idx}"),
             }
             .build()
         })?;
 
         cached_urls_per_status_jwts
             .as_mut()
-            .map(|m| m.insert(status.status_list.uri.as_str().to_string(), status_list_jwt));
+            .map(|m| m.insert(uri.to_string(), status_list_jwt));
 
-        Ok(Some(cred_status.into()))
+        Ok(cred_status.into())
     }
 
     #[instrument(level = Level::TRACE, err())]
@@ -338,6 +362,17 @@ impl StatusListJwt {
             }
             .build()
         })?;
+        if let Some(content_type) = status_list_sdjwt_vc
+            .headers()
+            .get(oauth2::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| value.to_ascii_lowercase().starts_with(CWT_CONTENT_TYPE))
+        {
+            return VCStatusSnafu {
+                details: format!("status list format not supported: {content_type}"),
+            }
+            .fail();
+        }
         let status_list_sdjwt_vc =
             String::from_utf8(status_list_sdjwt_vc.body().clone()).map_err(|err| {
                 StatusListFetchingSnafu {
@@ -355,11 +390,13 @@ impl StatusListJwt {
         did_resolver: UniversalResolver,
         status_list_sdjwt_vc: String,
         trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
     ) -> Result<BitString> {
         let claims = StatusListJwt::decode_status_list_token(&status_list_sdjwt_vc)?;
 
         let opts = VerifyOptions {
             trusted_certs: trusted_certs.cloned(),
+            anchor_policy,
             ..Default::default()
         };
         SdJwtAPI::verify_vc(&status_list_sdjwt_vc, opts, did_resolver) // TODO: consider using sd_jwt API directly
@@ -448,7 +485,7 @@ impl StatusListJwt {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{SLMetadata, StatusListJwt, VCStatus, VCStatuses};
     use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
@@ -644,6 +681,7 @@ mod tests {
             UniversalResolver::default(),
             None,
             trusted_certs.as_ref(),
+            crate::vc::formats::AnchorPolicy::Require,
         )
         .await
     }
@@ -663,6 +701,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(vc_status, Some(expected_status));
+    }
+
+    #[tokio::test]
+    async fn x5c_signed_status_list_is_verified_against_its_signer_held_as_an_anchor() {
+        // e.g. a revocation service listing the signer
+        let token = x5c_signed_status_list("statuslist+jwt", true);
+
+        let vc_status = x5c_status_of(token, 2, Some(anchors(&[status_list_signer_cert()])))
+            .await
+            .unwrap();
+
+        assert_eq!(vc_status, Some(VCStatus::Invalid));
     }
 
     #[rstest]
@@ -716,6 +766,12 @@ mod tests {
     }
 
     fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> String {
+        x5c_status_list_token(X5C_STATUS_LIST_URL, typ, with_x5c)
+    }
+
+    /// Status list token served at `sub`, signed under [status_list_root_ca]: index 0 and 1
+    /// valid, 2 invalid, 3 suspended.
+    pub(crate) fn x5c_status_list_token(sub: &str, typ: &str, with_x5c: bool) -> String {
         let mut header = json!({ "typ": typ, "alg": "ES256" });
         if with_x5c {
             header["x5c"] =
@@ -724,12 +780,22 @@ mod tests {
         test_fixtures::jws(
             &header,
             &json!({
-                "sub": X5C_STATUS_LIST_URL,
+                "sub": sub,
                 "iat": 1790000000,
                 "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
             }),
             &test_fixtures::keys().issuer,
         )
+    }
+
+    /// The root CA (PEM) [x5c_status_list_token] chains to.
+    pub(crate) fn status_list_root_ca() -> &'static str {
+        pki().root_ca.as_str()
+    }
+
+    /// Signer certificate of the fixture status list token.
+    pub(crate) fn status_list_signer_cert() -> &'static str {
+        pki().signer_cert.as_str()
     }
 
     /// A root CA, the certificate it issued for the fixture issuer key, and an unrelated root CA.
@@ -755,7 +821,8 @@ mod tests {
                     "subject": [["CN", "Test Status List Signer"]],
                     "sans": ["status.example"],
                     "not_before": "2025-01-01", "not_after": "2046-01-01",
-                    "key_usages": ["digital_signature"], "authority_key_identifier": true
+                    "ca": false, "key_usages": ["digital_signature"],
+                    "authority_key_identifier": true
                 }),
                 &test_fixtures::keys().issuer,
                 Some((&root_ca, &root_key)),

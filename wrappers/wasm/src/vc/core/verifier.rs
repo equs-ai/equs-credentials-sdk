@@ -48,7 +48,8 @@ impl VcCoreVerifier {
             .0
             .verify_presentation(holder_binder, &equs_sdk_pres, &http_client.inner())
             .await
-            .map_err(|e| JsError::new(&e.to_string()))?;
+            .map_err(|e| JsError::new(&e.to_string()))?
+            .claims;
 
         let claims_value: serde_json::Value = claims
             .try_into()

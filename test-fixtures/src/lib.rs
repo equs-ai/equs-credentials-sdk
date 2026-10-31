@@ -203,8 +203,9 @@ fn public_jwk(key: &JWK) -> PublicJwk {
 /// "sans": ["a.example"], "not_before": "2026-09-23", "not_after": "2046-09-18",
 /// "ca": true | false | {"path_len": 0}, "key_usages": ["digital_signature", "key_encipherment",
 /// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth"],
-/// "authority_key_identifier": true}`. The subject keeps the order given, the serial number is
-/// random, and a field or value it cannot apply panics.
+/// "authority_key_identifier": true, "crl_distribution_points": ["https://crl.example/ca.crl"]}`.
+/// The subject keeps the order given, the serial number is random, and a field or value it cannot
+/// apply panics.
 #[cfg(feature = "x509")]
 pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
     use rcgen::{
@@ -270,6 +271,9 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         })
         .collect();
     params.use_authority_key_identifier_extension = spec.authority_key_identifier.unwrap_or(false);
+    params.crl_distribution_points = (spec.crl_distribution_points.into_iter())
+        .map(|uris| rcgen::CrlDistributionPoint { uris })
+        .collect();
     let mut serial = [0u8; 20];
     OsRng.fill_bytes(&mut serial);
     serial[0] &= 0x7f;
@@ -285,6 +289,38 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
     certificate.expect("certificate").pem()
 }
 
+/// DER CRL issued by `issuer`, a CA certificate (PEM) with its key, revoking each certificate (PEM)
+/// in `revoked`. Current from 2026-01-01 until 2046-01-01.
+#[cfg(feature = "x509")]
+pub fn crl(issuer: (&str, &JWK), revoked: &[&str]) -> Vec<u8> {
+    use rcgen::{CertificateRevocationListParams, KeyIdMethod, RevokedCertParams};
+    let (ca_pem, ca_key) = issuer;
+    let params = CertificateRevocationListParams {
+        this_update: rcgen::date_time_ymd(2026, 1, 1),
+        next_update: rcgen::date_time_ymd(2046, 1, 1),
+        crl_number: rcgen::SerialNumber::from(1u64),
+        issuing_distribution_point: None,
+        revoked_certs: (revoked.iter())
+            .map(|pem| RevokedCertParams {
+                serial_number: rcgen::SerialNumber::from_slice(
+                    x509_parser::parse_x509_certificate(
+                        &pem::parse(pem).expect("PEM").into_contents(),
+                    )
+                    .expect("certificate")
+                    .1
+                    .raw_serial(),
+                ),
+                revocation_time: rcgen::date_time_ymd(2026, 1, 1),
+                reason_code: None,
+                invalidity_date: None,
+            })
+            .collect(),
+        key_identifier_method: KeyIdMethod::Sha256,
+    };
+    let issuer = rcgen::Issuer::from_ca_cert_pem(ca_pem, key_pair(ca_key)).expect("CA certificate");
+    params.signed_by(&issuer).expect("CRL").der().to_vec()
+}
+
 #[cfg(feature = "x509")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -297,6 +333,7 @@ struct CertSpec {
     key_usages: Option<Vec<KeyUsage>>,
     extended_key_usages: Option<Vec<ExtendedKeyUsage>>,
     authority_key_identifier: Option<bool>,
+    crl_distribution_points: Option<Vec<String>>,
 }
 
 #[cfg(feature = "x509")]
@@ -362,7 +399,9 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
 /// device-signed by `device` under an OpenID4VP 1.0 handover. `spec`: `doc_type`, `name_spaces`
 /// (string, integer or boolean values), `valid_from` / `valid_until` (`YYYY-MM-DDThh:mm:ssZ`),
 /// `x5chain` (PEM of the DS certificate, optionally followed by its chain), `client_id`, `nonce`,
-/// optional `response_uri` and `verifier_key`. Malformed fields panic.
+/// optional `response_uri`, `verifier_key` and `status` (the MSO `status`, e.g.
+/// `{"status_list": {"idx": 3, "uri": ...}}`, JSON objects, nulls, strings and integers mapped to CBOR
+/// as is). Malformed fields panic.
 pub fn mdoc(spec: &Value, ds_key: &JWK, device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
     let doc_type = spec.doc_type.as_str();
@@ -392,7 +431,7 @@ pub fn mdoc(spec: &Value, ds_key: &JWK, device: &JWK) -> String {
         name_spaces.push((name_space.as_str().into(), Cbor::Array(items)));
         value_digests.push((name_space.as_str().into(), Cbor::Map(digests)));
     }
-    let mso = cbor_map([
+    let mut mso = cbor_map([
         ("version", "1.0".into()),
         ("digestAlgorithm", "SHA-256".into()),
         ("valueDigests", Cbor::Map(value_digests)),
@@ -407,6 +446,9 @@ pub fn mdoc(spec: &Value, ds_key: &JWK, device: &JWK) -> String {
             ]),
         ),
     ]);
+    if let (Cbor::Map(entries), Some(status)) = (&mut mso, &spec.status) {
+        entries.push(("status".into(), json_cbor(status)));
+    }
     let issuer_auth = cose_sign1(
         Cbor::Map(vec![(33.into(), x5chain(&spec.x5chain))]),
         cbor(&embed(&mso)),
@@ -473,6 +515,88 @@ struct MdocSpec {
     nonce: String,
     response_uri: Option<String>,
     verifier_key: Option<JWK>,
+    status: Option<Value>,
+}
+
+/// ETSI TS 119 602 List of Trusted Entities as a compact JWS (`ES256`), signed by `signer_key`
+/// with the `signer` certificate (PEM) in `x5c`. `spec`: `lote_type` (the `LoTEType` URI),
+/// optional `sequence_number` (default 1), `issued` / `next_update` (`YYYY-MM-DDThh:mm:ssZ`,
+/// default 2026-01-01 / 2046-01-01), and `entities`: `[{"name": ..., "certificates": [PEM, ...],
+/// "status": optional ServiceStatus URI}]`, each one service, `.../SvcStatus/active` by default.
+/// With `"eu_format": true` it is shaped like the published EU lists: the LoTE wrapped in a `LoTE`
+/// member, `typ: JOSE+JSON` and `iat` in the header, and no service status unless one is given.
+/// Malformed fields panic.
+pub fn lote(spec: &Value, signer: &str, signer_key: &JWK) -> String {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct LoteSpec {
+        lote_type: String,
+        sequence_number: Option<u64>,
+        issued: Option<String>,
+        next_update: Option<String>,
+        entities: Vec<EntitySpec>,
+        eu_format: Option<bool>,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct EntitySpec {
+        name: String,
+        certificates: Vec<String>,
+        status: Option<String>,
+    }
+    let der = |pem: &str| {
+        base64::prelude::BASE64_STANDARD
+            .encode(pem::parse(pem).expect("certificate PEM").contents())
+    };
+    let spec: LoteSpec = parse("LoTE spec", spec);
+    let eu_format = spec.eu_format.unwrap_or(false);
+    let default_status = (!eu_format).then_some("http://uri.etsi.org/19602/SvcStatus/active");
+    let entities = spec
+        .entities
+        .iter()
+        .map(|entity| {
+            let mut service = json!({
+                "ServiceName": [{ "lang": "en", "value": entity.name }],
+                "ServiceDigitalIdentity": { "X509Certificates": entity
+                    .certificates
+                    .iter()
+                    .map(|pem| json!({ "val": der(pem) }))
+                    .collect::<Vec<_>>() }
+            });
+            if let Some(status) = entity.status.as_deref().or(default_status) {
+                service["ServiceStatus"] = json!(status);
+            }
+            json!({
+                "TrustedEntityInformation": { "TEName": [{ "lang": "en", "value": entity.name }] },
+                "TrustedEntityServices": [{ "ServiceInformation": service }]
+            })
+        })
+        .collect::<Vec<_>>();
+    let payload = json!({
+        "ListAndSchemeInformation": {
+            "LoTEVersionIdentifier": 1,
+            "LoTESequenceNumber": spec.sequence_number.unwrap_or(1),
+            "LoTEType": spec.lote_type,
+            "SchemeOperatorName": [{ "lang": "en", "value": "Test Scheme Operator" }],
+            "StatusDeterminationApproach": "http://uri.etsi.org/19602/StatusDetn/EU",
+            "SchemeTerritory": "EU",
+            "ListIssueDateTime": spec.issued.as_deref().unwrap_or("2026-01-01T00:00:00Z"),
+            "NextUpdate": spec.next_update.as_deref().unwrap_or("2046-01-01T00:00:00Z")
+        },
+        "TrustedEntitiesList": entities
+    });
+    if !eu_format {
+        return jws(
+            &json!({ "alg": "ES256", "x5c": [der(signer)] }),
+            &payload,
+            signer_key,
+        );
+    }
+    jws(
+        &json!({ "alg": "ES256", "typ": "JOSE+JSON", "iat": 1_767_225_600, "x5c": [der(signer)] }),
+        &json!({ "LoTE": payload }),
+        signer_key,
+    )
 }
 
 fn b64(value: &Value) -> String {
@@ -563,6 +687,19 @@ fn element_value(value: &Value) -> Cbor {
         Value::Number(number) if let Some(integer) = number.as_i64() => integer.into(),
         Value::Number(number) if let Some(integer) = number.as_u64() => integer.into(),
         _ => panic!("element value must be a string, integer or boolean"),
+    }
+}
+
+/// A JSON object, null, string or integer as CBOR.
+fn json_cbor(value: &Value) -> Cbor {
+    match value {
+        Value::Null => Cbor::Null,
+        Value::Object(map) => Cbor::Map(
+            map.iter()
+                .map(|(key, value)| (key.as_str().into(), json_cbor(value)))
+                .collect(),
+        ),
+        _ => element_value(value),
     }
 }
 
@@ -944,6 +1081,93 @@ mod tests {
     #[should_panic(expected = "`ca`: invalid type: string \"true\"")]
     fn x509_rejects_a_ca_flag_of_the_wrong_type() {
         x509(&json!({ "ca": "true" }), &keys().issuer, None);
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    fn lote_lists_each_certificate_under_an_active_service_and_carries_the_signer() {
+        let signer = x509(
+            &json!({ "subject": [["CN", "Scheme Operator"]] }),
+            &keys().issuer,
+            None,
+        );
+        let listed = x509(
+            &json!({ "subject": [["CN", "PID Provider"]] }),
+            &keys().holder,
+            None,
+        );
+        let token = lote(
+            &json!({
+                "lote_type": "http://uri.etsi.org/19602/LoTEType/EUPIDProvidersList",
+                "sequence_number": 3,
+                "entities": [{ "name": "PID Provider", "certificates": [listed] }]
+            }),
+            &signer,
+            &keys().issuer,
+        );
+
+        let [header, payload, _] = token.split('.').collect::<Vec<_>>()[..] else {
+            panic!("compact JWS")
+        };
+        let decode = |part: &str| -> Value {
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(part).unwrap()).unwrap()
+        };
+        let der = |pem: &str| {
+            base64::prelude::BASE64_STANDARD.encode(pem::parse(pem).unwrap().contents())
+        };
+        assert_eq!(decode(header)["x5c"], json!([der(&signer)]));
+        let payload = decode(payload);
+        assert_eq!(payload["ListAndSchemeInformation"]["LoTESequenceNumber"], 3);
+        assert_eq!(
+            payload["ListAndSchemeInformation"]["NextUpdate"],
+            "2046-01-01T00:00:00Z"
+        );
+        let service =
+            &payload["TrustedEntitiesList"][0]["TrustedEntityServices"][0]["ServiceInformation"];
+        assert_eq!(
+            service["ServiceDigitalIdentity"]["X509Certificates"],
+            json!([{ "val": der(&listed) }])
+        );
+        assert_eq!(
+            service["ServiceStatus"],
+            "http://uri.etsi.org/19602/SvcStatus/active"
+        );
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    fn lote_in_the_eu_format_is_wrapped_and_has_no_default_status() {
+        let signer = x509(&json!({}), &keys().issuer, None);
+        let token = lote(
+            &json!({
+                "lote_type": "http://uri.etsi.org/19602/LoTEType/EUPIDProvidersList",
+                "entities": [{ "name": "PID Provider", "certificates": [signer] }],
+                "eu_format": true
+            }),
+            &signer,
+            &keys().issuer,
+        );
+
+        let [header, payload, _] = token.split('.').collect::<Vec<_>>()[..] else {
+            panic!("compact JWS")
+        };
+        let decode = |part: &str| -> Value {
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(part).unwrap()).unwrap()
+        };
+        let header = decode(header);
+        assert_eq!(header["typ"], "JOSE+JSON");
+        assert!(header["iat"].is_u64());
+        let payload = decode(payload);
+        assert!(payload.get("ListAndSchemeInformation").is_none());
+        let service = &payload["LoTE"]["TrustedEntitiesList"][0]["TrustedEntityServices"][0]["ServiceInformation"];
+        assert!(service.get("ServiceDigitalIdentity").is_some());
+        assert!(service.get("ServiceStatus").is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "LoTE spec: missing field `lote_type`")]
+    fn lote_rejects_a_spec_without_a_type() {
+        lote(&json!({ "entities": [] }), "", &keys().issuer);
     }
 
     #[test]

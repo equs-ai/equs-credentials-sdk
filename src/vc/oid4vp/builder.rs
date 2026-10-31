@@ -12,6 +12,9 @@ use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::metadata::ensure_supported_vp_formats;
 use crate::vc::oid4vp::verifier::VerifierService;
+use crate::vc::trust::issuer::{
+    CredentialClassification, IssuerTrustConfig, IssuerTrustMode, RolelessAnchors, TrustAnchor,
+};
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
 use snafu::ensure;
@@ -56,6 +59,11 @@ where
 
     /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
     trusted_certs: Option<HashMap<String, String>>,
+    /// Issuer trust anchors with their source and role, in the order they are tried.
+    trust_anchors: Vec<TrustAnchor>,
+    issuer_trust_mode: IssuerTrustMode,
+    credential_classification: CredentialClassification,
+    roleless_anchors: RolelessAnchors,
     x5c_chain: Option<Vec<u8>>,
     _marker: PhantomData<KH>,
 }
@@ -101,6 +109,10 @@ where
             did_resolver: UniversalResolver::default(),
             client_metadata: None,
             trusted_certs: None,
+            trust_anchors: vec![],
+            issuer_trust_mode: IssuerTrustMode::Enforce,
+            credential_classification: CredentialClassification::default(),
+            roleless_anchors: RolelessAnchors::default(),
             x5c_chain: None,
             _marker: Default::default(),
         }
@@ -184,6 +196,10 @@ where
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
             trusted_certs: self.trusted_certs,
+            trust_anchors: self.trust_anchors,
+            issuer_trust_mode: self.issuer_trust_mode,
+            credential_classification: self.credential_classification,
+            roleless_anchors: self.roleless_anchors,
             x5c_chain: self.x5c_chain,
         }
     }
@@ -293,11 +309,104 @@ where
                 })?
         };
 
-        let mut trusted_certs = self.trusted_certs.unwrap_or_default();
-        trusted_certs.insert(skid, pem_string);
-        self.trusted_certs = Some(trusted_certs);
+        hold_anchor(
+            self.trusted_certs.get_or_insert_with(HashMap::new),
+            skid,
+            pem_string.clone(),
+            cert.validity().not_after,
+        );
+        self.trust_anchors.push(TrustAnchor::new(pem_string));
 
         Ok(self)
+    }
+
+    /// Adds an issuer trust anchor. Unlike [Self::add_trusted_root_certificate], it may be an
+    /// intermediate CA or a listed signing certificate. Anchors are tried in order.
+    ///
+    /// # Arguments
+    ///
+    /// * `pem_bytes` - a PEM-encoded certificate.
+    /// * `source_ref` - echoed in the issuer-trust result.
+    /// * `role` - the role the anchor is trusted for, echoed in the result.
+    /// * `service_type` - the granting trust-list service. Only issuing services, or no type,
+    ///   anchor issuers; other anchors only check status lists.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip(self, pem_bytes))]
+    pub fn add_trust_anchor(
+        mut self,
+        pem_bytes: &[u8],
+        source_ref: Option<String>,
+        role: Option<String>,
+        service_type: Option<String>,
+    ) -> Result<Self, Error> {
+        let (_, pem) = x509_parser::pem::parse_x509_pem(pem_bytes).map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot parse trust anchor from pem bytes: {e}"),
+            }
+            .build()
+        })?;
+        let cert = pem.parse_x509().map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot parse trust anchor certificate: {e}"),
+            }
+            .build()
+        })?;
+        let pem_string = {
+            use x509_cert::der::{Decode, EncodePem, pem::LineEnding};
+            x509_cert::Certificate::from_der(&pem.contents)
+                .and_then(|cert| cert.to_pem(LineEnding::LF))
+                .map_err(|e| {
+                    BuildSnafu {
+                        details: format!("Cannot re-encode trust anchor as PEM: {e}"),
+                    }
+                    .build()
+                })?
+        };
+        // without an SKI no chain names the anchor, so it is tried when a chain names none held
+        let key = match one_core::mapper::x509::subject_key_identifier(&cert) {
+            Ok(Some(skid)) => skid,
+            _ => format!(
+                "sha256:{}",
+                crate::utils::b64::get_hash_and_base64(
+                    pem_string.clone(),
+                    crate::vc::oid4vp::HashAlgorithm::Sha256
+                )
+            ),
+        };
+        hold_anchor(
+            self.trusted_certs.get_or_insert_with(HashMap::new),
+            key,
+            pem_string.clone(),
+            cert.validity().not_after,
+        );
+        self.trust_anchors.push(TrustAnchor {
+            pem: pem_string,
+            source_ref,
+            role,
+            service_type,
+        });
+        Ok(self)
+    }
+
+    /// How an untrusted issuer affects a verification (default [IssuerTrustMode::Enforce]).
+    pub fn with_issuer_trust_mode(mut self, mode: IssuerTrustMode) -> Self {
+        self.issuer_trust_mode = mode;
+        self
+    }
+
+    /// Which credential types are PIDs, QEAAs and PuB-EAAs (default: the EUDI PID types).
+    pub fn with_credential_classification(
+        mut self,
+        classification: CredentialClassification,
+    ) -> Self {
+        self.credential_classification = classification;
+        self
+    }
+
+    /// Which categories anchors without a role may anchor (default [RolelessAnchors::AllCategories]).
+    pub fn with_roleless_anchors(mut self, roleless_anchors: RolelessAnchors) -> Self {
+        self.roleless_anchors = roleless_anchors;
+        self
     }
 
     /// Sets the X.509 certificate chain emitted in the `x5c` header of the
@@ -387,6 +496,12 @@ where
         );
         inner = inner.with_verification_params(vc::core::VerificationParams {
             trusted_certs: self.trusted_certs,
+            issuer_trust: Some(IssuerTrustConfig {
+                mode: self.issuer_trust_mode,
+                anchors: self.trust_anchors,
+                classification: self.credential_classification,
+                roleless_anchors: self.roleless_anchors,
+            }),
         });
 
         let verifier = VerifierService::new(
@@ -649,6 +764,29 @@ where
     }
 }
 
+/// Holds `pem` under `key`; of two anchors under one key, the one valid longer is kept.
+#[cfg(not(target_arch = "wasm32"))]
+fn hold_anchor(
+    held: &mut HashMap<String, String>,
+    key: String,
+    pem: String,
+    not_after: x509_parser::time::ASN1Time,
+) {
+    let held_longer = held
+        .get(&key)
+        .and_then(|held_pem| x509_parser::pem::parse_x509_pem(held_pem.as_bytes()).ok())
+        .and_then(|(_, held_pem)| {
+            held_pem
+                .parse_x509()
+                .ok()
+                .map(|cert| cert.validity().not_after)
+        })
+        .is_some_and(|held_not_after| held_not_after >= not_after);
+    if !held_longer {
+        held.insert(key, pem);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::http::MockHttpClient;
@@ -699,6 +837,83 @@ mod tests {
         .build()
         .await
         .unwrap();
+    }
+
+    async fn held_anchors(pems: &[String]) -> std::collections::HashMap<String, String> {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let mut builder = VerifierBuilder::new(
+            kms,
+            LocalNonceHandler::default(),
+            key_metadata,
+            ClientId::from_did(&did).unwrap(),
+        );
+        for pem in pems {
+            builder = builder
+                .add_trust_anchor(pem.as_bytes(), None, None, None)
+                .unwrap();
+        }
+        builder.trusted_certs.unwrap_or_default()
+    }
+
+    fn not_after_year(pem: &str) -> i32 {
+        let (_, pem) = x509_parser::pem::parse_x509_pem(pem.as_bytes()).unwrap();
+        pem.parse_x509()
+            .unwrap()
+            .validity()
+            .not_after
+            .to_datetime()
+            .year()
+    }
+
+    #[rstest::rstest]
+    #[case::current_added_first(true)]
+    #[case::expired_added_first(false)]
+    #[tokio::test]
+    async fn an_expired_anchor_does_not_replace_a_current_one_with_the_same_ski(
+        #[case] current_first: bool,
+    ) {
+        let ca_key = test_fixtures::JWK::generate_p256();
+        let ca = |not_after: &str| {
+            test_fixtures::x509(
+                &serde_json::json!({
+                    "subject": [["CN", "Renewed CA"]],
+                    "not_before": "2024-01-01", "not_after": not_after,
+                    "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+                }),
+                &ca_key,
+                None,
+            )
+        };
+        let mut pems = vec![ca("2046-01-01"), ca("2025-01-01")];
+        if !current_first {
+            pems.reverse();
+        }
+
+        let held = held_anchors(&pems).await;
+
+        assert_eq!(held.len(), 1);
+        assert_eq!(not_after_year(held.values().next().unwrap()), 2046);
+    }
+
+    #[tokio::test]
+    async fn an_anchor_without_an_ski_is_held_for_status_lists() {
+        let pem = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["CN", "Signer without SKI"]],
+                "not_before": "2024-01-01", "not_after": "2046-01-01"
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
+
+        let held = held_anchors(&[pem]).await;
+
+        assert_eq!(held.len(), 1);
+        assert!(
+            held.keys().all(|key| key.starts_with("sha256:")),
+            "{held:?}"
+        );
     }
 
     #[tokio::test]

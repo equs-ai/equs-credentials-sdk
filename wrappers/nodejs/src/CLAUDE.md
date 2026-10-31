@@ -8,13 +8,13 @@ Root Rust source crate for the EQUS Credentials SDK Node.js wrapper. Uses NAPI-R
 | File/Dir | Role |
 |----------|------|
 | `lib.rs` | Crate root; declares all public and private modules; re-exports `enable_logs`, `parse_claims`, `resolve_metadata` from `utils`. |
-| `error.rs` | `EncodableError` (NAPI object with `code` and `message`) and `IntoNapiError` trait; all domain errors are serialized to JSON strings through this mechanism. |
+| `error.rs` | `EncodableError` (NAPI object with `code`, `message` and optional structured `details` — for `IssuerNotTrusted`, the camelCase `IssuerTrust` entries) and `IntoNapiError` trait; all domain errors are serialized to JSON strings through this mechanism. |
 | `http.rs` | `JsHttpClient` (callback-based `HttpClient` impl using ThreadsafeFunction) and `ReqwestHttpClient` (concrete reqwest-backed client exposed as a NAPI class). Includes HTTP method/request/response type conversions. |
 | `kms.rs` | `JsKms` (callback-based `Kms` impl), `JsKeyHandle` (callback-based key handle satisfying `Key`/`Signer`/`Verifier`), key type and parameter types (`JsKeyType`, `JsECDHESParams`, `JsECDH1PUParams`, `JsBIP32Params`). Also `create_key_metadata` helper. |
 | `vault.rs` | `JsVault` (callback-based `Vault` impl), `JsCredentialEntry`, `JsVaultPagination`, `JsCredentialsFindResult`, `JsFindVCsFailReason`. |
 | `nonce.rs` | `JsNonceHandler` (callback-based `NonceHandler` impl for generate, validate and invalidate). |
 | `utils.rs` | `from_json_object`/`to_json_object` serde helpers, `parse_url_arg`, `resolve_metadata`, `parse_claims`, `enable_logs` (tracing setup), `TracingLogFormat`/`TracingLogLevel` enums. |
-| `test_fixtures.rs` | Feature `test-fixtures` only. Thin `#[napi]` shims over `equs-test-fixtures` for the JS test suites — `fixturePublicJwk`, `fixtureDidKey`, `fixtureDidKeyUrl`, `fixtureJws`, `fixtureSdJwt`, `fixtureSdJwtKb`, `fixtureJwe`, `fixtureJwks`, `fixtureX509` — taking JSON as strings and the key as a `FixtureKey` (`Authz`, `Issuer`, `Holder`, `Verifier`, `Secret`); bad JSON is a `napi::Error`, a builder panic is caught (`catch_unwind`) and thrown. |
+| `test_fixtures.rs` | Feature `test-fixtures` only. Thin `#[napi]` shims over `equs-test-fixtures` for the JS test suites — `fixturePublicJwk`, `fixtureDidKey`, `fixtureDidKeyUrl`, `fixtureJws`, `fixtureSdJwt`, `fixtureSdJwtKb`, `fixtureJwe`, `fixtureJwks`, `fixtureX509`, `fixtureLote`, `fixtureMdoc` — taking JSON as strings and the key as a `FixtureKey` (`Authz`, `Issuer`, `Holder`, `Verifier`, `Secret`); bad JSON is a `napi::Error`, a builder panic is caught (`catch_unwind`) and thrown. |
 | `did/` | DID method utilities and universal resolver — see [did/CLAUDE.md](did/CLAUDE.md) |
 | `didcomm/` | DIDComm V2 envelope service — see [didcomm/CLAUDE.md](didcomm/CLAUDE.md) |
 | `inmem/` | In-memory KMS, vault, and nonce implementations — see [inmem/CLAUDE.md](inmem/CLAUDE.md) |

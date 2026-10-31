@@ -8,11 +8,11 @@ Implements DID resolution for the `did:webvh` method by wrapping `one-core`'s `D
 | File | Role |
 |------|------|
 | `mod.rs` | Module root; re-exports `client`. |
-| `client.rs` | `DIDWebVh` resolver struct, `OneCoreHttpClientAdapter` bridging the SDK's `HttpClient` to `one-core`'s incompatible interface, and unit tests with JSONL DID log fixtures. |
+| `client.rs` | `DIDWebVh` resolver struct, which reaches `one-core` through `crate::utils::one_core_http::OneCoreHttpClientAdapter`, and unit tests with JSONL DID log fixtures. |
 
 ## Key types / traits
 - `DIDWebVh` — public resolver struct; implements `DIDResolver` and wraps `one-core::DidWebVh`.
-- `OneCoreHttpClientAdapter` — private adapter converting the SDK's `HttpClient::async_call` calls into `one-core::HttpClient::send` calls.
+- `OneCoreHttpClientAdapter` (in `src/utils/one_core_http.rs`) — converts the SDK's `HttpClient::async_call` calls into `one-core::HttpClient::send` calls; a failure keeps its cause as `Transport`.
 - `NoopKeyProvider` — no-op `KeyProvider` used because resolution never requires key storage.
 
 ## Dependencies

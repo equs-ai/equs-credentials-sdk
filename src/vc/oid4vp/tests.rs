@@ -4114,6 +4114,40 @@ pub mod utils {
         create_verifier_service(false, None).await
     }
 
+    /// A verifier whose core service evaluates issuer trust under `config`.
+    pub async fn verifier_service_with_issuer_trust(
+        config: crate::vc::trust::issuer::IssuerTrustConfig,
+    ) -> TestVerifierService {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let trusted_certs = config
+            .anchors
+            .iter()
+            .map(|anchor| {
+                (
+                    crate::utils::test_utils::skid_of(&anchor.pem),
+                    anchor.pem.clone(),
+                )
+            })
+            .collect();
+        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default())
+            .with_verification_params(vc::core::VerificationParams {
+                trusted_certs: Some(trusted_certs),
+                issuer_trust: Some(config),
+            });
+        let client_metadata = generate_client_metadata(&kms).await;
+        VerifierService::new(
+            inner,
+            kms,
+            LocalNonceHandler::default(),
+            MockHttpClient::new(),
+            ClientId::from_did(&did).unwrap(),
+            key_metadata,
+            UniversalResolver::default(),
+            Some(client_metadata),
+        )
+    }
+
     pub async fn verifier_service_with_derived_client_id<F>(
         derive_client_id: F,
     ) -> (TestVerifierService, KeyHandle)
@@ -5430,7 +5464,11 @@ mod verify_and_extract_tests {
         let (verifier, _) = utils::verifier_service().await;
 
         let session = session_for(&auth_request);
-        let (verified_claims, verified_presentations) = verifier
+        let crate::vc::oid4vp::VerifiedPresentationResponse {
+            claims: verified_claims,
+            presentations: verified_presentations,
+            ..
+        } = verifier
             .verify_and_extract_presentation(
                 &resp,
                 &session,
@@ -5464,6 +5502,48 @@ mod verify_and_extract_tests {
         assert!(
             last_hop.iter().any(|alt| alt.get("scope").is_some()),
             "delegate payload claim 'scope' must be in 'delegations', got: {last_hop:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_and_extract_rejects_a_grant_of_a_did_issued_pid_under_enforce() {
+        use crate::vc::trust::issuer::{
+            CredentialClassification, IssuerTrustConfig, IssuerTrustMode, NotTrustedReason,
+        };
+
+        let (resp, auth_request) =
+            produce_grant(DelegateSdJwtTransactionDataFormat::Open, false).await;
+        let verifier = utils::verifier_service_with_issuer_trust(IssuerTrustConfig {
+            mode: IssuerTrustMode::Enforce,
+            classification: CredentialClassification {
+                pid: vec!["https://credentials.example.com/identity_credential".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await;
+
+        let error = verifier
+            .verify_and_extract_presentation(
+                &resp,
+                &session_for(&auth_request),
+                &CredentialVerificationMetadata {
+                    transaction_data: auth_request.transaction_data.clone(),
+                    audience: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        let crate::vc::oid4vp::Error::Internal {
+            source: crate::vc::oid4vp::InternalError::IssuerNotTrusted { issuer_trust },
+        } = error
+        else {
+            panic!("expected IssuerNotTrusted, got {error}");
+        };
+        assert_eq!(
+            issuer_trust[0].outcome.reason,
+            Some(NotTrustedReason::DidIssuerNotAllowed)
         );
     }
 
@@ -5664,7 +5744,7 @@ mod verify_and_extract_tests {
         };
 
         let (verifier, _) = utils::verifier_service().await;
-        let (_, verified_presentations) = verifier
+        let verified_presentations = verifier
             .verify_and_extract_presentation(
                 &resp,
                 &session_for(&auth_request),
@@ -5674,7 +5754,8 @@ mod verify_and_extract_tests {
                 },
             )
             .await
-            .expect("a grant disclosing every requested alternative must verify");
+            .expect("a grant disclosing every requested alternative must verify")
+            .presentations;
 
         let Presentation::SdJwtVp(menu) = &verified_presentations
             .get(DELEGATE_CRED_ID)
