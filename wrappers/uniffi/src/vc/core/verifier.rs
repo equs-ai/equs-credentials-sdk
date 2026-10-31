@@ -39,7 +39,8 @@ impl VCCoreVerifier {
         let claims = self
             .inner
             .verify_presentation(holder_binder, &presentation, self.http_client.as_ref())
-            .await?;
+            .await?
+            .claims;
         serde_json::to_value(&claims).map_err(|e| Error::Core(e.to_string()))
     }
 

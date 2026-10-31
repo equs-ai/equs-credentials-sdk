@@ -258,12 +258,25 @@ mod tests {
     }
 }
 
+/// Whether a chain must reach one of the held anchors.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AnchorPolicy {
+    /// The chain must validate up to a held anchor.
+    #[default]
+    Require,
+    /// The chain is checked for integrity only: every link's signature, validity, revocation and
+    /// the leaf's `digitalSignature` key usage. A self-signed leaf is rejected.
+    IntegrityOnly,
+}
+
 #[derive(Debug, Default)]
 pub struct VerifyOptions {
     // TODO seems to be jwt_vc_json-specific and should be removed from generic code.
     pub selective_claims: Option<Vec<String>>,
     // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
     pub trusted_certs: Option<HashMap<String, String>>,
+    /// Whether an issuer `x5c` / `x5chain` must reach one of `trusted_certs`.
+    pub anchor_policy: AnchorPolicy,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

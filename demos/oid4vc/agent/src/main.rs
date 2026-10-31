@@ -39,7 +39,8 @@ use equs_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
     CredentialVerificationMetadata, DelegationRequest, Holder, PassAuthRequestObject,
     PresentationResult, PresentationSession, ResolvedPresentationQuery, ResponseMode, ResponseType,
-    TransactionDataItem, TransactionDataResponse, delegate_transaction_data_item,
+    TransactionDataItem, TransactionDataResponse, VerifiedPresentationResponse,
+    delegate_transaction_data_item,
 };
 use equs_sdk::vc::{Credential, CredentialMetadata, Presentation, VCFormat};
 use reqwest::Url;
@@ -264,7 +265,11 @@ async fn present(
     // dSD-JWT (no transaction-data hashes are returned for a delegate grant), and its
     // authenticity comes from the chain signature plus the `aud`/`nonce`/`purchase_id`
     // bound into the delegate payload.
-    let (claims, presentations) = state
+    let VerifiedPresentationResponse {
+        claims,
+        presentations,
+        ..
+    } = state
         .verifier
         .verify_and_extract_presentation(
             &wallet_auth_resp,
