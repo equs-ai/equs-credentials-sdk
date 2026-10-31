@@ -44,11 +44,14 @@ pub enum TruststoreError {
     },
 }
 
+pub use crate::vc::formats::AnchorPolicy;
+
 pub struct Truststore<T: CertificateValidator> {
     cert_validator: T,
     /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
     trusted_roots: HashMap<String, String>,
     enforce_issuer_domain: bool,
+    anchor_policy: AnchorPolicy,
 }
 
 impl<T: CertificateValidator> Truststore<T> {
@@ -57,7 +60,13 @@ impl<T: CertificateValidator> Truststore<T> {
             cert_validator,
             trusted_roots,
             enforce_issuer_domain: false,
+            anchor_policy: AnchorPolicy::Require,
         }
+    }
+
+    pub fn anchor_policy(mut self, policy: AnchorPolicy) -> Self {
+        self.anchor_policy = policy;
+        self
     }
 
     pub fn enforce_issuer_domain(mut self, enabled: bool) -> Self {
@@ -73,23 +82,24 @@ impl<T: CertificateValidator> Truststore<T> {
         pem_chain: &str,
         iss: &str,
     ) -> Result<ParsedCertificate, TruststoreError> {
-        let leaf_certificate = validate_chain_against_trust_anchors(
-            &self.cert_validator,
-            pem_chain,
-            &self.trusted_roots,
-            || {
-                CertificateValidationOptions::signature_and_revocation(Some(vec![
-                    EnforceKeyUsage::DigitalSignature,
-                ]))
+        let leaf_certificate = match self.anchor_policy {
+            AnchorPolicy::Require => match self.held_leaf(pem_chain).await? {
+                Some(leaf) => leaf,
+                None => self.validate_to_held_anchor(pem_chain).await.map_err(|e| {
+                    UntrustedChainSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?,
             },
-        )
-        .await
-        .map_err(|e| {
-            UntrustedChainSnafu {
-                details: e.to_string(),
+            AnchorPolicy::IntegrityOnly => {
+                let leaf = verify_chain_integrity(&self.cert_validator, pem_chain)
+                    .await
+                    .map_err(|details| UntrustedChainSnafu { details }.build())?;
+                self.check_revocation_under_held_anchor(pem_chain).await?;
+                leaf
             }
-            .build()
-        })?;
+        };
 
         if self.enforce_issuer_domain {
             verify_domain_matches_certificate(&issuer_domain(iss)?, &leaf_certificate)?;
@@ -99,6 +109,129 @@ impl<T: CertificateValidator> Truststore<T> {
 
         Ok(leaf_certificate)
     }
+
+    /// The leaf when it is itself a held anchor; a self-signed one is left to path validation.
+    async fn held_leaf(
+        &self,
+        pem_chain: &str,
+    ) -> Result<Option<ParsedCertificate>, TruststoreError> {
+        let first_der = |pem: &str| {
+            x509_parser::pem::Pem::iter_from_buffer(pem.as_bytes())
+                .next()
+                .and_then(Result::ok)
+                .map(|pem| pem.contents)
+        };
+        let Some(leaf) = first_der(pem_chain) else {
+            return Ok(None);
+        };
+        let Some(anchor_pem) = self
+            .trusted_roots
+            .values()
+            .find(|anchor| first_der(anchor).as_ref() == Some(&leaf))
+        else {
+            return Ok(None);
+        };
+        let self_signed = x509_parser::parse_x509_certificate(&leaf).is_ok_and(|(_, cert)| {
+            cert.subject() == cert.issuer() && cert.verify_signature(None).is_ok()
+        });
+        if self_signed {
+            return Ok(None);
+        }
+        self.cert_validator
+            .parse_pem_chain(anchor_pem, below_anchor_validation())
+            .await
+            .map(Some)
+            .map_err(|e| {
+                UntrustedChainSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })
+    }
+
+    /// Fails only on a path to a held anchor that [is_rejected_path] rejects.
+    async fn check_revocation_under_held_anchor(
+        &self,
+        pem_chain: &str,
+    ) -> Result<(), TruststoreError> {
+        if self.trusted_roots.is_empty() {
+            return Ok(());
+        }
+        if let Err(error) = self.validate_to_held_anchor(pem_chain).await
+            && is_rejected_path(&error)
+        {
+            return UntrustedChainSnafu {
+                details: error.to_string(),
+            }
+            .fail();
+        }
+        Ok(())
+    }
+
+    async fn validate_to_held_anchor(
+        &self,
+        pem_chain: &str,
+    ) -> Result<ParsedCertificate, one_core::proto::certificate_validator::Error> {
+        validate_chain_against_trust_anchors(
+            &self.cert_validator,
+            pem_chain,
+            &self.trusted_roots,
+            below_anchor_validation,
+        )
+        .await
+    }
+}
+
+/// Signatures, plus validity and revocation of the certificates below the anchor; the leaf must
+/// allow `digitalSignature`.
+fn below_anchor_validation() -> CertificateValidationOptions {
+    CertificateValidationOptions::signature_and_revocation_below_anchor(Some(vec![
+        EnforceKeyUsage::DigitalSignature,
+    ]))
+}
+
+/// A failure `report` mode cannot relax: a certificate on the path to an anchor is revoked,
+/// expired, or of unknown revocation status.
+pub(crate) fn is_rejected_path(error: &one_core::proto::certificate_validator::Error) -> bool {
+    use one_core::proto::certificate_validator::Error;
+
+    matches!(
+        error,
+        Error::CertificateRevoked
+            | Error::CertificateExpired
+            | Error::CertificateNotYetValid
+            | Error::CRLCheckFailed(_)
+            | Error::CRLOutdated
+            | Error::CRLSignatureInvalid
+    )
+}
+
+/// Validates `pem_chain` without an anchor: signatures, validity and the leaf's
+/// `digitalSignature` key usage. Revocation is checked later, once the chain reaches an anchor
+/// ([crate::vc::trust::issuer::evaluate_chain]); the topmost CRL cannot be authenticated before.
+pub(crate) async fn verify_chain_integrity<T: CertificateValidator + ?Sized>(
+    cert_validator: &T,
+    pem_chain: &str,
+) -> Result<ParsedCertificate, String> {
+    let leaf = x509_parser::pem::Pem::iter_from_buffer(pem_chain.as_bytes())
+        .next()
+        .ok_or_else(|| "empty certificate chain".to_string())?
+        .map_err(|e| e.to_string())?;
+    let leaf_certificate = leaf.parse_x509().map_err(|e| e.to_string())?;
+    if leaf_certificate.subject() == leaf_certificate.issuer()
+        && leaf_certificate.verify_signature(None).is_ok()
+    {
+        return Err("the leaf certificate is self-signed".to_string());
+    }
+    cert_validator
+        .parse_pem_chain(
+            pem_chain,
+            CertificateValidationOptions::signature_and_validity(Some(vec![
+                EnforceKeyUsage::DigitalSignature,
+            ])),
+        )
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn issuer_domain(iss: &str) -> Result<String, TruststoreError> {
@@ -189,9 +322,9 @@ fn x509_pub_key_to_decoding_key(kh: KeyHandle) -> Result<DecodingKey, SdJwtRsErr
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::utils::test_utils::{anchors, skid_of};
-    use crate::utils::x509_truststore::Truststore;
+    use crate::utils::x509_truststore::{AnchorPolicy, Truststore};
     use jsonwebtoken::{Algorithm, Header};
     use one_core::mapper::x509::pem_chain_into_x5c;
     use one_core::proto::certificate_validator::{
@@ -211,6 +344,11 @@ mod tests {
     #[case::issuer_chain(anchors(&[test_root_ca()]), test_issuer_cert(), "https://issuer.example/vc")]
     #[case::web_pki_chain(anchors(&[github_root_ca()]), github_cert_chain(), "https://github.com")]
     #[case::iss_is_not_a_url(anchors(&[test_root_ca()]), test_issuer_cert(), "urn:example:issuer")]
+    #[case::leaf_held_as_its_own_anchor(
+        anchors(&[test_issuer_cert()]),
+        test_issuer_cert(),
+        "https://issuer.example/vc"
+    )]
     #[tokio::test]
     async fn trusts_chain_signed_up_to_held_anchor(
         #[case] trusted_roots: HashMap<String, String>,
@@ -247,6 +385,49 @@ mod tests {
             .verify_chain_trust(cert_chain, "https://issuer.example")
             .await
             .unwrap();
+    }
+
+    #[rstest]
+    #[case::expired(json!({ "not_before": "2024-01-01", "not_after": "2025-01-01",
+        "key_usages": ["digital_signature"] }))]
+    #[case::without_digital_signature(json!({ "not_before": "2026-01-01",
+        "not_after": "2046-01-01", "key_usages": ["key_encipherment"] }))]
+    #[tokio::test]
+    async fn a_held_leaf_is_still_checked_for_validity_and_key_usage(
+        #[case] spec: serde_json::Value,
+    ) {
+        let ca_key = test_fixtures::JWK::generate_p256();
+        let ca = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Held Leaf CA"]],
+                "not_before": "2024-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &ca_key,
+            None,
+        );
+        let mut leaf_spec = json!({
+            "subject": [["CN", "Held Leaf"]], "ca": false, "authority_key_identifier": true
+        });
+        if let (Some(leaf_spec), Some(spec)) = (leaf_spec.as_object_mut(), spec.as_object()) {
+            leaf_spec.extend(spec.clone());
+        }
+        let leaf = test_fixtures::x509(
+            &leaf_spec,
+            &test_fixtures::keys().issuer,
+            Some((&ca, &ca_key)),
+        );
+
+        let error = truststore(anchors(&[&leaf]))
+            .verify_chain_trust(&leaf, "https://issuer.example")
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Certificate chain is not trusted"),
+            "{error}"
+        );
     }
 
     #[rstest]
@@ -320,6 +501,123 @@ mod tests {
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn integrity_only_rejects_a_revoked_chain_under_a_held_anchor() {
+        let pki = CrlPki::start().await;
+        pki.serve_crl(true).await;
+
+        let error = truststore(anchors(&[&pki.ca]))
+            .anchor_policy(AnchorPolicy::IntegrityOnly)
+            .verify_chain_trust(&pki.issuer, "https://issuer.example")
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Certificate revoked"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn integrity_only_fetches_no_crl_for_a_chain_under_no_held_anchor() {
+        let pki = CrlPki::start().await;
+        let crl = pki.serve_crl(true).await;
+
+        truststore(anchors(&[github_root_ca()]))
+            .anchor_policy(AnchorPolicy::IntegrityOnly)
+            .verify_chain_trust(&pki.issuer, "https://issuer.example")
+            .await
+            .unwrap();
+
+        crl.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn integrity_only_rejects_an_unavailable_crl_under_a_held_anchor() {
+        let pki = CrlPki::start().await;
+
+        let error = truststore(anchors(&[&pki.ca]))
+            .anchor_policy(AnchorPolicy::IntegrityOnly)
+            .verify_chain_trust(&pki.issuer, "https://issuer.example")
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("CRL check failure"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn require_rejects_a_revoked_chain_and_accepts_a_current_one() {
+        let pki = CrlPki::start().await;
+        let crl = pki.serve_crl(true).await;
+
+        let revoked = truststore(anchors(&[&pki.ca]))
+            .verify_chain_trust(&pki.issuer, "https://issuer.example")
+            .await;
+        crl.delete_async().await;
+        pki.serve_crl(false).await;
+        // a fresh validator: the CRL is cached per validator
+        let current = truststore(anchors(&[&pki.ca]))
+            .verify_chain_trust(&pki.issuer, "https://issuer.example")
+            .await;
+
+        assert!(revoked.is_err());
+        assert!(current.is_ok(), "{:?}", current.err());
+    }
+
+    /// A CA and an issuer certificate for the fixture key, with the CA's CRL on a mock server.
+    pub(crate) struct CrlPki {
+        pub server: httpmock::MockServer,
+        pub ca: String,
+        ca_key: test_fixtures::JWK,
+        pub issuer: String,
+        crl_path: String,
+    }
+
+    impl CrlPki {
+        pub async fn start() -> Self {
+            let server = httpmock::MockServer::start_async().await;
+            let crl_path = format!("/ca-{}.crl", uuid::Uuid::new_v4());
+            let ca_key = test_fixtures::JWK::generate_p256();
+            let ca = test_fixtures::x509(
+                &serde_json::json!({
+                    "subject": [["CN", "CRL Test CA"]],
+                    "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+                }),
+                &ca_key,
+                None,
+            );
+            let issuer = test_fixtures::x509(
+                &serde_json::json!({
+                    "subject": [["CN", "CRL Test Issuer"]],
+                    "key_usages": ["digital_signature"], "authority_key_identifier": true,
+                    "crl_distribution_points": [server.url(&crl_path)]
+                }),
+                &test_fixtures::keys().issuer,
+                Some((&ca, &ca_key)),
+            );
+            Self {
+                server,
+                ca,
+                ca_key,
+                issuer,
+                crl_path,
+            }
+        }
+
+        /// Serves the CA's CRL, revoking the issuer certificate when `revoked`.
+        pub async fn serve_crl(&self, revoked: bool) -> httpmock::Mock<'_> {
+            let revoked = if revoked {
+                vec![self.issuer.as_str()]
+            } else {
+                vec![]
+            };
+            let crl = test_fixtures::crl((&self.ca, &self.ca_key), &revoked);
+            self.server
+                .mock_async(|when, then| {
+                    when.method("GET").path(&self.crl_path);
+                    then.status(200).body(crl);
+                })
+                .await
+        }
+    }
+
     /// The test PKI, generated once per process.
     struct Pki {
         /// Self-signed CA; issued `test_issuer_cert`. Valid until 2046.
@@ -342,23 +640,23 @@ mod tests {
         &PKI
     }
 
-    fn test_root_ca() -> &'static str {
+    pub(crate) fn test_root_ca() -> &'static str {
         &pki().test_root_ca
     }
 
-    fn test_issuer_cert() -> &'static str {
+    pub(crate) fn test_issuer_cert() -> &'static str {
         &pki().test_issuer_cert
     }
 
-    fn openid_conformance_test_cert() -> &'static str {
+    pub(crate) fn openid_conformance_test_cert() -> &'static str {
         &pki().openid_conformance_test_cert
     }
 
-    fn github_cert_chain() -> &'static str {
+    pub(crate) fn github_cert_chain() -> &'static str {
         &pki().github_cert_chain
     }
 
-    fn github_root_ca() -> &'static str {
+    pub(crate) fn github_root_ca() -> &'static str {
         &pki().github_root_ca
     }
 
@@ -490,7 +788,7 @@ mod tests {
 
     /// `dc+sd-jwt` presentation of the conformance suite's PID, bound to the fixture holder key;
     /// `undisclosed` holds the recorded digests of the claims it does not disclose.
-    fn presentation(
+    pub(crate) fn presentation(
         x5c: Option<Vec<String>>,
         iat: u64,
         exp: u64,
@@ -522,5 +820,30 @@ mod tests {
             &serde_json::json!({ "aud": "x509_san_dns:verifier-asdk", "iat": iat, "nonce": nonce }),
             &keys.holder,
         )
+    }
+
+    #[rstest]
+    #[case::chain_of_another_anchor(anchors(&[github_root_ca()]), test_issuer_cert())]
+    #[case::empty_truststore(HashMap::new(), test_issuer_cert())]
+    #[tokio::test]
+    async fn integrity_only_accepts_a_valid_chain_without_its_anchor(
+        #[case] trusted_roots: HashMap<String, String>,
+        #[case] cert_chain: &str,
+    ) {
+        truststore(trusted_roots)
+            .anchor_policy(super::AnchorPolicy::IntegrityOnly)
+            .verify_chain_trust(cert_chain, "https://issuer.example")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "self-signed")]
+    async fn integrity_only_still_rejects_a_self_signed_leaf() {
+        truststore(HashMap::new())
+            .anchor_policy(super::AnchorPolicy::IntegrityOnly)
+            .verify_chain_trust(openid_conformance_test_cert(), "https://issuer.example")
+            .await
+            .unwrap();
     }
 }

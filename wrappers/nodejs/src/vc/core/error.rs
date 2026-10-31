@@ -5,6 +5,13 @@ use strum_macros::Display;
 
 impl From<CoreError> for EncodableError {
     fn from(value: CoreError) -> Self {
+        // the same camelCase shape as an OID4VP `issuerTrust` entry, without the credential id
+        let details = match &value {
+            CoreError::IssuerNotTrusted { verified } => {
+                serde_json::to_value(&verified.outcome).ok()
+            }
+            _ => None,
+        };
         let code = match value {
             CoreError::CredDefNotFound { .. } => JsError::CredDefNotFound,
             CoreError::ClaimsNotFound { .. } => JsError::ClaimsNotFound,
@@ -33,10 +40,15 @@ impl From<CoreError> for EncodableError {
             CoreError::CannotCreateRegex { .. } => JsError::CannotCreateRegex,
             CoreError::ClaimsDidNotPassFiltering { .. } => JsError::ClaimsDidNotPassFiltering,
             CoreError::CredentialExpired => JsError::CredentialExpired,
+            CoreError::IssuerNotTrusted { .. } => JsError::IssuerNotTrusted,
             CoreError::ExpirationCheck { .. } => JsError::ExpirationCheck,
             CoreError::VCNotValid { .. } => JsError::VCNotValid,
         };
-        Self::new(code.to_string(), value.to_string())
+        let error = Self::new(code.to_string(), value.to_string());
+        match details {
+            Some(details) => error.with_details(details),
+            None => error,
+        }
     }
 }
 
@@ -69,6 +81,7 @@ pub enum JsError {
     CannotCreateRegex,
     ClaimsDidNotPassFiltering,
     CredentialExpired,
+    IssuerNotTrusted,
     ExpirationCheck,
     VCNotValid,
 }

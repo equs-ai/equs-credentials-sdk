@@ -27,7 +27,7 @@ Defines every abstract interface EQUS Credentials SDK is built on: cryptographic
 - `Nonce` and credential types that hold sensitive data implement `ZeroizeOnDrop`.
 - `HttpClient` is `#[automock]`-annotated for test mocking via `mockall`.
 - `one-core-portable` (all targets) re-exports crypto, key algorithm, and JWE utilities; used on all platforms including wasm.
-- `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with the SDK's (`async_call`) — bridging requires an adapter struct (see `src/did/webvh/client.rs`).
+- `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with the SDK's (`async_call`) — bridging requires an adapter struct (see `src/utils/one_core_http.rs` (`OneCoreHttpClientAdapter`), shared by did:webvh and the trust list export).
 
 ## Error handling
 
