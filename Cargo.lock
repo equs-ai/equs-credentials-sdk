@@ -2993,9 +2993,9 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "941d31b6a5368579480c79e4d9d4fd6ff8b52390e479e2be73006cb7de5c58d5"
+checksum = "2433065fe168c05b46104944ef4fbbb9789e7c634ce568075f61d93fb2eec9eb"
 dependencies = [
  "aes-gcm",
  "anyhow",
