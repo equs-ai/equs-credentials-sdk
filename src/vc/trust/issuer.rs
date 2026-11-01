@@ -52,7 +52,7 @@ impl TrustAnchor {
     }
 
     /// Whether the anchor may anchor an issuer of `category`.
-    pub fn anchors_category(
+    pub(crate) fn anchors_category(
         &self,
         category: CredentialCategory,
         roleless: RolelessAnchors,
@@ -90,7 +90,7 @@ pub enum CredentialCategory {
 impl CredentialCategory {
     /// PID, QEAA and PuB-EAA providers are identified by X.509 certificates, so an issuer without
     /// a chain is refused.
-    pub fn is_regulated(self) -> bool {
+    pub(crate) fn is_regulated(self) -> bool {
         self != Self::Eaa
     }
 
@@ -130,7 +130,7 @@ pub struct CredentialClassification {
 
 impl CredentialClassification {
     /// Category from the credential type and its `category` claim; a listed type wins.
-    pub fn classify(
+    pub(crate) fn classify(
         &self,
         credential_type: Option<&str>,
         declared_category: Option<&str>,
@@ -160,7 +160,7 @@ impl CredentialClassification {
 
     /// Category of verified claims: `vct` and `category` at the top level (SD-JWT VC), or
     /// `doctype` with `category` in any namespace (mdoc).
-    pub fn classify_claims(&self, claims: &crate::vc::claims::Claims) -> CredentialCategory {
+    pub(crate) fn classify_claims(&self, claims: &crate::vc::claims::Claims) -> CredentialCategory {
         if let Some(vct) = claims.get("vct").and_then(|claim| claim.as_str()) {
             let category = claims.get("category").and_then(|claim| claim.as_str());
             return self.classify(Some(vct), category);
@@ -203,7 +203,7 @@ pub struct IssuerTrustConfig {
 
 impl IssuerTrustConfig {
     /// The anchors that may anchor an issuer of `category`, in order.
-    pub fn anchors_for(&self, category: CredentialCategory) -> Vec<TrustAnchor> {
+    pub(crate) fn anchors_for(&self, category: CredentialCategory) -> Vec<TrustAnchor> {
         self.anchors
             .iter()
             .filter(|anchor| anchor.anchors_category(category, self.roleless_anchors))
@@ -300,7 +300,7 @@ pub struct IssuerTrustOutcome {
 }
 
 impl IssuerTrustOutcome {
-    pub fn trusted(anchor: &TrustAnchor, anchor_ski: Option<String>) -> Self {
+    pub(crate) fn trusted(anchor: &TrustAnchor, anchor_ski: Option<String>) -> Self {
         Self {
             status: IssuerTrustStatus::Trusted,
             anchor_ski,
@@ -312,7 +312,7 @@ impl IssuerTrustOutcome {
     }
 
     /// The outcome for an issuer without a certificate chain.
-    pub fn without_chain(category: CredentialCategory) -> Self {
+    pub(crate) fn without_chain(category: CredentialCategory) -> Self {
         let outcome = if category.is_regulated() {
             Self::untrusted(NotTrustedReason::DidIssuerNotAllowed)
         } else {
@@ -322,16 +322,16 @@ impl IssuerTrustOutcome {
     }
 
     /// This outcome, for a credential of `category`.
-    pub fn with_category(mut self, category: CredentialCategory) -> Self {
+    pub(crate) fn with_category(mut self, category: CredentialCategory) -> Self {
         self.category = Some(category);
         self
     }
 
-    pub fn untrusted(reason: NotTrustedReason) -> Self {
+    pub(crate) fn untrusted(reason: NotTrustedReason) -> Self {
         Self::without_anchor(IssuerTrustStatus::Untrusted, reason)
     }
 
-    pub fn not_evaluated(reason: NotTrustedReason) -> Self {
+    pub(crate) fn not_evaluated(reason: NotTrustedReason) -> Self {
         Self::without_anchor(IssuerTrustStatus::NotEvaluated, reason)
     }
 
@@ -368,7 +368,7 @@ pub struct IssuerTrust {
 
 /// Where the issuer key of an SD-JWT VC presentation comes from.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SdJwtIssuerKey {
+pub(crate) enum SdJwtIssuerKey {
     /// An `x5c` chain (PEM, leaf first), used for a URL issuer.
     X5c(String),
     /// A DID or anything else that is not a certificate chain.
@@ -378,7 +378,9 @@ pub enum SdJwtIssuerKey {
 /// The issuer key source of a compact SD-JWT VC presentation (`issuer-jwt~disclosures~kb-jwt`).
 /// Fails when the issuer JWT or its `x5c` cannot be read, rather than falling back to `Other`.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn sd_jwt_issuer_key(presentation: &str) -> Result<SdJwtIssuerKey, crate::vc::formats::Error> {
+pub(crate) fn sd_jwt_issuer_key(
+    presentation: &str,
+) -> Result<SdJwtIssuerKey, crate::vc::formats::Error> {
     let invalid = |details: String| crate::vc::formats::VerifyingSnafu { details }.build();
     let issuer_jwt = presentation.split('~').next().unwrap_or_default();
     let (header, payload) = ssi::claims::jws::decode_unverified(issuer_jwt)
@@ -405,7 +407,7 @@ pub fn sd_jwt_issuer_key(presentation: &str) -> Result<SdJwtIssuerKey, crate::vc
 /// an anchor is an error, not an outcome, so it fails even in `report` mode; it is returned only
 /// when no other anchor matches.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn evaluate_chain(
+pub(crate) async fn evaluate_chain(
     certificate_validator: &dyn one_core::proto::certificate_validator::CertificateValidator,
     chain_pem: &str,
     anchors: &[TrustAnchor],
@@ -520,7 +522,7 @@ pub async fn evaluate_chain(
 /// [evaluate_chain] against the anchors for `category`; `no_anchors_for_category` when anchors
 /// exist but none fit.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn evaluate_chain_for_category(
+pub(crate) async fn evaluate_chain_for_category(
     certificate_validator: &dyn one_core::proto::certificate_validator::CertificateValidator,
     chain_pem: &str,
     config: &IssuerTrustConfig,
