@@ -2,11 +2,11 @@ use super::{ContentSizeSnafu, Result};
 use reqwest::Response;
 use tracing::{Level, instrument};
 
-/// `ContentLimiter` struct represents limitations of request/response body size.
 /// Upper bound on the response buffer allocated up front from a `Content-Length` header.
 #[cfg(not(target_arch = "wasm32"))]
 const MAX_PREALLOCATED_BODY_SIZE: usize = 64 * 1024;
 
+/// `ContentLimiter` struct represents limitations of request/response body size.
 #[derive(Clone, Debug)]
 pub struct ContentSizeLimiter {
     pub(crate) req_size_limit: Option<usize>,
@@ -117,7 +117,7 @@ impl ContentSizeLimiter {
                 .fail();
             }
 
-            resp_body.append(&mut body_part.to_vec());
+            resp_body.extend_from_slice(&body_part);
         }
 
         Ok(resp_body)
