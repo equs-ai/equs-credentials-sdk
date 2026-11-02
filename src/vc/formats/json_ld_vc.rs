@@ -820,6 +820,12 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
 
         match &presentation.claims {
             Presentation::V2(vp) if presentation.proofs.is_empty() => {
+                ensure!(
+                    !vp.verifiable_credentials.is_empty(),
+                    VerifyingSnafu {
+                        details: "Verifiable Presentation does not contain a proof"
+                    }
+                );
                 for vc in &vp.verifiable_credentials {
                     let is_bbs_signed = vc.proofs.iter().any(|s| s.type_ == AnySuite::Bbs2023);
 
@@ -970,6 +976,16 @@ impl JsonLdAPI {
         Ok(())
     }
 
+    /// The DID a verification method id belongs to: the DID URL up to its path, query or
+    /// fragment.
+    fn did_of(verification_method: &str) -> Option<String> {
+        let end = verification_method
+            .find(['/', '?', '#'])
+            .unwrap_or(verification_method.len());
+        let did = &verification_method[..end];
+        did.starts_with("did:").then(|| did.to_string())
+    }
+
     /// Every credential subject with an `id` must be the DID that signed the presentation.
     fn ensure_signed_by_subject(presentation: &VP) -> Result<()> {
         use serde_json::Value;
@@ -989,10 +1005,10 @@ impl JsonLdAPI {
             .build()
         };
         let proofs = serde_json::to_value(&presentation.proofs).map_err(to_json)?;
-        let signer_dids: Vec<&str> = one_or_many(&proofs)
+        let signer_dids: Vec<String> = one_or_many(&proofs)
             .into_iter()
             .filter_map(|p| p.get("verificationMethod").and_then(Value::as_str))
-            .map(|vm| vm.split('#').next().unwrap_or(vm))
+            .filter_map(Self::did_of)
             .collect();
 
         let claims = serde_json::to_value(&presentation.claims).map_err(to_json)?;
@@ -1018,46 +1034,37 @@ impl JsonLdAPI {
         presentation: &Presentation,
         verifier: &VerificationParameters<UniversalResolver>,
     ) -> Result<()> {
-        let results = match presentation {
+        match presentation {
             Presentation::V1(vp) => {
-                let mut results = Vec::with_capacity(vp.verifiable_credentials.len());
                 for vc in &vp.verifiable_credentials {
-                    results.push(vc.verify(verifier).await);
+                    Self::ensure_valid_embedded(vc.verify(verifier).await)?;
                 }
-                results
             }
             Presentation::V2(vp) => {
-                let mut results = Vec::with_capacity(vp.verifiable_credentials.len());
                 for vc in &vp.verifiable_credentials {
-                    results.push(vc.verify(verifier).await);
-                }
-                results
-            }
-        };
-
-        for result in results {
-            let validity = result.map_err(|e| {
-                VerifyingSnafu {
-                    details: format!("embedded credential: {e}"),
-                }
-                .build()
-            })?;
-            match validity {
-                Ok(()) => {}
-                // Expiry is the caller's check (`IsExpired`), as for a bare credential, so it can
-                // report `CredentialExpired`.
-                Err(ssi::claims::Invalid::Claims(ssi::claims::InvalidClaims::Expired {
-                    ..
-                })) => {}
-                Err(e) => {
-                    return VerifyingSnafu {
-                        details: format!("embedded credential: {e}"),
-                    }
-                    .fail();
+                    Self::ensure_valid_embedded(vc.verify(verifier).await)?;
                 }
             }
         }
         Ok(())
+    }
+
+    fn ensure_valid_embedded<E: std::fmt::Display>(
+        result: core::result::Result<core::result::Result<(), ssi::claims::Invalid>, E>,
+    ) -> Result<()> {
+        let fail = |e: &dyn std::fmt::Display| {
+            VerifyingSnafu {
+                details: format!("embedded credential: {e}"),
+            }
+            .build()
+        };
+        match result.map_err(|e| fail(&e))? {
+            Ok(()) => Ok(()),
+            // Expiry is the caller's check (`IsExpired`), as for a bare credential, so it can
+            // report `CredentialExpired`.
+            Err(ssi::claims::Invalid::Claims(ssi::claims::InvalidClaims::Expired { .. })) => Ok(()),
+            Err(e) => Err(fail(&e)),
+        }
     }
 }
 
@@ -2145,5 +2152,33 @@ mod tests {
             result.is_err(),
             "presentation by a non-subject was accepted"
         );
+    }
+
+    #[tokio::test]
+    async fn verify_vp_rejects_unproven_presentation_without_credentials() {
+        let presentation: VP = serde_json::from_value(json!({
+            "@context": ["https://www.w3.org/ns/credentials/v2"],
+            "type": "VerifiablePresentation",
+            "verifiableCredential": []
+        }))
+        .unwrap();
+
+        let result = JsonLdAPI::verify_vp(
+            &presentation,
+            None,
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(result.is_err(), "empty unproven presentation was accepted");
+    }
+
+    #[rstest]
+    #[case::fragment("did:key:z6Mk1#z6Mk1", "did:key:z6Mk1")]
+    #[case::query("did:web:example.com:u?versionId=1#key-1", "did:web:example.com:u")]
+    #[case::path("did:web:example.com/keys#key-1", "did:web:example.com")]
+    fn signer_did_is_the_did_of_the_verification_method(#[case] vm: &str, #[case] did: &str) {
+        assert_eq!(JsonLdAPI::did_of(vm), Some(did.to_string()));
     }
 }

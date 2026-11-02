@@ -37,9 +37,7 @@ pub struct DelegationParams {
 
 #[derive(Debug)]
 pub struct DelegationChainView {
-    /// For [DsdJwtPurpose::Delegation], the issuer-signed claims alone. For
-    /// [DsdJwtPurpose::Presentation], `sd_jwt_rs` layers each hop's payload over them, so no
-    /// verification entry point uses that purpose.
+    /// For [DsdJwtPurpose::Delegation], the issuer-signed claims alone.
     pub verified_claims: Value,
     pub delegate_payloads: Vec<Vec<Map<String, Value>>>,
     pub chain_cnfs: Vec<jsonwebtoken::jwk::Jwk>,
@@ -48,6 +46,9 @@ pub struct DelegationChainView {
 #[derive(Debug)]
 pub enum DsdJwtPurpose {
     Delegation(Option<HolderBinder>),
+    /// `sd_jwt_rs`'s chain-aware presentation check, whose claims layer each hop's payload over
+    /// the issuer's; tests use it to build and inspect chains, no verification entry point does.
+    #[cfg(test)]
     Presentation(Option<HolderBinder>),
 }
 
@@ -134,6 +135,7 @@ impl DsdJwtAPI {
         let mut verifier = SDJWTVerifier::new(Box::new(DidKeyResolver::new(did_resolver)));
         let (holder_binder, is_grant) = match purpose {
             DsdJwtPurpose::Delegation(hb) => (hb, true),
+            #[cfg(test)]
             DsdJwtPurpose::Presentation(hb) => (hb, false),
         };
         let (aud, nonce) = holder_binder
