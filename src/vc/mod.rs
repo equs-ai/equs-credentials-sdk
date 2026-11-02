@@ -121,7 +121,8 @@ impl Credential {
     ) -> Result<bool> {
         match self {
             Credential::SdJwt(credential) => {
-                let claims = credential.parse_claims().context(ParseClaimsSnafu)?;
+                let claims =
+                    SdJwtAPI::issuer_signed_claims(credential).context(ParseClaimsSnafu)?;
                 SdJwtAPI::is_valid(&claims, http_client, did_resolver, cached_status_list_jwts)
                     .await
                     .context(StatusValidationSnafu)

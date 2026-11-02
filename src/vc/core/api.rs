@@ -703,6 +703,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Verify a `Presentation` and evaluate its issuer against the trust anchors.
     ///
+    /// An SD-JWT presentation carrying a delegation chain fails with [Error::VC]: delegation is
+    /// honoured only by `verify_delegation`, for a verifier that requested it.
+    ///
     /// # Arguments
     ///
     /// * `holder_binder` - if given: a nonce and verifier_id used to generate `Presentation` with binding the holder.
@@ -735,7 +738,9 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// # Returns
     ///
     /// Verified claims: `issued_vc` (issuer-signed claims) and `delegations` (per-hop Delegate
-    /// Payloads), with the issuer trust of the issued credential, whose issuer is a DID.
+    /// Payloads), with the issuer trust of the issued credential, whose issuer is a DID. A
+    /// Delegate Payload never replaces an issuer-signed claim, and revocation status is read
+    /// from the issuer-signed claims.
     ///
     /// # Errors
     ///
@@ -754,7 +759,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         unimplemented!();
     }
 
-    /// Obtains the status for presented VC.
+    /// Obtains the status for presented VC, from its issuer-signed claims.
     ///
     /// # Arguments
     ///

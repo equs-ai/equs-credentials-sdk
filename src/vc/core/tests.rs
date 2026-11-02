@@ -238,6 +238,42 @@ pub mod utils {
         }
     }
 
+    /// An SD-JWT whose issuer-signed `status` is index 1 of `status_list_url`, delegated by
+    /// its holder to its own key with a payload pointing `status` at index 0. The entry
+    /// holds the grant and the holder's key id.
+    #[cfg(feature = "delegate-sd-jwt")]
+    pub async fn self_delegated_status(kms: &LocalKms, status_list_url: Url) -> CredentialEntry {
+        use crate::vc::formats::DelegationParams;
+        use crate::vc::formats::dsd_jwt::DsdJwtAPI;
+
+        let case = CredTestCase::sd_jwt().add_revoked_status(status_list_url.clone());
+        let (entry, _) = case.generate_vc(kms, Some(Duration::days(1))).await;
+        let Credential::SdJwt(vc) = &entry.credential else {
+            unreachable!("an SD-JWT test case issues an SD-JWT");
+        };
+        let holder = kms.get(&entry.kid).await.unwrap();
+        let holder_jwk = serde_json::to_value(holder.jwk().unwrap()).unwrap();
+
+        let grant = DsdJwtAPI::create_delegated_credential(
+            vc,
+            holder,
+            DelegationParams {
+                delegate_payloads: vec![json!({
+                    "status": { "status_list": { "idx": 0, "uri": status_list_url.as_str() } },
+                    "cnf": { "jwk": holder_jwk },
+                })],
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        CredentialEntry {
+            credential: Credential::SdJwt(grant),
+            ..entry
+        }
+    }
+
     impl CredTestCase {
         pub async fn assert_proof_of_possession(
             &self,

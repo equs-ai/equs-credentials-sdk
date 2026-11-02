@@ -1,5 +1,6 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
+use crate::vc::Presentation;
 use crate::vc::claims::Claims;
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::claims::{DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
@@ -21,7 +22,6 @@ use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::trust::issuer::{
     IssuerTrustConfig, IssuerTrustMode, IssuerTrustOutcome, IssuerTrustVerification, TrustAnchor,
 };
-use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
 #[cfg(feature = "delegate-sd-jwt")]
@@ -483,6 +483,8 @@ impl VerifierService {
         }
     }
 
+    /// The status of the issuer-signed `status` claim: a delegate payload never supplies it,
+    /// on the presentation and the delegation path alike.
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn obtain_sd_jwt_vc_status(
         &self,
@@ -490,7 +492,7 @@ impl VerifierService {
         http_client: &dyn HttpClient,
         anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
-        let claims = presentation.parse_claims().context(VCSnafu)?;
+        let claims = SdJwtAPI::issuer_signed_claims(presentation).context(VCSnafu)?;
 
         let status = StatusListJwt::get_vc_status_with_trusted_certs(
             &claims,
@@ -802,6 +804,145 @@ mod tests {
 
     fn verifier_service() -> impl Verifier {
         VerifierService::new(VERIFIER_ID, UniversalResolver::default())
+    }
+
+    /// The first hop of a delegation chain needs only the holder's `cnf` key, so a holder can
+    /// delegate a revoked credential to itself and point `status` at a valid index.
+    #[cfg(feature = "delegate-sd-jwt")]
+    mod self_delegated_status {
+        use super::{
+            build_status_issuer, issue_status_list_with_revoked_indexes, verifier_service,
+        };
+        use crate::did::universal::UniversalResolver;
+        use crate::inmem::kms::LocalKms;
+        use crate::kms::Kms;
+        use crate::reqwest::builder::ReqwestClientBuilder;
+        use crate::vault::CredentialEntry;
+        use crate::vc::core::tests::fixtures::VERIFIER_ID;
+        use crate::vc::core::tests::utils::{random_nonce, self_delegated_status};
+        use crate::vc::core::{Error, HolderBinder, Verifier};
+        use crate::vc::formats::API;
+        use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
+        use crate::vc::status_formats::status_list_token_jwt;
+        use crate::vc::{Credential, Presentation, VCStatus};
+        use serde_json::Map;
+        use url::Url;
+
+        async fn binder() -> HolderBinder {
+            HolderBinder {
+                nonce: random_nonce().await,
+                verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
+            }
+        }
+
+        /// The grant and its presentation bound to `binder`, with index 1 of the status list
+        /// `server` serves revoked.
+        async fn grant_and_presentation(
+            server: &httpmock::MockServer,
+            binder: &HolderBinder,
+        ) -> (Presentation, Presentation) {
+            let path = "/status_list";
+            let url = Url::parse(&server.url(path)).unwrap();
+            let status_list = issue_status_list_with_revoked_indexes(
+                &build_status_issuer(url.clone()).await,
+                vec![1],
+            )
+            .await;
+            server
+                .mock_async(|when, then| {
+                    when.method("GET").path(path);
+                    then.status(200)
+                        .header("content-type", "application/statuslist+jwt")
+                        .body(status_list);
+                })
+                .await;
+
+            let kms = LocalKms::new();
+            let CredentialEntry {
+                credential: Credential::SdJwt(grant),
+                kid,
+                ..
+            } = self_delegated_status(&kms, url).await
+            else {
+                unreachable!("the grant is an SD-JWT");
+            };
+            let vp = SdJwtAPI::create_vp(
+                &grant,
+                kms.get(&kid).await.unwrap(),
+                VPMetadata {
+                    disclosures: Map::new(),
+                    holder_binder: Some(binder.clone()),
+                },
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap();
+
+            (Presentation::SdJwtVp(grant), Presentation::SdJwtVp(vp))
+        }
+
+        #[tokio::test]
+        async fn verify_presentation_rejects_a_delegation_chain() {
+            let server = httpmock::MockServer::start_async().await;
+            let binder = binder().await;
+            let (_, vp) = grant_and_presentation(&server, &binder).await;
+
+            let err = verifier_service()
+                .verify_presentation(
+                    Some(binder),
+                    &vp,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .expect_err("a presentation carrying a delegation chain must be rejected");
+
+            assert!(
+                matches!(err, Error::VC { .. }) && format!("{err:?}").contains("delegation chain"),
+                "unexpected error: {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_reads_the_issuer_signed_status() {
+            let server = httpmock::MockServer::start_async().await;
+            let (_, vp) = grant_and_presentation(&server, &binder().await).await;
+
+            let status = verifier_service()
+                .obtain_credential_status(
+                    &vp,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                status,
+                Some(VCStatus::StatusListToken(
+                    status_list_token_jwt::VCStatus::Invalid
+                ))
+            );
+        }
+
+        #[tokio::test]
+        async fn verify_delegation_reads_the_issuer_signed_status() {
+            let server = httpmock::MockServer::start_async().await;
+            let (grant, _) = grant_and_presentation(&server, &binder().await).await;
+
+            let err = verifier_service()
+                .verify_delegation(
+                    None,
+                    &grant,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .expect_err("a revoked credential must not verify as a grant");
+
+            assert!(
+                matches!(err, Error::VCNotValid { .. }),
+                "unexpected error: {err:?}"
+            );
+        }
     }
 
     async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
