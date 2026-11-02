@@ -44,5 +44,6 @@ Implements the DIDComm V2 protocol engine for secure, decentralised agent-to-age
 - Aries handlers bind `msg.from` to the connection via `OutOfBandV2Protocol::establish_connection`: a message without `from` is rejected, the first message on an `Invited`/`Accepted` connection sets the peer, and every later message must come from that peer.
 - Outbound `from` is authenticated too: `MessageSender` authcrypts as `SendOptions.from`, else `msg.from`, and anoncrypts only when neither is set.
 - The Aries issuer signs only what it offered: a `request-credential` whose credential differs from the offer in anything but the first subject's `id` gets an `invalid-credential-request` problem report and is never signed.
+- Present-proof presentations are bound to their request: the holder signs with, and the verifier requires, the request's `id` as challenge and the verifier's invitation DID as domain, so a presentation is not accepted by another verifier or for another request.
 - `StatefulMessageHandler` + `StateMachine` enforce a strict event-sourced state-transition model; state is always persisted before the handler returns.
 

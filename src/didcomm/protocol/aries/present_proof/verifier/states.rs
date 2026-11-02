@@ -6,7 +6,7 @@ use crate::didcomm::protocol::aries::present_proof::message::presentation::Prese
 use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
 use crate::didcomm::protocol::aries::present_proof::{
     AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    ParseSnafu, Result, VerificationFailedSnafu,
+    ParseSnafu, Result, VerificationFailedSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -68,7 +68,13 @@ impl InitialState {
         thread = thread.set_opt_pthid(connection.parent_thread_id.to_owned());
 
         Ok(VerifierState::PresentationRequestSent(
-            (self.presentation_request, thread, connection.id).into(),
+            (
+                self.presentation_request,
+                thread,
+                connection.id,
+                connection.my_did,
+            )
+                .into(),
         ))
     }
 }
@@ -79,6 +85,9 @@ pub struct PresentationRequestSentState {
     #[serde(default)]
     pub thread: Thread,
     pub connection_id: String,
+    /// The DID the request was sent from; a presentation must carry it as its domain.
+    #[serde(default)]
+    pub verifier_did: Option<String>,
 }
 
 impl PresentationRequestSentState {
@@ -159,9 +168,12 @@ impl PresentationRequestSentState {
             }
         };
 
-        let result = verifier_service
+        let holder_binder =
+            holder_binder(&self.presentation_request, self.verifier_did.as_deref())?;
+
+        verifier_service
             .verify_presentation(
-                None,
+                Some(holder_binder),
                 &presentation,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
@@ -182,9 +194,14 @@ pub struct FinishedState {
     pub thread: Thread,
 }
 
-impl From<(PresentationRequest, Thread, String)> for PresentationRequestSentState {
+impl From<(PresentationRequest, Thread, String, String)> for PresentationRequestSentState {
     fn from(
-        (presentation_request, thread, connection_id): (PresentationRequest, Thread, String),
+        (presentation_request, thread, connection_id, verifier_did): (
+            PresentationRequest,
+            Thread,
+            String,
+            String,
+        ),
     ) -> Self {
         trace!("VerifierSM transit state to PresentationRequestSentState");
         trace!("Thread: {:?}", thread);
@@ -192,6 +209,7 @@ impl From<(PresentationRequest, Thread, String)> for PresentationRequestSentStat
             presentation_request,
             thread,
             connection_id,
+            verifier_did: Some(verifier_did),
         }
     }
 }
