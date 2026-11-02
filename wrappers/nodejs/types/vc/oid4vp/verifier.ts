@@ -77,7 +77,9 @@ export class OID4VPVerifier {
    * hashes, per-presentation holder binding / proof of possession), and additionally returns
    * the raw presentation(s) per credential id. A Delegate Holder uses this to **store** a
    * returned dSD-JWT delegation grant: the grant's KB-SD-JWT is Holder-signed (proof of
-   * possession), and its `aud`/`nonce` are verified, so it is accepted through this normal path.
+   * possession), and its `aud`/`nonce` are verified, so it is accepted through this normal path
+   * when `verificationMetadata.transactionData` carries the `delegate` item that requested it.
+   * A presentation carrying a delegation chain for any other credential is rejected.
    *
    * @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
    * @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}.

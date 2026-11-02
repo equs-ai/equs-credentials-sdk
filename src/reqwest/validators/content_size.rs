@@ -2,6 +2,10 @@ use super::{ContentSizeSnafu, Result};
 use reqwest::Response;
 use tracing::{Level, instrument};
 
+/// Upper bound on the response buffer allocated up front from a `Content-Length` header.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_PREALLOCATED_BODY_SIZE: usize = 64 * 1024;
+
 /// `ContentLimiter` struct represents limitations of request/response body size.
 #[derive(Clone, Debug)]
 pub struct ContentSizeLimiter {
@@ -82,10 +86,13 @@ impl ContentSizeLimiter {
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, skip(self), ret(), err())]
     pub(crate) async fn limit_response_body(&self, response: &mut Response) -> Result<Vec<u8>> {
-        let mut resp_body: Vec<u8> = match response.content_length() {
-            Some(content_len) => Vec::with_capacity(content_len.try_into().unwrap_or_default()),
-            None => Vec::new(),
-        };
+        // `Content-Length` is server-controlled: it may size the initial buffer, never beyond
+        // `MAX_PREALLOCATED_BODY_SIZE`. The buffer grows as body bytes actually arrive.
+        let capacity = response
+            .content_length()
+            .and_then(|len| usize::try_from(len).ok())
+            .map_or(0, |len| len.min(MAX_PREALLOCATED_BODY_SIZE));
+        let mut resp_body: Vec<u8> = Vec::with_capacity(capacity);
 
         while let Some(body_part) = response.chunk().await.map_err(|e| {
             ContentSizeSnafu {
@@ -110,7 +117,7 @@ impl ContentSizeLimiter {
                 .fail();
             }
 
-            resp_body.append(&mut body_part.to_vec());
+            resp_body.extend_from_slice(&body_part);
         }
 
         Ok(resp_body)

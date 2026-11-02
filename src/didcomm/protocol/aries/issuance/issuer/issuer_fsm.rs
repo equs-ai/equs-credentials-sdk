@@ -13,8 +13,9 @@ use crate::didcomm::protocol::aries::issuance::issuer::states::{
 };
 use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
+use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
 use crate::didcomm::protocol::aries::issuance::{
-    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result,
+    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result, VCSnafu,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -62,7 +63,9 @@ where
             },
             IssuerState::OfferSent(state_data) => match cim {
                 IssuerMessages::CredentialRequest(request) => {
-                    IssuerState::RequestReceived((state_data, request).into())
+                    state_data
+                        .handle_received_credential_request(request, &agent)
+                        .await?
                 }
                 IssuerMessages::CredentialProposal(_) => {
                     state_data
@@ -209,6 +212,44 @@ impl OfferSentState {
             (self, Status::Failed(problem_report)).into(),
         ))
     }
+
+    /// Accepts a request only for the offered credential; anything else ends the exchange with a
+    /// problem report.
+    async fn handle_received_credential_request<KMS, KH, C>(
+        self,
+        request: CredentialRequest,
+        agent: &Agent<KMS, KH, C>,
+    ) -> Result<IssuerState>
+    where
+        KMS: Kms<KH> + Clone,
+        KH: KeyHandle,
+        C: ConnectionService + Clone,
+    {
+        if self.credential_info.credential_for(&request).is_ok() {
+            return Ok(IssuerState::RequestReceived((self, request).into()));
+        }
+
+        warn!("Credential request does not match the offer");
+        let problem_report = ProblemReport::create()
+            .set_message_type(&self.offer.type_)
+            .set_code(ProblemReportCode::InvalidCredentialRequest)
+            .set_comment(String::from(
+                "credential-request does not match the credential offer",
+            ))
+            .set_thread(self.thread.clone());
+
+        agent
+            .send_message(
+                &mut problem_report.clone().try_into().context(ParseSnafu)?,
+                &self.connection_id,
+            )
+            .await
+            .context(AgentSnafu)?;
+
+        Ok(IssuerState::Finished(
+            (self, Status::Failed(problem_report)).into(),
+        ))
+    }
 }
 
 impl RequestReceivedState {
@@ -218,26 +259,7 @@ impl RequestReceivedState {
         KH: KeyHandle,
         C: ConnectionService + Clone,
     {
-        let unsigned_credential = match self.request.get_ldp_vc_credential() {
-            Ok(credential) => credential,
-            Err(err) => {
-                let problem_report = ProblemReport::create()
-                    .set_message_type(&self.offer.type_)
-                    .set_code(ProblemReportCode::InvalidCredentialRequest)
-                    .set_comment(format!("error occurred: {:?}", err))
-                    .set_thread(self.thread.clone());
-
-                agent
-                    .send_message(
-                        &mut problem_report.clone().try_into().context(ParseSnafu)?,
-                        &self.connection_id,
-                    )
-                    .await
-                    .context(AgentSnafu)?;
-
-                return Err(err);
-            }
-        };
+        let unsigned_credential = self.credential_info.credential_for(&self.request)?;
 
         let key_handle = agent
             .kms()
@@ -254,7 +276,7 @@ impl RequestReceivedState {
             agent.did_resolver().clone(),
         )
         .await
-        .unwrap();
+        .context(VCSnafu)?;
 
         let credential_msg = Credential::create()
             .set_ldp_vc_credential(&credential)?

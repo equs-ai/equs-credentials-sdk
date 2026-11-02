@@ -25,6 +25,9 @@ REQUEST_PRESENTATION = "request-presentation"
 PRESENTATION         = "presentation"
 ```
 
+## Holder binding
+Every presentation is bound to the request it answers. `holder_binder` (in `mod.rs`) builds the `HolderBinder` both roles use: the request's `id` as nonce (the VP proof's `challenge`) and the DID the verifier sent the request from (the OOB invitation's `from`) as `verifier_id` (the proof's `domain`). The holder signs with it and the verifier requires it, so a presentation accepted by one verifier, or for one request, is rejected by any other. The wire format carries no extra field: both values are already in the invitation.
+
 ## Dependencies
 - Depends on: `vc::core::{HolderService, VerifierService}`, `protocol::outofband`, `protocol::aries::{common, problem_report, empty}`, `crate::didcomm::agent`, `crate::kms`, `crate::vault`
 - Used by: application code that calls `Verifier::new` or `PresentationHolder::new`

@@ -755,72 +755,15 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             )
             .await;
         }
-        let vp = JsonLdAPI::create_presentation(credential.to_owned(), &metadata, &holder_did)?;
-
-        let verifier = VerificationParameters::from_resolver(&did_resolver);
-
-        let (suite, sign_opts) = match &credential.claims {
-            Credential::V2(_) => {
-                Self::select_crypto_suite_for_v2_signing(&holder_signer.alg(), None)?
-            }
-            _ => {
-                let suite = AnySuite::pick(&key, None).ok_or_else(|| {
-                    CryptoSuiteCreationSnafu {
-                        details: "Could not pick crypto suite to sign json-ld v1 credential",
-                    }
-                    .build()
-                })?;
-
-                (suite, Default::default())
-            }
-        };
-
-        let signer = LocalSigner(JsonLdSigner {
-            signer: Arc::new(holder_signer),
-        });
-
-        let verification_method = did_resolver
-            .resolve_into_any_verification_method(ssi::dids::DID::new(&holder_did).map_err(
-                |e| {
-                    DIDSnafu {
-                        details: e.to_string(),
-                    }
-                    .build()
-                },
-            )?)
-            .await
-            .map_err(|e| {
-                CredentialCreationSnafu {
-                    details: format!("Can not resolve verification method: {e}"),
-                }
-                .build()
-            })?
-            .ok_or_else(|| {
-                CredentialCreationSnafu {
-                    details: "Can not find verification method",
-                }
-                .build()
-            })?;
-        let verification_method_id =
-            IriBuf::from_str(&verification_method.id).context(IriBufParsingSnafu)?;
-
-        let mut params = ProofOptions::from_method_and_options(
-            ReferenceOrOwned::Reference(verification_method_id.clone()),
-            AnyInputSuiteOptions::new(),
-        );
-        let (nonce, aud) = if let Some(hb) = metadata.holder_binder {
-            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
-        } else {
-            (None, None)
-        };
-        params.nonce = nonce.to_owned();
-        params.challenge = nonce;
-        params.domains = aud.map(|a| vec![a]).unwrap_or(vec![]);
-
-        suite
-            .sign(vp, did_resolver.clone(), &signer, params)
-            .await
-            .context(SpruceSigningSnafu)
+        Self::sign_presentation(
+            credential,
+            holder_signer,
+            &key,
+            metadata,
+            &holder_did,
+            did_resolver,
+        )
+        .await
     }
 
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
@@ -858,10 +801,17 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         Ok(())
     }
 
+    /// Verifies a presentation and every credential it carries; credential expiry is left to
+    /// [IsExpired].
+    ///
+    /// A presentation with its own proof is accepted only when each embedded credential's proof
+    /// verifies and, when `holder_binder` is given, every presentation proof carries its nonce as
+    /// `challenge` and its verifier id among `domains`. A V2 presentation without its own proof is
+    /// accepted only when every credential is BBS-signed; such presentations carry no holder
+    /// binding.
     #[instrument(level = Level::TRACE, skip(holder_binder, did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &VP,
-        //TODO. Add verification with holder binder
         holder_binder: Option<HolderBinder>,
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
@@ -870,6 +820,12 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
 
         match &presentation.claims {
             Presentation::V2(vp) if presentation.proofs.is_empty() => {
+                ensure!(
+                    !vp.verifiable_credentials.is_empty(),
+                    VerifyingSnafu {
+                        details: "Verifiable Presentation does not contain a proof"
+                    }
+                );
                 for vc in &vp.verifiable_credentials {
                     let is_bbs_signed = vc.proofs.iter().any(|s| s.type_ == AnySuite::Bbs2023);
 
@@ -897,6 +853,12 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
                 }
             }
             _ => {
+                if let Some(binder) = &holder_binder {
+                    Self::ensure_bound_to_request(presentation, binder)?;
+                }
+                Self::ensure_signed_by_subject(presentation)?;
+                Self::verify_embedded_credentials(&presentation.claims, &verifier).await?;
+
                 presentation
                     .verify(verifier)
                     .await
@@ -916,6 +878,193 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         }
 
         Ok(())
+    }
+}
+
+impl JsonLdAPI {
+    /// Builds a presentation of `credential` held by `holder_did` and signs it with
+    /// `holder_signer`, binding the proof to `metadata.holder_binder` when present.
+    async fn sign_presentation<S>(
+        credential: &VC,
+        holder_signer: S,
+        key: &crate::crypto::JWK,
+        metadata: VPMetadata,
+        holder_did: &str,
+        did_resolver: UniversalResolver,
+    ) -> Result<VP>
+    where
+        S: Signer + Key,
+    {
+        let vp = JsonLdAPI::create_presentation(credential.to_owned(), &metadata, holder_did)?;
+
+        let verifier = VerificationParameters::from_resolver(&did_resolver);
+
+        let (suite, sign_opts) = match &credential.claims {
+            Credential::V2(_) => {
+                Self::select_crypto_suite_for_v2_signing(&holder_signer.alg(), None)?
+            }
+            _ => {
+                let suite = AnySuite::pick(key, None).ok_or_else(|| {
+                    CryptoSuiteCreationSnafu {
+                        details: "Could not pick crypto suite to sign json-ld v1 credential",
+                    }
+                    .build()
+                })?;
+
+                (suite, Default::default())
+            }
+        };
+
+        let signer = LocalSigner(JsonLdSigner {
+            signer: Arc::new(holder_signer),
+        });
+
+        let verification_method = did_resolver
+            .resolve_into_any_verification_method(ssi::dids::DID::new(holder_did).map_err(|e| {
+                DIDSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?)
+            .await
+            .map_err(|e| {
+                CredentialCreationSnafu {
+                    details: format!("Can not resolve verification method: {e}"),
+                }
+                .build()
+            })?
+            .ok_or_else(|| {
+                CredentialCreationSnafu {
+                    details: "Can not find verification method",
+                }
+                .build()
+            })?;
+        let verification_method_id =
+            IriBuf::from_str(&verification_method.id).context(IriBufParsingSnafu)?;
+
+        let mut params = ProofOptions::from_method_and_options(
+            ReferenceOrOwned::Reference(verification_method_id.clone()),
+            AnyInputSuiteOptions::new(),
+        );
+        let (nonce, aud) = if let Some(hb) = metadata.holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
+        params.nonce = nonce.to_owned();
+        params.challenge = nonce;
+        params.domains = aud.map(|a| vec![a]).unwrap_or(vec![]);
+
+        suite
+            .sign(vp, did_resolver.clone(), &signer, params)
+            .await
+            .context(SpruceSigningSnafu)
+    }
+
+    fn ensure_bound_to_request(presentation: &VP, binder: &HolderBinder) -> Result<()> {
+        let nonce = binder.nonce.secret();
+        let bound = presentation.proofs.iter().all(|proof| {
+            proof.challenge.as_deref() == Some(nonce)
+                && proof.domains.iter().any(|d| d == &binder.verifier_id)
+        });
+        ensure!(
+            bound,
+            VerifyingSnafu {
+                details: "Verifiable Presentation is not bound to this request"
+            }
+        );
+        Ok(())
+    }
+
+    /// The DID a verification method id belongs to: the DID URL up to its path, query or
+    /// fragment.
+    fn did_of(verification_method: &str) -> Option<String> {
+        let end = verification_method
+            .find(['/', '?', '#'])
+            .unwrap_or(verification_method.len());
+        let did = &verification_method[..end];
+        did.starts_with("did:").then(|| did.to_string())
+    }
+
+    /// Every credential subject with an `id` must be the DID that signed the presentation.
+    fn ensure_signed_by_subject(presentation: &VP) -> Result<()> {
+        use serde_json::Value;
+
+        fn one_or_many(value: &Value) -> Vec<&Value> {
+            match value {
+                Value::Array(items) => items.iter().collect(),
+                Value::Null => vec![],
+                other => vec![other],
+            }
+        }
+
+        let to_json = |e: serde_json::Error| {
+            VerifyingSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        };
+        let proofs = serde_json::to_value(&presentation.proofs).map_err(to_json)?;
+        let signer_dids: Vec<String> = one_or_many(&proofs)
+            .into_iter()
+            .filter_map(|p| p.get("verificationMethod").and_then(Value::as_str))
+            .filter_map(Self::did_of)
+            .collect();
+
+        let claims = serde_json::to_value(&presentation.claims).map_err(to_json)?;
+        let subject_ids: Vec<&str> = one_or_many(&claims["verifiableCredential"])
+            .into_iter()
+            .flat_map(|vc| one_or_many(&vc["credentialSubject"]))
+            .filter_map(|subject| subject.get("id").and_then(Value::as_str))
+            .collect();
+
+        ensure!(
+            !signer_dids.is_empty()
+                && subject_ids
+                    .iter()
+                    .all(|id| signer_dids.iter().all(|did| did == id)),
+            VerifyingSnafu {
+                details: "Verifiable Presentation is not signed by the credential subject"
+            }
+        );
+        Ok(())
+    }
+
+    async fn verify_embedded_credentials(
+        presentation: &Presentation,
+        verifier: &VerificationParameters<UniversalResolver>,
+    ) -> Result<()> {
+        match presentation {
+            Presentation::V1(vp) => {
+                for vc in &vp.verifiable_credentials {
+                    Self::ensure_valid_embedded(vc.verify(verifier).await)?;
+                }
+            }
+            Presentation::V2(vp) => {
+                for vc in &vp.verifiable_credentials {
+                    Self::ensure_valid_embedded(vc.verify(verifier).await)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_valid_embedded<E: std::fmt::Display>(
+        result: core::result::Result<core::result::Result<(), ssi::claims::Invalid>, E>,
+    ) -> Result<()> {
+        let fail = |e: &dyn std::fmt::Display| {
+            VerifyingSnafu {
+                details: format!("embedded credential: {e}"),
+            }
+            .build()
+        };
+        match result.map_err(|e| fail(&e))? {
+            Ok(()) => Ok(()),
+            // Expiry is the caller's check (`IsExpired`), as for a bare credential, so it can
+            // report `CredentialExpired`.
+            Err(ssi::claims::Invalid::Claims(ssi::claims::InvalidClaims::Expired { .. })) => Ok(()),
+            Err(e) => Err(fail(&e)),
+        }
     }
 }
 
@@ -1865,5 +2014,171 @@ mod tests {
         }"#
         .replace("ISSUER", issuer);
         serde_json::from_str(cred_str.as_str()).unwrap()
+    }
+
+    fn binder(nonce: crate::nonce::Nonce, verifier_id: &str) -> Option<HolderBinder> {
+        Some(HolderBinder {
+            nonce,
+            verifier_id: verifier_id.to_string(),
+            response_uri: None,
+        })
+    }
+
+    async fn issue_permanent_resident_card(
+        kms: &LocalKms,
+    ) -> (VC, impl crate::kms::KeyHandle + use<>) {
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(kms, KeyType::P256).await;
+        let metadata = VCMetadata::new(
+            vec![
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
+            ],
+            vec!["PermanentResidentCard".to_string()],
+            Some(Duration::days(5 * 365)),
+        )
+        .unwrap();
+        let vc = JsonLdAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            metadata,
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+        (vc, hld_kh)
+    }
+
+    #[tokio::test]
+    async fn verify_vp_rejects_presentation_carrying_a_tampered_credential() {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = issue_permanent_resident_card(&kms).await;
+
+        let mut value = serde_json::to_value(&vc).unwrap();
+        value["credentialSubject"]["givenName"] = json!("MALLORY");
+        let tampered: VC = serde_json::from_value(value).unwrap();
+
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
+        let presentation = JsonLdAPI::create_vp(
+            &tampered,
+            hld_kh,
+            VPMetadata::new(&tampered, binder(nonce.clone(), "verifier_id")).unwrap(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let result = JsonLdAPI::verify_vp(
+            &presentation,
+            binder(nonce, "verifier_id"),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(result.is_err(), "tampered credential was accepted");
+    }
+
+    #[rstest]
+    #[case::other_nonce("verifier_id", true)]
+    #[case::other_verifier("other_verifier", false)]
+    #[tokio::test]
+    async fn verify_vp_rejects_presentation_bound_to_another_request(
+        #[case] expected_verifier: &str,
+        #[case] fresh_nonce: bool,
+    ) {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = issue_permanent_resident_card(&kms).await;
+        let nonce_handler = LocalNonceHandler::default();
+        let nonce = nonce_handler.generate().await.unwrap();
+
+        let presentation = JsonLdAPI::create_vp(
+            &vc,
+            hld_kh,
+            VPMetadata::new(&vc, binder(nonce.clone(), "verifier_id")).unwrap(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let expected_nonce = if fresh_nonce {
+            nonce_handler.generate().await.unwrap()
+        } else {
+            nonce
+        };
+        let result = JsonLdAPI::verify_vp(
+            &presentation,
+            binder(expected_nonce, expected_verifier),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "presentation for another request was accepted"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_vp_rejects_presentation_signed_by_someone_other_than_the_subject() {
+        let kms = LocalKms::new();
+        let (vc, _subject_kh) = issue_permanent_resident_card(&kms).await;
+        let (other_did_url, other_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let other_key = other_kh.jwk().unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
+
+        let presentation = JsonLdAPI::sign_presentation(
+            &vc,
+            other_kh,
+            &other_key,
+            VPMetadata::new(&vc, binder(nonce.clone(), "verifier_id")).unwrap(),
+            &other_did_url.did().to_string(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let result = JsonLdAPI::verify_vp(
+            &presentation,
+            binder(nonce, "verifier_id"),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "presentation by a non-subject was accepted"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_vp_rejects_unproven_presentation_without_credentials() {
+        let presentation: VP = serde_json::from_value(json!({
+            "@context": ["https://www.w3.org/ns/credentials/v2"],
+            "type": "VerifiablePresentation",
+            "verifiableCredential": []
+        }))
+        .unwrap();
+
+        let result = JsonLdAPI::verify_vp(
+            &presentation,
+            None,
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(result.is_err(), "empty unproven presentation was accepted");
+    }
+
+    #[rstest]
+    #[case::fragment("did:key:z6Mk1#z6Mk1", "did:key:z6Mk1")]
+    #[case::query("did:web:example.com:u?versionId=1#key-1", "did:web:example.com:u")]
+    #[case::path("did:web:example.com/keys#key-1", "did:web:example.com")]
+    fn signer_did_is_the_did_of_the_verification_method(#[case] vm: &str, #[case] did: &str) {
+        assert_eq!(JsonLdAPI::did_of(vm), Some(did.to_string()));
     }
 }

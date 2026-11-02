@@ -185,6 +185,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn response_with_oversized_content_length_fails_instead_of_aborting() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                  Content-Length: 1152921504606846976\r\n\r\n",
+            );
+        });
+        let client = ReqwestClientBuilder::new().insecure().build().unwrap();
+        let req = sample_request(
+            &format!("http://{addr}/"),
+            Method::GET,
+            (ACCEPT, MIME_TYPE_JSON),
+            vec![],
+        );
+
+        let result = client.async_call(req).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     #[should_panic(expected = "error sending request")]
     async fn handling_response_fails_when_content_length_is_mismatched() {
         let mut server = mockito::Server::new_async().await;

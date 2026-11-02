@@ -6,7 +6,6 @@ use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::resolver::KeyResolver;
 #[cfg(feature = "delegate-sd-jwt")]
 use sd_jwt_rs::utils::decode_dsd_jwt;
-#[cfg(not(feature = "delegate-sd-jwt"))]
 use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
@@ -195,12 +194,10 @@ pub struct VPMetadata {
     pub holder_binder: Option<HolderBinder>,
 }
 
-/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// Decode the issuer-signed claims of an SD-JWT, SD-JWT+KB or dSD-JWT to a JSON `Value`,
+/// resolving disclosures. No delegate payload is layered in.
 /// **Does not** perform credential validation.
-///
-/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
-#[cfg(not(feature = "delegate-sd-jwt"))]
-fn decode_credential_claims(compact: &str) -> Result<Value> {
+fn decode_issuer_claims(compact: &str) -> Result<Value> {
     decode_sd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact).map_err(|err| {
         ParsingSnafu {
             details: err.to_string(),
@@ -209,13 +206,23 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
     })
 }
 
+/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// **Does not** perform credential validation.
+///
+/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    decode_issuer_claims(compact)
+}
+
 /// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
 /// **Does not** perform credential validation.
 ///
-/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT it additionally layers
-/// each chain link's `delegate_payload` on top of the issuer claims, in chain order, so
-/// delegate-injected claims become visible to credential discovery /
-/// DCQL value-matching.
+/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT each chain link's
+/// `delegate_payload` adds its claims, in chain order, so delegate-injected claims become
+/// visible to credential discovery / DCQL value-matching. A delegate payload never replaces
+/// a claim the issuer-signed JWT carries: a holder can delegate to its own key, so a payload
+/// is no more trustworthy than the holder.
 #[cfg(feature = "delegate-sd-jwt")]
 fn decode_credential_claims(compact: &str) -> Result<Value> {
     let components = decode_dsd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact)
@@ -237,11 +244,14 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
         .build()
     })?;
 
+    let issuer_signed: Vec<String> = base_obj.keys().cloned().collect();
     for payload in components {
         // Layer single-object delegate payloads; skip multi-alternative arrays.
         if let Value::Object(obj) = payload {
             for (key, value) in obj {
-                base_obj.insert(key, value);
+                if !issuer_signed.contains(&key) {
+                    base_obj.insert(key, value);
+                }
             }
         }
     }
@@ -249,17 +259,19 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
     Ok(base)
 }
 
+/// `value` as [Claims], without the `cnf` holder key.
+fn claims_without_cnf(mut value: Value) -> Result<Claims> {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove(CNF_CLAIM);
+    }
+
+    value.try_into().context(ClaimsSnafu)
+}
+
 impl HasClaims<Claims> for Credential {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        let mut value = decode_credential_claims(&self.to_string())?;
-
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove(CNF_CLAIM);
-        }
-
-        let claims = value.try_into().context(ClaimsSnafu)?;
-        Ok(claims)
+        claims_without_cnf(decode_credential_claims(self)?)
     }
 
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
@@ -474,6 +486,16 @@ impl SdJwtAPI {
                 }
                 .build()
             })
+    }
+
+    /// The issuer-signed claims of an SD-JWT VC, presentation or dSD-JWT, without `cnf`, as
+    /// [HasClaims::parse_claims] returns them but with no delegate payload layered in. Every
+    /// revocation status check reads `status` from these: a holder can delegate to its own
+    /// key, so a delegate payload must not supply it.
+    /// **Does not** perform credential validation.
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    pub(crate) fn issuer_signed_claims(credential: &Credential) -> Result<Claims> {
+        claims_without_cnf(decode_issuer_claims(credential)?)
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
@@ -840,6 +862,12 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         Self::verify_signature(credential, &jwk)
     }
 
+    /// Verify an SD-JWT VC presentation for a verifier that did not request delegation.
+    ///
+    /// A presentation carrying a delegation chain (dSD-JWT or dSD-JWT+KB) fails: a holder
+    /// can delegate to its own key and put any claim in the delegate payload, which
+    /// `sd_jwt_rs` layers over the issuer-signed claims. A delegation grant is verified
+    /// through `Verifier::verify_delegation` instead, which keeps the two apart.
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &Presentation,
@@ -885,6 +913,15 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
                 }
                 .build()
             })?;
+
+        #[cfg(feature = "delegate-sd-jwt")]
+        if !verifier.verified_delegate_payloads.is_empty() {
+            return VerifyingSnafu {
+                details: "the presentation carries a delegation chain, which is accepted only \
+                          where the verifier requested delegation",
+            }
+            .fail();
+        }
 
         claims_json.try_into().context(ClaimsSnafu)
     }

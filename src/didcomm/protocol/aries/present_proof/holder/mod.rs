@@ -92,6 +92,7 @@ where
                 .build()
             })?;
 
+        let verifier_did = invitation.from.to_owned();
         let connection = oob
             .accept_invitation(invitation, connection_key_type.to_owned())
             .await
@@ -104,7 +105,8 @@ where
                 pr_id.to_owned(),
                 PresentationHolderState::RequestReceived(
                     RequestReceivedState::new(presentation_request, connection.id)
-                        .set_thread_id(thread_id),
+                        .set_thread_id(thread_id)
+                        .set_verifier_did(verifier_did),
                 ),
             )
             .await
