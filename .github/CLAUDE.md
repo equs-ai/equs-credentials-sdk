@@ -25,7 +25,7 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 24 of the 28. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` or `vX.Y.Z-rc.N` tag: preflight (tag is `X.Y.Z` or `X.Y.Z-rc.N`, matches `Cargo.toml`, no package already at that version unless `DRY_RUN`), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle, the iOS zip, the npm tarballs and the `.crate` to the one release. |
+| `workflows/release.yml` | On a `vX.Y.Z` or `vX.Y.Z-rc.N` tag: preflight (tag is `X.Y.Z` or `X.Y.Z-rc.N`, matches `Cargo.toml`, no package already at that version unless `DRY_RUN`), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then creates the release with notes from `scripts/release-notes.sh` (GitHub's generated notes when the tag has none) and attaches every manifest, the AAR, the Maven bundle, the iOS zip, the npm tarballs and the `.crate` to it. |
 | `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
@@ -40,6 +40,7 @@ is the one exception and is named `publish`.
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
 | `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
 | `scripts/binstall-or-build.sh` | Installs a `cargo-X` subcommand, falling back to a source build. Derives the check from the crate name, so it takes one argument where GitLab's `binstall_or_build` takes two. |
+| `scripts/release-notes.sh` | Renders an annotated `vX.Y.Z` tag's `- [kind] text: #PR` lines as Markdown release notes, one heading per kind (`break`, `feat`, `fix`, `security`, `chore`, anything else under Other). Empty for a lightweight tag. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
