@@ -3,7 +3,7 @@ use iref::IriRefBuf;
 use issuer_fsm::IssuerSM;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snafu::{IntoError, ResultExt};
+use snafu::{IntoError, OptionExt, ResultExt, ensure};
 use std::str::FromStr;
 use tracing::{debug, trace};
 use url::Url;
@@ -28,8 +28,8 @@ use crate::didcomm::protocol::aries::issuance::message::credential_request::Cred
 use crate::didcomm::protocol::aries::issuance::protocol::IssuanceProtocol;
 use crate::didcomm::protocol::aries::issuance::{
     AgentSnafu, ConnectionSnafu, DidUrlResolutionSnafu, InvalidAttributesStructureSnafu,
-    InvalidStateSnafu, OOBSnafu, PROPOSE_CREDENTIAL, REQUEST_CREDENTIAL, Result, StorageSnafu,
-    VCSnafu,
+    InvalidCredentialRequestSnafu, InvalidStateSnafu, OOBSnafu, PROPOSE_CREDENTIAL, ParseSnafu,
+    REQUEST_CREDENTIAL, Result, StorageSnafu, VCSnafu,
 };
 use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
@@ -37,7 +37,7 @@ use crate::didcomm::protocol::aries::problem_report::protocol::ProblemReportProt
 use crate::didcomm::protocol::outofband::{InvitationConfig, OutOfBandV2Protocol};
 use crate::kms::{KeyHandle, KeyType, Kms};
 use crate::storage::Storage;
-use crate::vc::claims::Claims;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::{JsonLdAPI, VCMetadata};
@@ -163,6 +163,61 @@ impl CredentialInfo {
             key_metadata,
             name,
         })
+    }
+
+    /// The offered credential, issued to the subject `request` names.
+    ///
+    /// # Errors
+    ///
+    /// * [super::Error::InvalidCredentialRequest] - the first credential subject has no string
+    ///   `id`, or the requested credential differs from the offer in anything but that `id`.
+    /// * Any error of [CredentialRequest::get_ldp_vc_credential].
+    pub(crate) fn credential_for(
+        &self,
+        request: &CredentialRequest,
+    ) -> Result<json_ld_vc::Credential> {
+        let requested = request.get_ldp_vc_credential()?;
+
+        let subject_id = subjects(&requested)
+            .first()
+            .and_then(|subject| subject.get("id"))
+            .filter(|id| matches!(id, Claim::String(_)))
+            .cloned()
+            .context(InvalidCredentialRequestSnafu {
+                details: "credential subject id not found",
+            })?;
+
+        let mut offered = self.data.clone();
+        subjects_mut(&mut offered)
+            .first_mut()
+            .context(InvalidCredentialRequestSnafu {
+                details: "offer has no credential subject",
+            })?
+            .insert("id".to_owned(), subject_id);
+
+        ensure!(
+            serde_json::to_value(&requested).context(ParseSnafu)?
+                == serde_json::to_value(&offered).context(ParseSnafu)?,
+            InvalidCredentialRequestSnafu {
+                details: "requested credential differs from the offer",
+            }
+        );
+
+        Ok(offered)
+    }
+}
+
+fn subjects(credential: &json_ld_vc::Credential) -> &[Claims] {
+    match credential {
+        json_ld_vc::Credential::V1(credential) => &credential.credential_subjects,
+        json_ld_vc::Credential::V2(credential) => &credential.credential_subjects,
+    }
+}
+
+fn subjects_mut(credential: &mut json_ld_vc::Credential) -> &mut [Claims] {
+    match credential {
+        json_ld_vc::Credential::V1(credential) => &mut credential.credential_subjects,
+        json_ld_vc::Credential::V2(credential) => &mut credential.credential_subjects,
     }
 }
 
@@ -434,22 +489,35 @@ where
 
 #[cfg(test)]
 pub mod test {
+    use rstest::rstest;
+    use serde_json::{Value, json};
+
     use crate::didcomm::agent::test_utils::test_agent;
     use crate::didcomm::connection::test_utils::create_test_connection;
-    use crate::didcomm::connection::{ConnectionService, ConnectionState};
+    use crate::didcomm::connection::{ConnectionRecord, ConnectionService, ConnectionState};
+    use crate::didcomm::core::envelope::Message;
     use crate::didcomm::core::message_id::MessageId;
+    use crate::didcomm::core::protocol::message_handler::MessageHandler;
+    use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
     use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::aries::issuance::issuer::fixture::credential_info;
     use crate::didcomm::protocol::aries::issuance::issuer::states::{
-        InitialState, IssuerState, OfferSentState,
+        FinishedState, InitialState, IssuerState, OfferSentState,
     };
+    use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
     use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
+    use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
+    use crate::didcomm::protocol::aries::problem_report::message::{
+        ProblemReport, ProblemReportCode,
+    };
     use crate::didcomm::protocol::outofband::InvitationConfig;
+    use crate::didcomm::transport::mock::MockTransport;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::storage::InMemStorage;
     use crate::kms::KeyType;
     use crate::storage::Storage;
+    use crate::vc::formats::json_ld_vc;
 
     #[tokio::test]
     async fn create_offer_success() {
@@ -629,6 +697,114 @@ pub mod test {
             .send_credential_offer(&offer_id.to_string(), connection)
             .await
             .unwrap();
+    }
+
+    const HOLDER_DID: &str = "did:example:holder";
+
+    type TestIssuer = Issuer<
+        LocalKms,
+        crate::inmem::kms::KeyHandle,
+        crate::didcomm::connection::in_mem::InMemConnectionService,
+        InMemStorage<String, IssuerState>,
+    >;
+
+    #[tokio::test]
+    async fn send_credential_signs_the_offer_for_the_requested_subject() {
+        let (issuer, transport, connection, offer) = issuer_with_offer_sent().await;
+        let request = credential_request(&offer, |_| {});
+
+        issuer
+            .handle(request_message(request, &connection))
+            .await
+            .unwrap();
+        issuer.send_credential(&offer.id.to_string()).await.unwrap();
+
+        let state = issuer.get_state(&offer.id.to_string()).await.unwrap();
+        assert!(matches!(state, IssuerState::CredentialSent(_)));
+        let credential: Credential = transport.next_message().await;
+        let vc = serde_json::to_value(credential.get_ldp_vc_credential().unwrap()).unwrap();
+        assert_eq!(vc["credentialSubject"]["id"], json!(HOLDER_DID));
+        assert_eq!(vc["credentialSubject"]["givenName"], json!("JANE"));
+    }
+
+    #[rstest]
+    #[case::claim(|vc: &mut Value| vc["credentialSubject"]["givenName"] = json!("MALLORY"))]
+    #[case::type_(|vc: &mut Value| vc["type"] = json!(["VerifiableCredential", "AdminCredential"]))]
+    #[case::expiry(|vc: &mut Value| vc["expirationDate"] = json!("2999-01-01T00:00:00Z"))]
+    #[case::context(|vc: &mut Value| vc["@context"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("https://www.w3.org/2018/credentials/examples/v1")))]
+    #[tokio::test]
+    async fn credential_request_differing_from_the_offer_is_not_signed(
+        #[case] tamper: fn(&mut Value),
+    ) {
+        let (issuer, transport, connection, offer) = issuer_with_offer_sent().await;
+        let request = credential_request(&offer, tamper);
+
+        issuer
+            .handle(request_message(request, &connection))
+            .await
+            .unwrap();
+        let _ = issuer.send_credential(&offer.id.to_string()).await;
+
+        let state = issuer.get_state(&offer.id.to_string()).await.unwrap();
+        let IssuerState::Finished(FinishedState {
+            status: Status::Failed(report),
+            ..
+        }) = state
+        else {
+            panic!("tampered request was not rejected: {state:?}");
+        };
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidCredentialRequest.code()
+        );
+        let sent: ProblemReport = transport.next_message().await;
+        assert_eq!(sent, report);
+        let _offer_only: CredentialOffer = transport.next_message().await;
+    }
+
+    async fn issuer_with_offer_sent()
+    -> (TestIssuer, MockTransport, ConnectionRecord, CredentialOffer) {
+        let (agent, transport) = test_agent();
+        let initial_state = initial_state(agent.kms()).await;
+        let offer = initial_state.offer.clone();
+        let storage = InMemStorage::<String, IssuerState>::new();
+        storage
+            .put(offer.id.to_string(), IssuerState::Initial(initial_state))
+            .await
+            .unwrap();
+        let issuer = Issuer::new(&agent, storage, KeyType::P256).await.unwrap();
+        let connection = create_test_connection(&agent).await;
+        issuer
+            .send_credential_offer(&offer.id.to_string(), connection.clone())
+            .await
+            .unwrap();
+
+        (issuer, transport, connection, offer)
+    }
+
+    /// What an honest holder sends, after `tamper` edits the credential.
+    fn credential_request(
+        offer: &CredentialOffer,
+        tamper: impl FnOnce(&mut Value),
+    ) -> CredentialRequest {
+        let mut credential = serde_json::to_value(offer.get_ldp_vc_credential().unwrap()).unwrap();
+        credential["credentialSubject"]["id"] = json!(HOLDER_DID);
+        tamper(&mut credential);
+        let credential: json_ld_vc::Credential = serde_json::from_value(credential).unwrap();
+
+        CredentialRequest::create()
+            .set_ldp_vc_credential(&credential)
+            .unwrap()
+            .set_thread(Thread::new().set_thid(offer.id.to_string()))
+    }
+
+    fn request_message(request: CredentialRequest, connection: &ConnectionRecord) -> Message {
+        let mut message: Message = request.try_into().unwrap();
+        message.from = connection.their_did.clone();
+        message
     }
 
     async fn initial_state(kms: &LocalKms) -> InitialState {
