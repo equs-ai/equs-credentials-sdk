@@ -13,7 +13,7 @@ Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
 toolchain and caches are written once. Underscore-prefixed files are
 `workflow_call` targets, never triggered on their own. The `publish-*.yml`
-workflows call none of them and write their own jobs.
+workflows call only `_dry-run.yml` and write their own jobs.
 
 Because CI jobs run through `workflow_call`, a check is named `<job> / run`, not
 `<job>` — branch-protection rules must use the two-part name. The publish job
@@ -25,13 +25,14 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 24 of the 28. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` or `vX.Y.Z-rc.N` tag: preflight (tag is `X.Y.Z` or `X.Y.Z-rc.N`, matches `Cargo.toml`, no package already at that version unless `DRY_RUN`), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle, the iOS zip, the npm tarballs and the `.crate` to the one release. |
-| `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
+| `workflows/_dry-run.yml` | Reads and deletes the repository variable `DRY_RUN`, fails unless it was `true` or `false`, outputs it as `dry-run`. Passes a non-empty `dry-run` input through untouched. The first job of `release.yml` and of every `publish-*.yml` but `publish-crate.yml` and `publish-ios.yml`. |
+| `workflows/release.yml` | On a `vX.Y.Z` or `vX.Y.Z-rc.N` tag: `dry-run` (calls `_dry-run.yml`), then preflight (tag is `X.Y.Z` or `X.Y.Z-rc.N`, matches `Cargo.toml`, no package already at that version unless `DRY_RUN`), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` (each with the `dry-run` input) and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle, the iOS zip, the npm tarballs and the `.crate` to the one release. |
+| `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`, with the `dry-run` input. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
-| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
-| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
-| `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
+| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with `version` and `dry-run` inputs, which then attaches the manifest instead. Defines its own jobs. |
+| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with `version` and `dry-run` inputs, which then attaches the manifest instead. Defines its own jobs. |
+| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with `version` and `dry-run` inputs, which then attaches the manifest instead. Defines its own jobs. |
+| `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with `version` and `dry-run` inputs. Defines its own jobs. |
 | `workflows/publish-ios.yml` | Builds the dynamic `EqusSdk.xcframework` on an `ios/vX.Y.Z` tag (`-rc.N` allowed, released as a prerelease) and attaches its zip, checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job, `publish-android.yml` and `publish-ios.yml`. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. binstall gets `github.token`: anonymous GitHub API calls hit 403 rate limits on macOS runners, and the source-build fallback fails because sccache needs a yanked `zip 0.6`. |
@@ -470,14 +471,30 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   the uploads use `--clobber`, since a re-run uploads the same artifact bytes.
   `DRY_RUN` does not apply; there is nothing to dry-run. No secrets, no
   environment.
-- GitHub-only releases: the repository variable `DRY_RUN` set to `true` sets
-  `DRY_RUN=1` in `release.yml` and every `publish-*.yml` but `publish-ios.yml`.
+- Every run but `publish-ios.yml`'s needs the repository variable `DRY_RUN`, and
+  consumes it: `_dry-run.yml` reads it through the API, deletes it, then
+  fails unless it was `true` or `false`, so a run with it unset or invalid
+  stops before anything builds, and one setting covers one run. The DELETE
+  decides between concurrent runs: of several tags pushed at once, one run
+  gets the variable and the rest fail. `release.yml`'s `dry-run` job calls it
+  first, and preflight passes the result to every called workflow as the
+  `dry-run` input (`'true'`/`'false'`). Every other tag-triggered
+  `publish-*.yml` calls it as its own `dry-run` job, which passes that input
+  through when set; its output picks every publishing job's environment and
+  its job-level `DRY_RUN`. The mode travels as a job output, not as `vars`,
+  so "Re-run failed jobs" after the check keeps the run's mode with the
+  variable gone. `GITHUB_TOKEN` cannot manage variables, so `_dry-run.yml`
+  takes the secret `EQUS_CREDENTIALS_SDK_VARIABLES_TOKEN`, passed explicitly
+  as `token`, never `secrets: inherit`: a fine-grained token on this
+  repository with Variables read and write. It is used outside any
+  environment, so it must be an organization or repository secret.
+- GitHub-only releases: `true` sets `DRY_RUN=1` in every publishing job.
   Every `cargo publish` and `npm publish` then runs with `--dry-run`, the Maven
   Central upload is skipped, the crates.io and npm token guards are lifted and
   preflight checks only the tag, and no job names an environment, so nothing
   is recorded as a deployment; every job still builds, packs, signs and
-  renders its manifest, and the GitHub release gets all its assets. Unset or
-  any other value publishes. The wrapper scripts read the same variable.
+  renders its manifest, and the GitHub release gets all its assets. `false`
+  publishes. The wrapper scripts read the same `DRY_RUN`.
 - Prerequisites in settings: the organization secret `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation
   token with publish rights on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
   job uses the environment unless `DRY_RUN`, so a required-reviewer rule prompts twice for a
