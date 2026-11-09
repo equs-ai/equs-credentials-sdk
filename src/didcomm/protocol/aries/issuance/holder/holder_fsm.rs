@@ -264,10 +264,13 @@ impl RequestSentState {
                 ))
             }
             Err(err) => {
+                warn!("Received credential could not be processed: {err}");
+                debug!("Received credential error: {err:?}");
+
                 let problem_report = ProblemReport::create()
                     .set_message_type(&credential.type_)
                     .set_code(ProblemReportCode::InvalidCredential)
-                    .set_comment(format!("error occurred: {:?}", err))
+                    .set_comment(String::from("credential could not be processed"))
                     .set_thread(thread.clone());
 
                 agent
@@ -386,10 +389,13 @@ impl OfferReceivedState {
                 ))
             }
             Err(err) => {
+                warn!("Credential offer could not be processed: {err}");
+                debug!("Credential offer error: {err:?}");
+
                 let problem_report = ProblemReport::create()
                     .set_message_type(&self.offer.type_)
                     .set_code(ProblemReportCode::InvalidCredentialOffer)
-                    .set_comment(format!("error occurred: {:?}", err))
+                    .set_comment(String::from("credential offer could not be processed"))
                     .set_thread(thread);
 
                 agent
@@ -469,5 +475,89 @@ impl FinishedHolderState {
     async fn delete_credential(&self, cred_id: &str, vault: &impl vault::Vault) -> Result<()> {
         trace!("Holder::_delete_credential >>> cred_id: {}", cred_id);
         vault.delete_credential(cred_id).await.context(VaultSnafu)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::protocol::aries::common::message::thread::Thread;
+    use crate::didcomm::protocol::aries::issuance::holder::HolderMessages;
+    use crate::didcomm::protocol::aries::issuance::holder::holder_fsm::HolderSM;
+    use crate::didcomm::protocol::aries::issuance::holder::states::{
+        IssuanceHolderState, OfferReceivedState, RequestSentState,
+    };
+    use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
+    use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
+    use crate::didcomm::protocol::aries::problem_report::message::{
+        ProblemReport, ProblemReportCode,
+    };
+    use crate::inmem::vault::InMemVault;
+    use crate::vc::core::KeyMetadata;
+
+    #[tokio::test]
+    async fn unusable_offer_reported_without_error_details() {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let state = IssuanceHolderState::OfferReceived(OfferReceivedState {
+            offer: CredentialOffer::create(),
+            connection_id: connection.id,
+            thread: thread(),
+        });
+
+        let result = HolderSM::step(state, key_metadata(), agent, InMemVault::new())
+            .handle_message(HolderMessages::CredentialRequestSend)
+            .await;
+
+        assert!(result.is_err());
+        let report: ProblemReport = transport.next_message().await;
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidCredentialOffer.code()
+        );
+        assert_eq!(
+            report.body.comment.as_deref(),
+            Some("credential offer could not be processed")
+        );
+    }
+
+    #[tokio::test]
+    async fn unusable_credential_reported_without_error_details() {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let state = IssuanceHolderState::RequestSent(RequestSentState {
+            offer: None,
+            connection_id: connection.id,
+            thread: thread(),
+        });
+
+        let result = HolderSM::step(state, key_metadata(), agent, InMemVault::new())
+            .handle_message(HolderMessages::Credential(
+                Credential::create().set_thread(thread()),
+            ))
+            .await;
+
+        assert!(result.is_err());
+        let report: ProblemReport = transport.next_message().await;
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidCredential.code()
+        );
+        assert_eq!(
+            report.body.comment.as_deref(),
+            Some("credential could not be processed")
+        );
+    }
+
+    fn thread() -> Thread {
+        Thread::new().set_thid("thread".to_owned())
+    }
+
+    fn key_metadata() -> KeyMetadata {
+        KeyMetadata {
+            kid: "kid".to_owned(),
+            did_url: "did:example:holder#key-1".to_owned(),
+        }
     }
 }

@@ -17,14 +17,16 @@ use crate::didcomm::protocol::aries::present_proof::message::presentation_reques
 use crate::didcomm::protocol::aries::present_proof::protocol::PresentationProtocol;
 use crate::didcomm::protocol::aries::present_proof::{
     AgentSnafu, ConnectionSnafu, InvalidAttachmentSnafu, InvalidStateSnafu, OOBSnafu,
-    REQUEST_PRESENTATION, ReqwestClientBuilderSnafu, Result, StorageSnafu,
+    REQUEST_PRESENTATION, ReqwestClientBuilderSnafu, Result, StorageSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::outofband::OutOfBandV2Protocol;
 use crate::kms::KeyType;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::storage::Storage;
-use crate::vc::core::{Holder as CoreHolder, HolderMetadata, HolderService, KeyMetadata};
+use crate::vc::core::{
+    Holder as CoreHolder, HolderBinder, HolderMetadata, HolderService, KeyMetadata,
+};
 use crate::{kms, vault};
 use async_trait::async_trait;
 use snafu::{IntoError, ResultExt};
@@ -177,6 +179,30 @@ where
         self.step(HolderMessages::PreparePresentation).await
     }
 
+    /// The binding a presentation answering the received request carries: the request's `id` as
+    /// nonce and the DID the verifier sent it from as `verifier_id`.
+    ///
+    /// # Errors
+    ///
+    /// * [super::Error::InvalidState] - the holder is not in the `RequestReceived` state, or that
+    ///   state has no `verifier_did`.
+    /// * [super::Error::Storage] - fails to load the state.
+    pub async fn holder_binder(&self) -> Result<HolderBinder> {
+        let holder_sm = self.holder_sm().await?;
+        let PresentationHolderState::RequestReceived(state) = holder_sm.state() else {
+            return InvalidStateSnafu {
+                details: "holder is not in the RequestReceived state",
+            }
+            .fail();
+        };
+
+        holder_binder(&state.presentation_request, state.verifier_did.as_deref())
+    }
+
+    /// Sets a presentation the caller built, in place of [Self::prepare_presentation].
+    ///
+    /// The verifier accepts it only when its VP is bound with [Self::holder_binder]: every proof
+    /// carries the binder's nonce as `challenge` and its `verifier_id` as `domain`.
     pub async fn set_presentation(&self, presentation: Presentation) -> Result<()> {
         trace!("Holder::set_presentation >>>");
         debug!(

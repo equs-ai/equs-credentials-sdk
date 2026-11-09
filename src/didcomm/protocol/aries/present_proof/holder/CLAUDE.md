@@ -27,8 +27,9 @@ Fields: `agent`, `key_metadata`, `source_id`, `storage`, `vault`, `event_emitter
 
 ### Public API
 ```
+holder_binder()        → HolderBinder for the received request (RequestReceived state only)
 prepare_presentation() → PresentationPrepared state (auto-creates VP)
-set_presentation(pres) → sets manually supplied VP
+set_presentation(pres) → sets a caller-built VP, which must be bound with holder_binder()
 send_presentation()    → Finished state, sends VP on wire
 step(message)          → generic state transition
 observe_state()        → (Subscription, EventObservable<PresentationHolderState>)
@@ -38,7 +39,7 @@ observe_state()        → (Subscription, EventObservable<PresentationHolderStat
 ```
 RequestReceived
   + PreparePresentation        → PresentationPrepared  (auto-creates a VP for the first input descriptor, bound to the request; fails without a descriptor or `verifier_did`)
-  + SetPresentation            → PresentationPrepared  (caller supplies VP)
+  + SetPresentation            → PresentationPrepared  (caller supplies a VP bound with `holder_binder()`)
   + RejectPresentationRequest  → Finished
 
 PresentationPrepared

@@ -138,13 +138,14 @@ pub enum Error {
 ///
 /// # Errors
 ///
-/// * [Error::InvalidState] - `verifier_did` is `None`.
+/// * [Error::InvalidState] - `verifier_did` is `None`, as in a state stored without it. Such a
+///   state never produces or verifies a presentation; the exchange restarts with a new request.
 fn holder_binder(
     request: &message::presentation_request::PresentationRequest,
     verifier_did: Option<&str>,
 ) -> Result<HolderBinder> {
     let verifier_id = verifier_did.context(InvalidStateSnafu {
-        details: "verifier DID not found",
+        details: "state has no verifier DID; restart with a new presentation request",
     })?;
 
     Ok(HolderBinder {

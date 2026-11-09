@@ -23,5 +23,5 @@ Implements the credential issuer side of the WACI Aries issuance protocol: creat
 - Used by: `issuance::protocol::IssuanceProtocol::new_with_issuer`
 
 ## Constraints
-- The issuer signs only what it offered. A `request-credential` is accepted only when its credential equals `CredentialInfo`'s, apart from the first credential subject's `id`, which must be a string. Any other request sends an `invalid-credential-request` problem report and finishes the exchange as `Failed`, unsigned.
-- `send_credential` signs `CredentialInfo`'s credential with the request's subject `id`, never the requested credential itself; a signing failure is returned as `Error::VC`.
+- The issuer signs only what it offered. A `request-credential` is accepted only when its credential equals `CredentialInfo`'s, apart from the first credential subject's `id`, which must be a string. Any other request sends an `invalid-credential-request` problem report with a fixed comment, logs the mismatch reason locally, and finishes the exchange as `Failed`, unsigned.
+- `send_credential` signs `CredentialInfo`'s credential with the request's subject `id`, never the requested credential itself; it runs `credential_for` again on the stored request, since the state is persisted between receiving the request and sending the credential. A signing failure is returned as `Error::VC`.

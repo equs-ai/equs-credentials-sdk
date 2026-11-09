@@ -225,11 +225,12 @@ impl OfferSentState {
         KH: KeyHandle,
         C: ConnectionService + Clone,
     {
-        if self.credential_info.credential_for(&request).is_ok() {
+        let Err(err) = self.credential_info.credential_for(&request) else {
             return Ok(IssuerState::RequestReceived((self, request).into()));
-        }
+        };
 
-        warn!("Credential request does not match the offer");
+        warn!("Credential request does not match the offer: {err}");
+        debug!("Credential request mismatch: {err:?}");
         let problem_report = ProblemReport::create()
             .set_message_type(&self.offer.type_)
             .set_code(ProblemReportCode::InvalidCredentialRequest)
