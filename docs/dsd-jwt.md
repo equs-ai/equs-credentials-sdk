@@ -31,6 +31,8 @@ Every delegation item declares a format, and that single choice decides whether 
 
 The choice is per item, and the API enforces it structurally: `DelegationRequest::holder_binding` takes the delegate's public key, `DelegationRequest::open` takes none. What is checked, at verification time, is that the alternatives disclosed on the final hop are exactly the `delegate` items the Verifier requested for that credential.
 
+A Verifier accepts a presentation carrying a delegation chain whether or not its request asked for delegation. A delegate payload never replaces or passes for an issuer-signed claim: the Verifier receives the issuer-signed claims under `issued_vc` and each hop's payloads under `delegations`, checks DCQL claims against the issuer-signed claims, and reads expiry, revocation status and issuer trust from them. A Holder can delegate to its own key, so a payload is no more trustworthy than the Holder who signed it.
+
 ## Alternatives on one credential
 Several delegation items may name the same credential in their `credential_ids`. They then describe alternatives over that credential: all of them are signed into the grant, so a single approval can pre-authorize several mutually exclusive options.
 Items naming different credentials are independent — they attach to different credentials in the same Presentation Request.

@@ -11,18 +11,19 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 | vc.rs | `VCFormat` enum and `HasVCFormat` trait (JwtVcJson, JwtVcJsonLD, LdpVc, SdJwtVc, MsoMdoc). |
 | vp.rs | `VPFormat` enum and `HasVPFormat` trait (SdJwtVp, JwtVp, LdpVp, MsoMdoc). |
 | json_ld_vc.rs | W3C JSON-LD VC implementation: `JsonLdAPI`, `VC`, `VP`, `VCMetadata` using `ssi` data-integrity suites. |
-| sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. `verify_vc` resolves the signing key from a DID URL `kid`, else an `x5c` chain validated against `VerifyOptions.trusted_certs` (native only; with `VerifyOptions.anchor_policy = IntegrityOnly` only for integrity, and no anchor is required), else a `kid`/`iss` DID; `verify_vp` resolves it through `DelegatingKeyResolver`. |
-| dsd_jwt.rs | Delegate SD-JWT (dSD-JWT/dSD-JWT+KB) format primitives — gated `delegate-sd-jwt`. |
+| sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. `verify_vc` resolves the signing key from a DID URL `kid`, else an `x5c` chain validated against `VerifyOptions.trusted_certs` (native only; with `VerifyOptions.anchor_policy = IntegrityOnly` only for integrity, and no anchor is required), else a `kid`/`iss` DID; `verify_presentation` resolves it through `DelegatingKeyResolver` and returns a `VerifiedPresentation`: the issuer-signed claims, decoded from the verified token whatever `sd-jwt-rs` features are on, and with `delegate-sd-jwt` each hop's Delegate Payloads; `verify_vp` returns its `into_claims` (`delegated_claims` — `issued_vc` and `delegations` apart — for a chain). `issuer_signed_claims` decodes the issuer-signed claims alone, with no delegate payload; every revocation status check reads `status` from them. `parse_claims` (holder-side discovery) adds payload claims the issuer did not sign and keeps the earlier `exp`. |
+| dsd_jwt.rs | Delegate SD-JWT (dSD-JWT/dSD-JWT+KB) format primitives — gated `delegate-sd-jwt`. `verify_dsd_jwt` with `DsdJwtPurpose::Delegation` returns the issuer-signed claims and each hop's payloads apart; `DsdJwtPurpose::Presentation`, which returns `sd_jwt_rs`'s layered claims, exists only in tests. |
 | mso_mdoc.rs | ISO 18013-5 mDoc implementation: `MsoMdocAPI`, `Presentation` (CBOR base64url + optional encryption key). Passes the trusted IACA PEMs to one-core, which validates the Document Signer chain up to one of them; with `AnchorPolicy::Require` and no configured anchor (`None` or empty) the anchor check is **skipped** in `verify_vp` itself (developer decision). `verify_vp_with_issuer` also returns the issuer chain and the MSO status (`MdocStatus`, from one-core's `DetailCredential.status`), for the first document only (it warns when there are more); `status_unverified` reads the status without verifying; under `AnchorPolicy::IntegrityOnly` one-core checks the chain's links and validity, `verify_vp_with_issuer` then rejects a self-signed Document Signer (`verify_chain_integrity`, as for an SD-JWT VC's `x5c`), and the caller evaluates issuer trust, which is how the OID4VP verifier uses it, so there an mdoc without anchors is `not_evaluated/no_anchors_configured` and fails under `Enforce`. Its tests' presentation, `tests::sample_mso_mdoc_vp()`, is generated per call through `test_fixtures::mdoc` under a fresh IACA → DS chain and bound to its nonce and `https://verifier.example.com`; the OID4VP verifier tests reuse it. |
 
 ## Key types / traits
 - `API<CL, C, P, CM, PM, VR>` — async trait: `create_vc`, `create_vp`, `verify_vc`, `verify_vp`.
 - `HasClaims<CL>` — `parse_claims()` and `has_type()`. For SD-JWT, `parse_claims` is
   **feature-gated**: without `delegate-sd-jwt` it resolves only the issuer SD-JWT's claims
-  (`decode_sd_jwt`); with `delegate-sd-jwt` it uses `decode_dsd_jwt` and layers each dSD-JWT
-  chain link's `delegate_payload` onto the issuer claims (chain order), so delegate-injected
-  claims (e.g. `purchase_id`) are visible to discovery/DCQL value-matching. Unverified either
-  way (selection/indexing only; the Verifier re-verifies the chain at presentation).
+  (`decode_sd_jwt`); with `delegate-sd-jwt` it uses `decode_dsd_jwt` and adds each dSD-JWT
+  chain link's `delegate_payload` claims to the issuer claims (chain order), so delegate-injected
+  claims (e.g. `purchase_id`) are visible to discovery/DCQL value-matching. A delegate payload
+  never replaces a claim the issuer-signed JWT carries. Unverified either way
+  (selection/indexing only; the Verifier re-verifies the chain).
 - `HasCredential<C>` — `get_credential()` from a VP.
 - `VCFormat` / `VPFormat` — format identification enums.
 
