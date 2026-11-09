@@ -26,7 +26,9 @@ use equs_sdk::vc::presentation_exchange::{
 use equs_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
 use serde_json::{json, Value};
-use shared::voucher::{generate_purchase_id, voucher_dcql};
+use shared::voucher::{
+    delegated_purchase_id, generate_purchase_id, purchase_id_from_dcql, voucher_dcql,
+};
 use shared::vp::{AuthRequestQuery, PresentationQueryType};
 use std::collections::HashMap;
 use std::env;
@@ -292,10 +294,14 @@ async fn presentation_response(
 
     match result {
         Ok(verified_claims) => {
+            let verified_claims = serde_json::to_value(&verified_claims).unwrap();
             println!(
                 "Verified claims: {}",
                 serde_json::to_string_pretty(&verified_claims).unwrap()
             );
+            if cfg!(feature = "delegate-sd-jwt") {
+                check_purchase_binding(&session, &verified_claims);
+            }
         }
         Err(oid4vp::Error::Internal {
             source: oid4vp::InternalError::VCNotValid { details },
@@ -308,6 +314,26 @@ async fn presentation_response(
     }
 
     HttpResponse::Ok().finish()
+}
+
+/// The voucher is bound to the purchase by the Holder's delegate payload, not by an
+/// issuer-signed claim, so the Merchant reads `purchase_id` from `delegations`.
+fn check_purchase_binding(session: &PresentationSession, verified_claims: &Value) {
+    let ResolvedPresentationQuery::DCQL(dcql) = &session.resolved_presentation_query else {
+        return;
+    };
+    let expected = purchase_id_from_dcql(dcql);
+    let delegated = delegated_purchase_id(verified_claims);
+    match (expected, delegated) {
+        (Some(expected), Some(delegated)) if expected == delegated => {
+            println!("Voucher is bound to purchase_id = {expected}");
+        }
+        (expected, delegated) => {
+            println!(
+                "Voucher is not bound to this purchase: expected {expected:?}, got {delegated:?}"
+            );
+        }
+    }
 }
 
 async fn verifier() -> impl oid4vp::Verifier {

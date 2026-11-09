@@ -703,8 +703,10 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Verify a `Presentation` and evaluate its issuer against the trust anchors.
     ///
-    /// An SD-JWT presentation carrying a delegation chain fails with [Error::VC]: delegation is
-    /// honoured only by `verify_delegation`, for a verifier that requested it.
+    /// For an SD-JWT presentation carrying a delegation chain, the returned claims hold the
+    /// issuer-signed claims under `issued_vc` and each hop's Delegate Payloads under
+    /// `delegations`, as `verify_delegation` returns them; issuer trust, expiry and status are
+    /// evaluated on the issuer-signed claims.
     ///
     /// # Arguments
     ///
