@@ -2,7 +2,7 @@
 //! (Verifier) and the Agent (Delegate Holder) so they agree on the request shape.
 
 use equs_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// The voucher credential type (vct) the Bank issues.
@@ -17,8 +17,14 @@ pub fn generate_purchase_id() -> String {
     format!("P-{}", Uuid::new_v4())
 }
 
-/// The Merchant's voucher query: a `dc+sd-jwt` voucher whose `purchase_id`
-/// claim equals `purchase_id`, also disclosing `amount` and `currency`.
+/// The Merchant's voucher query: a `dc+sd-jwt` voucher disclosing `amount` and
+/// `currency`, preferably with a `purchase_id` claim equal to `purchase_id`.
+///
+/// `purchase_id` is not issuer-signed: the Holder adds it in the delegate payload.
+/// The Verifier checks DCQL claims against the issuer-signed claims only, so
+/// `purchase_id` is in the preferred claim set, which lets the Agent find the
+/// matching grant, and the Merchant checks it in the verified `delegations`
+/// ([delegated_purchase_id]).
 ///
 /// Field names (`meta.vct_values`, claim `values`, `claim_sets`) match the
 /// `DCQLCredential` shape in `equs_sdk::vc::dcql` (see `src/vc/dcql/mod.rs`).
@@ -32,7 +38,7 @@ pub fn voucher_dcql(purchase_id: &str) -> DCQL {
             { "id": "amt", "path": ["amount"] },
             { "id": "cur", "path": ["currency"] }
         ],
-        "claim_sets": [["pid", "amt", "cur"]]
+        "claim_sets": [["pid", "amt", "cur"], ["amt", "cur"]]
     }))
     .expect("voucher DCQL credential is valid");
 
@@ -50,10 +56,21 @@ pub fn purchase_id_from_dcql(dcql: &DCQL) -> Option<String> {
     pid["values"][0].as_str().map(ToOwned::to_owned)
 }
 
+/// The `purchase_id` in the last delegation hop of the voucher in the Merchant's
+/// verified claims, if any.
+pub fn delegated_purchase_id(verified_claims: &Value) -> Option<String> {
+    verified_claims["vp_token"][VOUCHER_DCQL_ID][0]["delegations"]
+        .as_array()?
+        .last()?
+        .as_array()?
+        .first()?["purchase_id"]
+        .as_str()
+        .map(ToOwned::to_owned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
 
     #[test]
     fn voucher_dcql_constrains_vct_and_purchase_id() {
@@ -85,5 +102,18 @@ mod tests {
         assert!(a.starts_with("P-"));
         // The Agent can read the Merchant's generated value back out of the query.
         assert_eq!(purchase_id_from_dcql(&voucher_dcql(&a)), Some(a));
+    }
+
+    #[test]
+    fn delegated_purchase_id_reads_the_last_hop() {
+        let verified = json!({
+            "vp_token": { VOUCHER_DCQL_ID: [{
+                "issued_vc": { "vct": VOUCHER_VCT, "purchase_id": "P-issuer" },
+                "delegations": [[{ "purchase_id": "P-first" }], [{ "purchase_id": "P-last" }]]
+            }]}
+        });
+
+        assert_eq!(delegated_purchase_id(&verified), Some("P-last".to_string()));
+        assert_eq!(delegated_purchase_id(&json!({ "vp_token": {} })), None);
     }
 }

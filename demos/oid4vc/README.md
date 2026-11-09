@@ -56,7 +56,10 @@ Demonstrates a delegated credential flow with **five** entities:
 4. The End-User pastes AR2 into the Holder CLI and approves; the Holder returns a dSD-JWT
    delegation grant bound to the Agent's key.
 5. The Agent presents the grant to the Merchant with its **own KB-JWT** (Auth Response 1);
-   the Merchant verifies the chain and value-matches `purchase_id`.
+   the Merchant verifies the chain and checks `purchase_id` in the verified `delegations`.
+   The Bank never signed `purchase_id`: the Verifier returns the issuer-signed claims under
+   `issued_vc` and each hop's delegate payload under `delegations`, so the Merchant's DCQL
+   lists `purchase_id` only in its preferred claim set.
 
 ### Run it
 
