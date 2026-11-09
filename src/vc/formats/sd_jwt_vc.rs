@@ -1,12 +1,11 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::certificate_validator::SharedCertificateValidator;
-use crate::vc::claims::Claim;
+use crate::vc::claims::{Claim, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::resolver::KeyResolver;
 #[cfg(feature = "delegate-sd-jwt")]
 use sd_jwt_rs::utils::decode_dsd_jwt;
-#[cfg(not(feature = "delegate-sd-jwt"))]
 use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
@@ -195,12 +194,10 @@ pub struct VPMetadata {
     pub holder_binder: Option<HolderBinder>,
 }
 
-/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// Decode the issuer-signed claims of an SD-JWT, SD-JWT+KB or dSD-JWT to a JSON `Value`,
+/// resolving disclosures. No delegate payload is layered in.
 /// **Does not** perform credential validation.
-///
-/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
-#[cfg(not(feature = "delegate-sd-jwt"))]
-fn decode_credential_claims(compact: &str) -> Result<Value> {
+fn decode_issuer_claims(compact: &str) -> Result<Value> {
     decode_sd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact).map_err(|err| {
         ParsingSnafu {
             details: err.to_string(),
@@ -209,13 +206,24 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
     })
 }
 
+/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// **Does not** perform credential validation.
+///
+/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    decode_issuer_claims(compact)
+}
+
 /// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
 /// **Does not** perform credential validation.
 ///
-/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT it additionally layers
-/// each chain link's `delegate_payload` on top of the issuer claims, in chain order, so
-/// delegate-injected claims become visible to credential discovery /
-/// DCQL value-matching.
+/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT each chain link's
+/// `delegate_payload` adds its claims, in chain order, so delegate-injected claims become
+/// visible to credential discovery / DCQL value-matching. A delegate payload never replaces
+/// a claim the issuer-signed JWT carries: a holder can delegate to its own key, so a payload
+/// is no more trustworthy than the holder. The one exception narrows: an earlier `exp`
+/// replaces a later one, since `sd_jwt_rs` rejects a chain once any hop has expired.
 #[cfg(feature = "delegate-sd-jwt")]
 fn decode_credential_claims(compact: &str) -> Result<Value> {
     let components = decode_dsd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact)
@@ -237,11 +245,18 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
         .build()
     })?;
 
+    let issuer_signed: Vec<String> = base_obj.keys().cloned().collect();
     for payload in components {
         // Layer single-object delegate payloads; skip multi-alternative arrays.
         if let Value::Object(obj) = payload {
             for (key, value) in obj {
-                base_obj.insert(key, value);
+                if key == EXP_CLAIM {
+                    if is_earlier(&value, base_obj.get(EXP_CLAIM)) {
+                        base_obj.insert(key, value);
+                    }
+                } else if !issuer_signed.contains(&key) {
+                    base_obj.insert(key, value);
+                }
             }
         }
     }
@@ -249,17 +264,70 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
     Ok(base)
 }
 
+/// Whether the NumericDate `candidate` is earlier than `current`, or `current` is absent.
+#[cfg(feature = "delegate-sd-jwt")]
+fn is_earlier(candidate: &Value, current: Option<&Value>) -> bool {
+    match (candidate.as_i64(), current) {
+        (Some(_), None) => true,
+        (Some(candidate), Some(current)) => current.as_i64().is_some_and(|c| candidate < c),
+        (None, _) => false,
+    }
+}
+
+/// A verified SD-JWT VC presentation.
+#[derive(Debug)]
+pub(crate) struct VerifiedPresentation {
+    /// The issuer-signed claims, disclosures resolved.
+    pub(crate) issued: Claims,
+    /// For a delegation chain, each hop's disclosed Delegate Payloads in chain order; empty
+    /// otherwise.
+    pub(crate) delegations: Vec<Vec<Map<String, Value>>>,
+}
+
+impl VerifiedPresentation {
+    /// The issuer-signed claims of a plain presentation, or [delegated_claims] of a chain.
+    pub(crate) fn into_claims(self) -> Claims {
+        if self.delegations.is_empty() {
+            self.issued
+        } else {
+            delegated_claims(self.issued, self.delegations)
+        }
+    }
+}
+
+/// The verified claims of a delegation chain: the issuer-signed claims under
+/// [ISSUED_VC_CLAIM] and each hop's Delegate Payloads under [DELEGATIONS_CLAIM]. A payload is
+/// signed by a holder, who can delegate to its own key, so it never passes for an issuer-signed
+/// claim.
+pub(crate) fn delegated_claims(
+    issued: Claims,
+    delegations: Vec<Vec<Map<String, Value>>>,
+) -> Claims {
+    let delegations = Value::Array(
+        delegations
+            .into_iter()
+            .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
+            .collect(),
+    );
+    let mut claims = Claims::new();
+    claims.insert(ISSUED_VC_CLAIM.to_string(), issued.into());
+    claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
+    claims
+}
+
+/// `value` as [Claims], without the `cnf` holder key.
+fn claims_without_cnf(mut value: Value) -> Result<Claims> {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove(CNF_CLAIM);
+    }
+
+    value.try_into().context(ClaimsSnafu)
+}
+
 impl HasClaims<Claims> for Credential {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        let mut value = decode_credential_claims(&self.to_string())?;
-
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove(CNF_CLAIM);
-        }
-
-        let claims = value.try_into().context(ClaimsSnafu)?;
-        Ok(claims)
+        claims_without_cnf(decode_credential_claims(self)?)
     }
 
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
@@ -474,6 +542,84 @@ impl SdJwtAPI {
                 }
                 .build()
             })
+    }
+
+    /// The issuer-signed claims of an SD-JWT VC, presentation or dSD-JWT, without `cnf`, as
+    /// [HasClaims::parse_claims] returns them but with no delegate payload layered in. Every
+    /// revocation status check reads `status` from these: a holder can delegate to its own
+    /// key, so a delegate payload must not supply it.
+    /// **Does not** perform credential validation.
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    pub(crate) fn issuer_signed_claims(credential: &Credential) -> Result<Claims> {
+        claims_without_cnf(decode_issuer_claims(credential)?)
+    }
+
+    /// Verify an SD-JWT VC presentation: the issuer signature, the key binding to
+    /// `holder_binder` and, for a dSD-JWT(+KB), every hop of the delegation chain. Returns the
+    /// issuer-signed claims and, for a chain, each hop's Delegate Payloads apart: a holder can
+    /// delegate to its own key, so a payload never replaces or passes for an issuer-signed
+    /// claim.
+    #[instrument(level = Level::TRACE, skip(did_resolver), err())]
+    pub(crate) async fn verify_presentation(
+        presentation: &Presentation,
+        holder_binder: Option<HolderBinder>,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<VerifiedPresentation> {
+        let key_resolver;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            key_resolver = DelegatingKeyResolver::new(
+                DidKeyResolver::new(did_resolver),
+                Truststore::new(
+                    SharedCertificateValidator::get(),
+                    opts.trusted_certs.unwrap_or_default(),
+                )
+                .anchor_policy(opts.anchor_policy),
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            key_resolver = DidKeyResolver::new(did_resolver);
+        }
+
+        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+
+        let (nonce, aud) = if let Some(hb) = holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
+        verifier
+            .verify_presentation(
+                presentation.to_owned(),
+                aud,
+                nonce,
+                SDJWTSerializationFormat::Compact,
+            )
+            .await
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // `sd_jwt_rs` layers each hop's payload over the claims it returns whenever its
+        // `delegate` feature is on, which another crate can enable without this crate's
+        // `delegate-sd-jwt`. Decode the issuer-signed claims from the verified token instead.
+        let issued = decode_issuer_claims(presentation)?
+            .try_into()
+            .context(ClaimsSnafu)?;
+        #[cfg(feature = "delegate-sd-jwt")]
+        let delegations = verifier.verified_delegate_payloads;
+        #[cfg(not(feature = "delegate-sd-jwt"))]
+        let delegations = Vec::new();
+
+        Ok(VerifiedPresentation {
+            issued,
+            delegations,
+        })
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
@@ -840,6 +986,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         Self::verify_signature(credential, &jwk)
     }
 
+    /// Verify an SD-JWT VC presentation, with or without a delegation chain; see
+    /// [SdJwtAPI::verify_presentation].
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &Presentation,
@@ -847,46 +995,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<Claims> {
-        let key_resolver;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            key_resolver = DelegatingKeyResolver::new(
-                DidKeyResolver::new(did_resolver),
-                Truststore::new(
-                    SharedCertificateValidator::get(),
-                    opts.trusted_certs.unwrap_or_default(),
-                )
-                .anchor_policy(opts.anchor_policy),
-            );
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            key_resolver = DidKeyResolver::new(did_resolver);
-        }
-
-        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
-
-        let (nonce, aud) = if let Some(hb) = holder_binder {
-            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
-        } else {
-            (None, None)
-        };
-        let claims_json = verifier
-            .verify_presentation(
-                presentation.to_owned(),
-                aud,
-                nonce,
-                SDJWTSerializationFormat::Compact,
-            )
+        Self::verify_presentation(presentation, holder_binder, opts, did_resolver)
             .await
-            .map_err(|e| {
-                VerifyingSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
-
-        claims_json.try_into().context(ClaimsSnafu)
+            .map(VerifiedPresentation::into_claims)
     }
 }
 

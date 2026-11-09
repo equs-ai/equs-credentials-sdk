@@ -106,6 +106,8 @@ impl InternalOID4VPVerifier {
     /// the raw presentation(s) per credential id. A Delegate Holder uses this to **store** a
     /// returned dSD-JWT delegation grant: the grant's KB-SD-JWT is Holder-signed (proof of
     /// possession), and its `aud`/`nonce` are verified, so it is accepted through this normal path.
+    /// The claims of any presentation carrying a delegation chain hold the issuer-signed claims
+    /// under `issued_vc` and each hop's Delegate Payloads under `delegations`.
     ///
     /// @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
     /// @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}.

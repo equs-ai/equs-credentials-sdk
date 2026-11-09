@@ -1,8 +1,7 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
+use crate::vc::Presentation;
 use crate::vc::claims::Claims;
-#[cfg(feature = "delegate-sd-jwt")]
-use crate::vc::claims::{DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::Result;
 use crate::vc::core::api::{
     CredentialExpiredSnafu, ExpirationCheckSnafu, ParseSnafu, VCNotValidSnafu,
@@ -15,17 +14,17 @@ use crate::vc::core::{
 use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::formats::sd_jwt_vc::delegated_claims;
 use crate::vc::formats::{API, AnchorPolicy, HasCredential, IsExpired, VerifyOptions};
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::trust::issuer::{
-    IssuerTrustConfig, IssuerTrustMode, IssuerTrustOutcome, IssuerTrustVerification, TrustAnchor,
+    CredentialCategory, IssuerTrustConfig, IssuerTrustMode, IssuerTrustOutcome,
+    IssuerTrustVerification, TrustAnchor,
 };
-use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
-#[cfg(feature = "delegate-sd-jwt")]
-use serde_json::Value;
 use snafu::ResultExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -60,13 +59,9 @@ impl Verifier for VerifierService {
         #[cfg(target_arch = "wasm32")]
         let verified = {
             // wasm has no `x5c` or mdoc issuer chain
-            let claims = self
+            let (claims, category) = self
                 .verify_claims(holder_binder, presentation, http_client)
                 .await?;
-            let category = self
-                .issuer_trust_config()
-                .classification
-                .classify_claims(&claims);
             IssuerTrustVerification::without_chain(
                 claims,
                 IssuerTrustOutcome::without_chain(category),
@@ -110,21 +105,13 @@ impl Verifier for VerifierService {
             .classification
             .classify_claims(&issued_vc);
 
-        let delegations = Value::Array(
-            view.delegate_payloads
-                .into_iter()
-                .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
-                .collect(),
-        );
-        let mut claims = Claims::new();
-        claims.insert(ISSUED_VC_CLAIM.to_string(), issued_vc.clone().into());
-        claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
+        let claims = delegated_claims(issued_vc.clone(), view.delegate_payloads);
 
         let verified = self.enforce_issuer_trust(IssuerTrustVerification::without_chain(
             claims,
             IssuerTrustOutcome::without_chain(category),
         ))?;
-        self.check_sd_jwt_expiry_and_status(&issued_vc, vp, http_client, AnchorPolicy::Require)
+        self.check_sd_jwt_expiry_and_status(&issued_vc, http_client, AnchorPolicy::Require)
             .await?;
         Ok(verified)
     }
@@ -137,7 +124,8 @@ impl Verifier for VerifierService {
     ) -> Result<Option<VCStatus>> {
         match presentation {
             Presentation::SdJwtVp(vp) => {
-                self.obtain_sd_jwt_vc_status(vp, http_client, AnchorPolicy::Require)
+                let claims = SdJwtAPI::issuer_signed_claims(vp).context(VCSnafu)?;
+                self.obtain_sd_jwt_vc_status(&claims, http_client, AnchorPolicy::Require)
                     .await
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -170,16 +158,18 @@ impl VerifierService {
     }
 
     #[instrument(level = Level::TRACE, skip_all, err())]
-    /// Verifies against `trusted_certs`, without evaluating issuer trust.
+    /// Verifies against `trusted_certs`, without evaluating issuer trust, and classifies the
+    /// issuer-signed claims.
     async fn verify_claims(
         &self,
         holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
-    ) -> Result<Claims> {
+    ) -> Result<(Claims, CredentialCategory)> {
+        let classification = self.issuer_trust_config().classification;
         let cred_claims: Claims = match presentation {
             Presentation::SdJwtVp(vp) => {
-                let claims = SdJwtAPI::verify_vp(
+                let verified = SdJwtAPI::verify_presentation(
                     vp,
                     holder_binder,
                     VerifyOptions {
@@ -193,14 +183,14 @@ impl VerifierService {
                 .context(VCSnafu)?;
 
                 self.check_sd_jwt_expiry_and_status(
-                    &claims,
-                    vp,
+                    &verified.issued,
                     http_client,
                     AnchorPolicy::Require,
                 )
                 .await?;
 
-                claims
+                let category = classification.classify_claims(&verified.issued);
+                return Ok((verified.into_claims(), category));
             }
             Presentation::LdpVp(vp) => {
                 JsonLdAPI::verify_vp(
@@ -250,7 +240,8 @@ impl VerifierService {
             .fail()?,
         };
 
-        Ok(cred_claims)
+        let category = classification.classify_claims(&cred_claims);
+        Ok((cred_claims, category))
     }
 
     fn enforce_issuer_trust(
@@ -329,7 +320,7 @@ impl VerifierService {
 
         match presentation {
             Presentation::SdJwtVp(vp) => {
-                let claims = SdJwtAPI::verify_vp(
+                let verified = SdJwtAPI::verify_presentation(
                     vp,
                     holder_binder,
                     integrity_only,
@@ -338,7 +329,7 @@ impl VerifierService {
                 .await
                 .context(VCSnafu)?;
 
-                let category = config.classification.classify_claims(&claims);
+                let category = config.classification.classify_claims(&verified.issued);
                 let (outcome, issuer_chain_akis) = match sd_jwt_issuer_key(vp).context(VCSnafu)? {
                     SdJwtIssuerKey::X5c(chain) => (
                         evaluate_chain_for_category(
@@ -356,11 +347,11 @@ impl VerifierService {
                 };
 
                 if let Some(policy) = status_anchor_policy(config.mode, &outcome) {
-                    self.check_sd_jwt_expiry_and_status(&claims, vp, http_client, policy)
+                    self.check_sd_jwt_expiry_and_status(&verified.issued, http_client, policy)
                         .await?;
                 }
                 Ok(IssuerTrustVerification::new(
-                    claims,
+                    verified.into_claims(),
                     outcome,
                     issuer_chain_akis,
                 ))
@@ -402,10 +393,9 @@ impl VerifierService {
                 ))
             }
             _ => {
-                let claims = self
+                let (claims, category) = self
                     .verify_claims(holder_binder, presentation, http_client)
                     .await?;
-                let category = config.classification.classify_claims(&claims);
                 Ok(IssuerTrustVerification::without_chain(
                     claims,
                     IssuerTrustOutcome::without_chain(category),
@@ -415,10 +405,10 @@ impl VerifierService {
     }
 
     #[instrument(level = Level::TRACE, skip_all, err())]
+    /// Checks the expiry and revocation status in the issuer-signed `claims`.
     async fn check_sd_jwt_expiry_and_status(
         &self,
         claims: &Claims,
-        presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
         http_client: &dyn HttpClient,
         anchor_policy: AnchorPolicy,
     ) -> Result<()> {
@@ -427,7 +417,7 @@ impl VerifierService {
         };
 
         ensure_valid(
-            self.obtain_sd_jwt_vc_status(presentation, http_client, anchor_policy)
+            self.obtain_sd_jwt_vc_status(claims, http_client, anchor_policy)
                 .await?,
         )
     }
@@ -483,17 +473,17 @@ impl VerifierService {
         }
     }
 
+    /// The status of the `status` claim in the issuer-signed `claims`: a delegate payload
+    /// never supplies it, on the presentation and the delegation path alike.
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn obtain_sd_jwt_vc_status(
         &self,
-        presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
+        claims: &Claims,
         http_client: &dyn HttpClient,
         anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
-        let claims = presentation.parse_claims().context(VCSnafu)?;
-
         let status = StatusListJwt::get_vc_status_with_trusted_certs(
-            &claims,
+            claims,
             http_client,
             self.did_resolver.clone(),
             None,
@@ -802,6 +792,145 @@ mod tests {
 
     fn verifier_service() -> impl Verifier {
         VerifierService::new(VERIFIER_ID, UniversalResolver::default())
+    }
+
+    /// The first hop of a delegation chain needs only the holder's `cnf` key, so a holder can
+    /// delegate a revoked credential to itself and point `status` at a valid index.
+    #[cfg(feature = "delegate-sd-jwt")]
+    mod self_delegated_status {
+        use super::{
+            build_status_issuer, issue_status_list_with_revoked_indexes, verifier_service,
+        };
+        use crate::did::universal::UniversalResolver;
+        use crate::inmem::kms::LocalKms;
+        use crate::kms::Kms;
+        use crate::reqwest::builder::ReqwestClientBuilder;
+        use crate::vault::CredentialEntry;
+        use crate::vc::core::tests::fixtures::VERIFIER_ID;
+        use crate::vc::core::tests::utils::{random_nonce, self_delegated_status};
+        use crate::vc::core::{Error, HolderBinder, Verifier};
+        use crate::vc::formats::API;
+        use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
+        use crate::vc::status_formats::status_list_token_jwt;
+        use crate::vc::{Credential, Presentation, VCStatus};
+        use serde_json::Map;
+        use url::Url;
+
+        #[tokio::test]
+        async fn verify_presentation_reads_the_issuer_signed_status() {
+            let server = httpmock::MockServer::start_async().await;
+            let binder = binder().await;
+            let (_, vp) = grant_and_presentation(&server, &binder).await;
+
+            let err = verifier_service()
+                .verify_presentation(
+                    Some(binder),
+                    &vp,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .expect_err("a revoked credential must not verify through a delegation chain");
+
+            assert!(
+                matches!(err, Error::VCNotValid { .. }),
+                "unexpected error: {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_reads_the_issuer_signed_status() {
+            let server = httpmock::MockServer::start_async().await;
+            let (_, vp) = grant_and_presentation(&server, &binder().await).await;
+
+            let status = verifier_service()
+                .obtain_credential_status(
+                    &vp,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                status,
+                Some(VCStatus::StatusListToken(
+                    status_list_token_jwt::VCStatus::Invalid
+                ))
+            );
+        }
+
+        #[tokio::test]
+        async fn verify_delegation_reads_the_issuer_signed_status() {
+            let server = httpmock::MockServer::start_async().await;
+            let (grant, _) = grant_and_presentation(&server, &binder().await).await;
+
+            let err = verifier_service()
+                .verify_delegation(
+                    None,
+                    &grant,
+                    &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                )
+                .await
+                .expect_err("a revoked credential must not verify as a grant");
+
+            assert!(
+                matches!(err, Error::VCNotValid { .. }),
+                "unexpected error: {err:?}"
+            );
+        }
+
+        async fn binder() -> HolderBinder {
+            HolderBinder {
+                nonce: random_nonce().await,
+                verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
+            }
+        }
+
+        /// The grant and its presentation bound to `binder`, with index 1 of the status list
+        /// `server` serves revoked.
+        async fn grant_and_presentation(
+            server: &httpmock::MockServer,
+            binder: &HolderBinder,
+        ) -> (Presentation, Presentation) {
+            let path = "/status_list";
+            let url = Url::parse(&server.url(path)).unwrap();
+            let status_list = issue_status_list_with_revoked_indexes(
+                &build_status_issuer(url.clone()).await,
+                vec![1],
+            )
+            .await;
+            server
+                .mock_async(|when, then| {
+                    when.method("GET").path(path);
+                    then.status(200)
+                        .header("content-type", "application/statuslist+jwt")
+                        .body(status_list);
+                })
+                .await;
+
+            let kms = LocalKms::new();
+            let CredentialEntry {
+                credential: Credential::SdJwt(grant),
+                kid,
+                ..
+            } = self_delegated_status(&kms, url).await
+            else {
+                unreachable!("the grant is an SD-JWT");
+            };
+            let vp = SdJwtAPI::create_vp(
+                &grant,
+                kms.get(&kid).await.unwrap(),
+                VPMetadata {
+                    disclosures: Map::new(),
+                    holder_binder: Some(binder.clone()),
+                },
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap();
+
+            (Presentation::SdJwtVp(grant), Presentation::SdJwtVp(vp))
+        }
     }
 
     async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {

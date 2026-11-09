@@ -4836,6 +4836,7 @@ mod delegation_e2e_tests {
     use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::nonce::Nonce;
     use crate::vault::{CredentialEntry, Vault};
+    use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
     use crate::vc::oid4vp::api::{
         AuthorizationResponseMetadata, CredentialMapping, CredentialVerificationMetadata,
         PresentationSession, ResolvedPresentationQuery,
@@ -4868,8 +4869,8 @@ mod delegation_e2e_tests {
     ///    carries the Verifier's `client_id` and nonce → the wallet discovers the grant in
     ///    the vault by the DCQL's `$.vct` field and presents it with its own KB-JWT.
     /// 5. Verifier calls `verify_presentation` with the matching `PresentationSession`.
-    /// 6. Assert that the verified `Claims` include both the delegate-payload claim
-    ///    `scope` and the issuer claim `iss`.
+    ///    Its request carried no `delegate` item; it accepts the chain and returns the
+    ///    issuer-signed claims and the Delegate Payloads apart.
     #[tokio::test]
     async fn delegation_end_to_end_grant_present_verify() {
         let orig_holder_kms = LocalKms::new();
@@ -5021,21 +5022,9 @@ mod delegation_e2e_tests {
                 },
             )
             .await
-            .expect("Verifier::verify_presentation must succeed for delegated credential");
+            .expect("a delegation chain verifies without a `delegate` item");
 
-        let vp_token = &claims["vp_token"];
-        let cred_claims = &vp_token[DELEGATE_CRED_ID];
-        let first_cred = &cred_claims.as_vec().expect("must be array")[0];
-
-        assert!(
-            first_cred.get("scope").is_some(),
-            "delegate payload claim 'scope' must be in verified claims, got: {first_cred:?}"
-        );
-
-        assert!(
-            first_cred.get("iss").is_some(),
-            "issuer claim 'iss' must be present in verified claims, got: {first_cred:?}"
-        );
+        assert_delegated_scope(&claims, "delegated-purchase");
     }
 
     /// Regression: `present_credentials_auto` must discover a stored delegation grant when the
@@ -5196,18 +5185,9 @@ mod delegation_e2e_tests {
                 },
             )
             .await
-            .expect("Verifier must verify the auto-discovered delegated grant");
+            .expect("the Verifier must verify the auto-discovered delegated grant");
 
-        let first_cred = &claims["vp_token"][DELEGATE_CRED_ID]
-            .as_vec()
-            .expect("must be array")[0];
-        assert_eq!(
-            first_cred.get("scope"),
-            Some(&crate::vc::claims::Claim::String(
-                "delegated-purchase".to_string()
-            )),
-            "verified claims must include the value-matched delegate-payload claim"
-        );
+        assert_delegated_scope(&claims, "delegated-purchase");
     }
 
     #[tokio::test]
@@ -5352,12 +5332,36 @@ mod delegation_e2e_tests {
             .await
             .expect_err("verify_presentation must fail when nonce does not match");
 
-        let err_str = format!("{err:?}");
         assert!(
-            err_str.to_lowercase().contains("nonce")
-                || err_str.to_lowercase().contains("invalid")
-                || err_str.to_lowercase().contains("error"),
-            "expected a nonce-related error, got: {err_str}"
+            format!("{err:?}").to_lowercase().contains("nonce"),
+            "expected a nonce error, got: {err:?}"
+        );
+    }
+
+    /// The verified credential under [DELEGATE_CRED_ID] carries the issuer-signed claims under
+    /// `issued_vc`, without the delegate's `scope`, and `scope` in the last hop's payload.
+    fn assert_delegated_scope(claims: &Claims, scope: &str) {
+        let credential = &claims["vp_token"][DELEGATE_CRED_ID]
+            .as_vec()
+            .expect("must be array")[0];
+        let issued_vc = &credential[ISSUED_VC_CLAIM];
+        assert!(
+            issued_vc.get("iss").is_some(),
+            "the issuer-signed claims must be under 'issued_vc', got: {credential:?}"
+        );
+        assert!(
+            issued_vc.get("scope").is_none(),
+            "the delegate's 'scope' must stay out of 'issued_vc', got: {issued_vc:?}"
+        );
+        let last_hop = credential[DELEGATIONS_CLAIM]
+            .as_vec()
+            .and_then(|hops| hops.last())
+            .and_then(Claim::as_vec)
+            .expect("'delegations' must be an array of hops, each an array of alternatives");
+        assert_eq!(
+            last_hop[0].get("scope"),
+            Some(&Claim::String(scope.to_string())),
+            "the delegate's 'scope' must be in the last hop, got: {last_hop:?}"
         );
     }
 }
