@@ -169,6 +169,51 @@ impl<HC: HttpClient> Introspect<HC> {
     }
 }
 
+/// Allowed clock difference between the authorization server and the issuer.
+const CLOCK_SKEW_SECS: i64 = 60;
+
+/// Requires a numeric `exp` in the future and, when present, a numeric `nbf` in the past.
+fn check_validity_window(payload: &[u8]) -> Result<()> {
+    let claims: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_slice(payload).context(ParseSnafu)?;
+    let numeric_date = |name: &str| -> Result<Option<i64>> {
+        claims
+            .get(name)
+            .map(|v| {
+                v.as_f64().map(|t| t as i64).ok_or_else(|| {
+                    TokenSnafu {
+                        details: format!("\"{name}\" is not a numeric date"),
+                    }
+                    .build()
+                })
+            })
+            .transpose()
+    };
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    let exp = numeric_date("exp")?.ok_or_else(|| {
+        TokenSnafu {
+            details: "\"exp\" not found in the token",
+        }
+        .build()
+    })?;
+    ensure!(
+        now < exp.saturating_add(CLOCK_SKEW_SECS),
+        TokenSnafu {
+            details: "Token is expired"
+        }
+    );
+    if let Some(nbf) = numeric_date("nbf")? {
+        ensure!(
+            nbf.saturating_sub(CLOCK_SKEW_SECS) <= now,
+            TokenSnafu {
+                details: "Token is not yet valid"
+            }
+        );
+    }
+    Ok(())
+}
+
 pub struct ByJwks<HC: HttpClient> {
     http_client: Arc<HC>,
     jwks_url: JsonWebKeySetUrl,
@@ -232,7 +277,9 @@ impl<HC: HttpClient> ByJwks<HC> {
         let jwk = serde_json::from_value(serde_json::to_value(key).context(ParseSnafu)?)
             .context(ParseSnafu)?;
 
-        ssi::claims::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
+        let (_, payload) =
+            ssi::claims::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
+        check_validity_window(&payload)?;
 
         debug!("access token is valid");
 
@@ -281,6 +328,29 @@ mod tests {
         let result = validator.validate(&token()).await;
 
         result.unwrap()
+    }
+
+    #[rstest::rstest]
+    #[case::expired(json!({ "exp": time::OffsetDateTime::now_utc().unix_timestamp() - 3600 }))]
+    #[case::not_yet_valid(json!({ "nbf": time::OffsetDateTime::now_utc().unix_timestamp() + 3600 }))]
+    #[case::missing_exp(json!({ "exp": null }))]
+    #[case::non_numeric_exp(json!({ "exp": "99999999999" }))]
+    #[case::non_numeric_nbf(json!({ "nbf": "0" }))]
+    #[tokio::test]
+    async fn by_jwks_validate_rejects_token_outside_its_validity_window(#[case] overrides: Value) {
+        let http_client =
+            create_mock_http_client(JWKS_URL, sample_jwks(), Method::GET, StatusCode::OK);
+        let validator = ByJwks::new(
+            http_client,
+            JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+        );
+
+        let result = validator.validate(&token_with(overrides)).await;
+
+        assert!(
+            result.is_err(),
+            "token outside its validity window was accepted"
+        );
     }
 
     #[tokio::test]
@@ -345,22 +415,38 @@ mod tests {
     }
 
     fn token() -> String {
+        token_with(json!({}))
+    }
+
+    /// An access token signed by the test authorization server, valid for the next hour,
+    /// with `overrides` merged into (or, when `null`, removed from) its claims.
+    fn token_with(overrides: Value) -> String {
         let authz = &test_fixtures::keys().authz;
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        let mut claims = json!({
+            "exp": now + 3600,
+            "iat": now,
+            "auth_time": now,
+            "jti": "e5b1f1c4-db13-4d88-bbd2-27cd091c75da",
+            "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+            "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+            "typ": "Bearer",
+            "azp": "wallet-dev",
+            "sid": "1fe84eb7-1911-40eb-8dcf-db3607a68d8f",
+            "allowed-origins": ["/*"],
+            "scope": "SD_JWT_cred_scope"
+        });
+        let map = claims.as_object_mut().unwrap();
+        for (k, v) in overrides.as_object().unwrap() {
+            if v.is_null() {
+                map.remove(k);
+            } else {
+                map.insert(k.clone(), v.clone());
+            }
+        }
         test_fixtures::jws(
             &json!({ "alg": "RS256", "typ": "JWT", "kid": authz.key_id }),
-            &json!({
-                "exp": 1726846647,
-                "iat": 1726810839,
-                "auth_time": 1726810647,
-                "jti": "e5b1f1c4-db13-4d88-bbd2-27cd091c75da",
-                "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
-                "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-                "typ": "Bearer",
-                "azp": "wallet-dev",
-                "sid": "1fe84eb7-1911-40eb-8dcf-db3607a68d8f",
-                "allowed-origins": ["/*"],
-                "scope": "SD_JWT_cred_scope"
-            }),
+            &claims,
             authz,
         )
     }
