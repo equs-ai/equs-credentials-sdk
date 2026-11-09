@@ -8,7 +8,7 @@ use crate::didcomm::protocol::aries::present_proof::message::HolderMessages;
 use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
 use crate::didcomm::protocol::aries::present_proof::{
     AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    InvalidStateSnafu, ParseSnafu, PresentationDefinitionParseSnafu,
+    InvalidStateSnafu, ParseSnafu, PresentationDefinitionParseSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::present_proof::{CreatePresentationSnafu, Result};
 use crate::didcomm::protocol::aries::problem_report::message::{
@@ -20,7 +20,7 @@ use crate::vc::presentation_exchange::split_to_inputs_for_pd;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use didcomm::AttachmentData;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
@@ -101,9 +101,17 @@ where
                     };
                     let presentation_input = split_to_inputs_for_pd(&pd, None)
                         .context(PresentationDefinitionParseSnafu)?;
+                    let presentation_input =
+                        presentation_input
+                            .first()
+                            .context(InvalidCredentialRequestSnafu {
+                                details: "presentation definition has no input descriptors",
+                            })?;
+                    let holder_binder =
+                        holder_binder(&state.presentation_request, state.verifier_did.as_deref())?;
                     let vp = self
                         .holder_service
-                        .create_presentation_auto(None, &presentation_input[0])
+                        .create_presentation_auto(Some(holder_binder), presentation_input)
                         .await
                         .context(CreatePresentationSnafu)?;
 
@@ -237,4 +245,62 @@ where
 
     trace!("HolderSM::reject_presentation_request <<<");
     Ok((problem_report, thread))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use crate::did::universal::UniversalResolver;
+    use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::protocol::aries::present_proof::Error;
+    use crate::didcomm::protocol::aries::present_proof::holder::state_machine::HolderSM;
+    use crate::didcomm::protocol::aries::present_proof::holder::states::{
+        PresentationHolderState, RequestReceivedState,
+    };
+    use crate::didcomm::protocol::aries::present_proof::message::HolderMessages;
+    use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
+    use crate::didcomm::protocol::aries::present_proof::message::proof_request::ProofRequest;
+    use crate::inmem::vault::InMemVault;
+    use crate::reqwest::builder::ReqwestClientBuilder;
+    use crate::vc::core::{HolderMetadata, HolderService, KeyMetadata};
+
+    #[tokio::test]
+    async fn prepare_presentation_failed_without_input_descriptors() {
+        let (agent, _) = test_agent();
+        let definition =
+            serde_json::from_value(json!({"id": "pd", "input_descriptors": []})).unwrap();
+        let request = PresentationRequest::new()
+            .add_attachment(ProofRequest::new(definition).try_into().unwrap());
+        let state = PresentationHolderState::RequestReceived(
+            RequestReceivedState::new(request, "connection".to_owned())
+                .set_thread_id("thread".to_owned())
+                .set_verifier_did("did:example:verifier".to_owned()),
+        );
+        let holder_service = HolderService::new(
+            agent.kms().to_owned(),
+            InMemVault::new(),
+            HolderMetadata {
+                pop: Default::default(),
+                client_id: String::new(),
+            },
+            UniversalResolver::default(),
+            Arc::new(ReqwestClientBuilder::new().build().unwrap()),
+        );
+        let key_metadata = KeyMetadata {
+            kid: "kid".to_owned(),
+            did_url: "did:example:holder#key-1".to_owned(),
+        };
+
+        let result = HolderSM::new(state, key_metadata, agent, Arc::new(holder_service))
+            .handle_message(HolderMessages::PreparePresentation)
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(Error::InvalidCredentialRequest { .. })
+        ));
+    }
 }
