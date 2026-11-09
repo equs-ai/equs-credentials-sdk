@@ -26,6 +26,7 @@ Defines every abstract interface EQUS Credentials SDK is built on: cryptographic
 - `Vault` and `Storage` traits use `async_trait` with `WasmNotSend`/`WasmNotSync` bounds so they compile on both native and wasm targets.
 - `Nonce` and credential types that hold sensitive data implement `ZeroizeOnDrop`.
 - `HttpClient` is `#[automock]`-annotated for test mocking via `mockall`.
+- `ReqwestClient` never sizes a buffer from a response's `Content-Length` beyond 64 KiB. Reason: the header is server-controlled, and a failed allocation aborts the process, which no wrapper can catch.
 - `one-core-portable` (all targets) re-exports crypto, key algorithm, and JWE utilities; used on all platforms including wasm.
 - `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with the SDK's (`async_call`) — bridging requires an adapter struct (see `src/utils/one_core_http.rs` (`OneCoreHttpClientAdapter`), shared by did:webvh and the trust list export).
 
