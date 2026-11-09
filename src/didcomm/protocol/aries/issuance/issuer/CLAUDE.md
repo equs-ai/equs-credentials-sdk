@@ -7,8 +7,8 @@ Implements the credential issuer side of the WACI Aries issuance protocol: creat
 
 | File | Role |
 |------|------|
-| `mod.rs` | `Issuer` — public API; `IssuerMessages` enum; `CredentialInfo`; `MessageHandler` impl |
-| `issuer_fsm.rs` | `IssuerSM` — pure FSM driving `Initial → OfferSent → RequestReceived → CredentialSent → Finished` |
+| `mod.rs` | `Issuer` — public API; `IssuerMessages` enum; `CredentialInfo` (with `credential_for`, the offered credential for a request's subject); `MessageHandler` impl |
+| `issuer_fsm.rs` | `IssuerSM` — pure FSM driving `Initial → OfferSent → RequestReceived → CredentialSent → Finished`; a request that does not match the offer goes `OfferSent → Finished` |
 | `states.rs` | `IssuerState` enum and five concrete state structs with `From` transition impls |
 | `fixture.rs` | Test-only helper that builds a `CredentialInfo` with sample PermanentResident claims |
 
@@ -21,3 +21,7 @@ Implements the credential issuer side of the WACI Aries issuance protocol: creat
 ## Dependencies
 - Depends on: `issuance::message`, `issuance::protocol::IssuanceProtocol`, `outofband::OutOfBandV2Protocol`, `crate::kms`, `crate::vc::formats::json_ld_vc::JsonLdAPI`
 - Used by: `issuance::protocol::IssuanceProtocol::new_with_issuer`
+
+## Constraints
+- The issuer signs only what it offered. A `request-credential` is accepted only when its credential equals `CredentialInfo`'s, apart from the first credential subject's `id`, which must be a string. Any other request sends an `invalid-credential-request` problem report with a fixed comment, logs the mismatch reason locally, and finishes the exchange as `Failed`, unsigned.
+- `send_credential` signs `CredentialInfo`'s credential with the request's subject `id`, never the requested credential itself; it runs `credential_for` again on the stored request, since the state is persisted between receiving the request and sending the credential. A signing failure is returned as `Error::VC`.
