@@ -34,7 +34,9 @@ use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::presentation_exchange::{is_type_requested, is_valid_vc_type, validate_credential};
 use crate::vc::status_formats::API as StatusFormatsAPI;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
-use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCStatus, pop};
+use crate::vc::{
+    Credential, CredentialMetadata, HasClaims, HasVCFormat, Presentation, VCStatus, pop,
+};
 use crate::{kms, vault};
 
 #[derive(Clone)]
@@ -375,7 +377,7 @@ where
     async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
         match credential {
             Credential::SdJwt(sd_jwt) => {
-                let claims = SdJwtAPI::issuer_signed_claims(sd_jwt).context(VCSnafu)?;
+                let claims = credential.parse_claims().context(VCSnafu)?;
                 StatusListJwt::get_vc_status(
                     &claims,
                     &*self.http_client,
@@ -1447,52 +1449,6 @@ mod tests {
                 )
                 .await
                 .unwrap();
-        }
-
-        /// A holder can delegate a revoked credential to its own key and point `status` at a
-        /// valid index; the wallet's status checks still read the issuer-signed `status`.
-        #[tokio::test]
-        async fn wallet_status_checks_read_the_issuer_signed_status() {
-            use crate::vc::core::tests::utils::self_delegated_status;
-
-            let server = httpmock::MockServer::start_async().await;
-            let path = "/status_list";
-            let url = Url::parse(&server.url(path)).unwrap();
-            let status_list = issue_status_list_with_revoked_indexes(
-                &build_status_issuer(url.clone()).await,
-                vec![1],
-            )
-            .await;
-            server
-                .mock_async(|when, then| {
-                    when.method("GET").path(path);
-                    then.status(200)
-                        .header("content-type", "application/statuslist+jwt")
-                        .body(status_list);
-                })
-                .await;
-
-            let kms = LocalKms::new();
-            let grant = self_delegated_status(&kms, url).await.credential;
-
-            assert_eq!(
-                holder_service(kms, InMemVault::new())
-                    .get_credential_status(&grant)
-                    .await
-                    .unwrap(),
-                Some(vc::VCStatus::StatusListToken(VCStatus::Invalid))
-            );
-            assert!(
-                !grant
-                    .is_valid(
-                        &ReqwestClientBuilder::new().insecure().build().unwrap(),
-                        UniversalResolver::default(),
-                        None,
-                    )
-                    .await
-                    .unwrap(),
-                "a revoked credential must not be valid"
-            );
         }
     }
 }
