@@ -1,6 +1,8 @@
 use crate::http::HttpSnafu;
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
+use futures::StreamExt;
+use oauth2::http::{Method, StatusCode};
 use oauth2::{HttpRequest, HttpResponse};
 use tracing::warn;
 
@@ -44,6 +46,7 @@ impl WasmClient {
             );
         }
 
+        let method = parts.method.clone();
         let mut request_builder = self
             .client
             .request(parts.method, parts.uri.to_string())
@@ -73,22 +76,102 @@ impl WasmClient {
         let status_code = response.status();
         let headers = response.headers().to_owned();
 
-        let chunks = response.bytes().await.map_err(|err| {
-            HttpSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
+        let resp_body = if has_no_body(&method, status_code) {
+            Vec::new()
+        } else {
+            let content_length = response.content_length();
+            let body = response.bytes_stream().map(|chunk| {
+                chunk.map_err(|err| {
+                    HttpSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })
+            });
+            self.content_size_limiter
+                .read_limited_body(body, content_length)
+                .await?
+        };
 
         self.content_type_validator
-            .validate_response_content_type(&content_type_to_accept, &headers, &chunks)
+            .validate_response_content_type(&content_type_to_accept, &headers, &resp_body)
             .await?;
 
-        let resp_body = chunks.to_vec();
         let mut response = HttpResponse::new(resp_body);
         *response.status_mut() = status_code;
         *response.headers_mut() = headers;
 
         Ok(response)
+    }
+}
+
+/// Fetch gives these responses no body stream, and reqwest's wasm `bytes_stream` panics without one.
+fn has_no_body(method: &Method, status: StatusCode) -> bool {
+    method == Method::HEAD
+        || method == Method::CONNECT
+        || matches!(status.as_u16(), 101 | 103 | 204 | 205 | 304)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::http::MIME_TYPE_JSON;
+    use oauth2::http;
+    use oauth2::http::header::ACCEPT;
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpListener};
+
+    const CHUNKED_JSON_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+        Transfer-Encoding: chunked\r\n\r\n\
+        8\r\n{\"a\":\"bc\r\n8\r\ndefghi\"}\r\n0\r\n\r\n";
+
+    #[tokio::test]
+    async fn async_call_rejects_a_body_over_the_limit_without_content_length() {
+        let addr = serve_once(CHUNKED_JSON_RESPONSE);
+        let client = client(ContentSizeLimiter::unlimited().with_response_size_limit(10));
+
+        let err = client.async_call(request(addr)).await.unwrap_err();
+
+        assert!(err.to_string().contains("exceeds the limit"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn async_call_reads_a_chunked_body_within_the_limit() {
+        let addr = serve_once(CHUNKED_JSON_RESPONSE);
+        let client = client(ContentSizeLimiter::unlimited().with_response_size_limit(16));
+
+        let response = client.async_call(request(addr)).await.unwrap();
+
+        assert_eq!(response.body().as_slice(), br#"{"a":"bcdefghi"}"#);
+    }
+
+    fn serve_once(response: &'static [u8]) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(response);
+        });
+        addr
+    }
+
+    fn client(content_size_limiter: ContentSizeLimiter) -> WasmClient {
+        WasmClient {
+            client: reqwest::Client::new(),
+            content_size_limiter,
+            content_type_validator: ContentTypeValidator,
+            insecure: true,
+        }
+    }
+
+    fn request(addr: SocketAddr) -> HttpRequest {
+        http::request::Builder::new()
+            .uri(format!("http://{addr}/"))
+            .method(Method::GET)
+            .header(ACCEPT, MIME_TYPE_JSON)
+            .body(vec![])
+            .unwrap()
     }
 }

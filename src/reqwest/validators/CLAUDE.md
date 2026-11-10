@@ -8,7 +8,7 @@ Provides response and request payload validation for the reqwest-based HTTP clie
 | File | Role |
 |------|------|
 | `mod.rs` | Module root; declares `HttpPayloadError` enum used by both validators. |
-| `content_size.rs` | `ContentSizeLimiter` — configures optional byte-size ceilings for request and response bodies; checks `Content-Length` header and streams response chunks to enforce the limit. The response buffer is pre-allocated from `Content-Length` up to 64 KiB only, because the header is server-controlled and an oversized value would abort the process. |
+| `content_size.rs` | `ContentSizeLimiter` — configures optional byte-size ceilings for request and response bodies; checks `Content-Length` header and streams response chunks to enforce the limit; `read_limited_body` does the streaming for both the middleware and `WasmClient`. The response buffer is pre-allocated from `Content-Length` up to 64 KiB only, because the header is server-controlled and an oversized value would abort the process. |
 | `content_type.rs` | `ContentTypeValidator` — checks that the response `Content-Type` is in the allowed MIME-type allowlist and matches the request `Accept` header; validates JSON/form-urlencoded body structure. |
 
 ## Key types / traits
