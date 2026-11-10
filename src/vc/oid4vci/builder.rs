@@ -370,11 +370,11 @@ where
                 Some(TokenValidation::Introspect(introspect))
             }
             Some(TokenParams::Jwks(url)) => {
-                let jwks = ByJwks::new(http_client, JsonWebKeySetUrl::from_url(url.to_owned()));
-                let jwks = match self.clock_skew {
-                    Some(clock_skew) => jwks.with_clock_skew(clock_skew),
-                    None => jwks,
-                };
+                let jwks = ByJwks::new(
+                    http_client,
+                    JsonWebKeySetUrl::from_url(url.to_owned()),
+                    self.clock_skew,
+                );
                 Some(TokenValidation::ByJwks(jwks))
             }
             _ => None,
