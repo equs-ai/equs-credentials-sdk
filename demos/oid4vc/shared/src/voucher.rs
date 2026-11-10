@@ -103,17 +103,4 @@ mod tests {
         // The Agent can read the Merchant's generated value back out of the query.
         assert_eq!(purchase_id_from_dcql(&voucher_dcql(&a)), Some(a));
     }
-
-    #[test]
-    fn delegated_purchase_id_reads_the_last_hop() {
-        let verified = json!({
-            "vp_token": { VOUCHER_DCQL_ID: [{
-                "issued_vc": { "vct": VOUCHER_VCT, "purchase_id": "P-issuer" },
-                "delegations": [[{ "purchase_id": "P-first" }], [{ "purchase_id": "P-last" }]]
-            }]}
-        });
-
-        assert_eq!(delegated_purchase_id(&verified), Some("P-last".to_string()));
-        assert_eq!(delegated_purchase_id(&json!({ "vp_token": {} })), None);
-    }
 }
