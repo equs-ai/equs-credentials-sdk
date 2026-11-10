@@ -7,7 +7,7 @@ Houses the WASM-target HTTP client (`WasmClient`) that drives `reqwest::Client` 
 
 | File | Role |
 |------|------|
-| `mod.rs` | Defines `WasmClient` and its `async_call` implementation; enforces HTTPS-only policy, request body size warnings, and response validation. Streams the response body through `ContentSizeLimiter::read_limited_body`; HEAD and CONNECT requests and statuses 101, 103, 204, 205 and 304 get an empty body, because Fetch gives them no body stream and reqwest's wasm `bytes_stream` panics without one. |
+| `mod.rs` | Defines `WasmClient` and its `async_call` implementation; enforces HTTPS-only policy, request body size warnings, and response validation. Streams the response body through `ContentSizeLimiter::read_response_body`. |
 
 ## Key types / traits
 - `WasmClient` — concrete struct holding a `reqwest::Client`, `ContentSizeLimiter`, `ContentTypeValidator`, and an `insecure` flag; implements the `async_call` contract expected by `ReqwestClient`.
