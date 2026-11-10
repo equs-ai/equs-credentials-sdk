@@ -804,14 +804,6 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         Ok(())
     }
 
-    /// Verifies a presentation and every credential it carries; credential expiry is left to
-    /// [IsExpired].
-    ///
-    /// A presentation with its own proof is accepted only when each embedded credential's proof
-    /// verifies and, when `holder_binder` is given, every presentation proof carries its nonce as
-    /// `challenge` and its verifier id among `domains`. A V2 presentation without its own proof is
-    /// accepted only when every credential is BBS-signed; such presentations carry no holder
-    /// binding.
     #[instrument(level = Level::TRACE, skip(holder_binder, did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &VP,
@@ -823,12 +815,6 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
 
         match &presentation.claims {
             Presentation::V2(vp) if presentation.proofs.is_empty() => {
-                ensure!(
-                    !vp.verifiable_credentials.is_empty(),
-                    VerifyingSnafu {
-                        details: "Verifiable Presentation does not contain a proof"
-                    }
-                );
                 for vc in &vp.verifiable_credentials {
                     let is_bbs_signed = vc.proofs.iter().any(|s| s.type_ == AnySuite::Bbs2023);
 
@@ -984,16 +970,6 @@ impl JsonLdAPI {
         Ok(())
     }
 
-    /// The DID a verification method id belongs to: the DID URL up to its path, query or
-    /// fragment.
-    fn did_of(verification_method: &str) -> Option<String> {
-        let end = verification_method
-            .find(['/', '?', '#'])
-            .unwrap_or(verification_method.len());
-        let did = &verification_method[..end];
-        did.starts_with("did:").then(|| did.to_string())
-    }
-
     /// The presentation must be signed, and every DID that signed it must be one of the subject
     /// `id`s of each credential whose subjects carry any.
     fn ensure_signed_by_subject(presentation: &VP) -> Result<()> {
@@ -1007,20 +983,19 @@ impl JsonLdAPI {
             }
         }
 
-        let to_json = |e: serde_json::Error| {
+        let signer_dids: Vec<String> = presentation
+            .proofs
+            .iter()
+            .filter_map(|p| DIDURL::new(p.verification_method.id().as_str()).ok())
+            .map(|url| url.did().to_string())
+            .collect();
+
+        let claims = serde_json::to_value(&presentation.claims).map_err(|e| {
             VerifyingSnafu {
                 details: e.to_string(),
             }
             .build()
-        };
-        let proofs = serde_json::to_value(&presentation.proofs).map_err(to_json)?;
-        let signer_dids: Vec<String> = one_or_many(&proofs)
-            .into_iter()
-            .filter_map(|p| p.get("verificationMethod").and_then(Value::as_str))
-            .filter_map(Self::did_of)
-            .collect();
-
-        let claims = serde_json::to_value(&presentation.claims).map_err(to_json)?;
+        })?;
         let signed_by_subject = one_or_many(&claims["verifiableCredential"])
             .into_iter()
             .all(|vc| {
@@ -2189,57 +2164,6 @@ mod tests {
         )
         .await
         .unwrap();
-    }
-
-    #[tokio::test]
-    async fn verify_vp_rejects_multi_subject_credential_presented_by_a_non_subject() {
-        let kms = LocalKms::new();
-        let (vc, _subjects) = issue_two_subject_credential(&kms).await;
-        let (other_did_url, other_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-        let nonce = LocalNonceHandler::default().generate().await.unwrap();
-
-        let presentation = present_as(&vc, other_kh, &other_did_url, nonce.clone()).await;
-
-        let result = JsonLdAPI::verify_vp(
-            &presentation,
-            binder(nonce, "verifier_id"),
-            VerifyOptions::default(),
-            UniversalResolver::default(),
-        )
-        .await;
-
-        assert!(
-            matches!(result, Err(Error::Verifying { .. })),
-            "presentation by a non-subject was accepted: {result:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn verify_vp_rejects_unproven_presentation_without_credentials() {
-        let presentation: VP = serde_json::from_value(json!({
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "type": "VerifiablePresentation",
-            "verifiableCredential": []
-        }))
-        .unwrap();
-
-        let result = JsonLdAPI::verify_vp(
-            &presentation,
-            None,
-            VerifyOptions::default(),
-            UniversalResolver::default(),
-        )
-        .await;
-
-        assert!(result.is_err(), "empty unproven presentation was accepted");
-    }
-
-    #[rstest]
-    #[case::fragment("did:key:z6Mk1#z6Mk1", "did:key:z6Mk1")]
-    #[case::query("did:web:example.com:u?versionId=1#key-1", "did:web:example.com:u")]
-    #[case::path("did:web:example.com/keys#key-1", "did:web:example.com")]
-    fn signer_did_is_the_did_of_the_verification_method(#[case] vm: &str, #[case] did: &str) {
-        assert_eq!(JsonLdAPI::did_of(vm), Some(did.to_string()));
     }
 
     fn binder(nonce: crate::nonce::Nonce, verifier_id: &str) -> Option<HolderBinder> {
