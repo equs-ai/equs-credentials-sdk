@@ -21,7 +21,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 | `trust/` | Issuer trust, trust-list export and DCQL `trusted_authorities`, protocol-neutral — see [trust/CLAUDE.md](trust/CLAUDE.md) |
 
 ## Key types / traits
-- `Credential` — `SdJwt(sd_jwt_vc::Credential)` | `LdpVc(json_ld_vc::VC)` | `JwtVcJson(String)` | `JwtVcJsonLd(String)`; implements `is_expired()`, `is_valid()` (an SD-JWT's issuer-signed `status`, never a delegate payload's), `HasVCFormat`, `HasClaims<Claims>`.
+- `Credential` — `SdJwt(sd_jwt_vc::Credential)` | `LdpVc(json_ld_vc::VC)` | `JwtVcJson(String)` | `JwtVcJsonLd(String)`; implements `is_expired()`, `is_valid()`, `HasVCFormat`, `HasClaims<Claims>`.
 - `Presentation` — `JwtVp(String)` | `LdpVp(json_ld_vc::VP)` | `SdJwtVp(String)` | `MsoMdoc(...)` (non-wasm); implements `HasVPFormat`, `HasCredential<Credential>`.
 - `Claims` / `Claim` — typed credential claim map with zeroize-on-drop; converts to/from `serde_json::Value`.
 - `CredentialMetadata` — transport struct (type, format, kid, alg, fields) shared between OID4VCI and vault storage.

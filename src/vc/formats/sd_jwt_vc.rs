@@ -218,12 +218,10 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
 /// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
 /// **Does not** perform credential validation.
 ///
-/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT each chain link's
-/// `delegate_payload` adds its claims, in chain order, so delegate-injected claims become
-/// visible to credential discovery / DCQL value-matching. A delegate payload never replaces
-/// a claim the issuer-signed JWT carries: a holder can delegate to its own key, so a payload
-/// is no more trustworthy than the holder. The one exception narrows: an earlier `exp`
-/// replaces a later one, since `sd_jwt_rs` rejects a chain once any hop has expired.
+/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT it additionally layers
+/// each chain link's `delegate_payload` on top of the issuer claims, in chain order, so
+/// delegate-injected claims become visible to credential discovery /
+/// DCQL value-matching.
 #[cfg(feature = "delegate-sd-jwt")]
 fn decode_credential_claims(compact: &str) -> Result<Value> {
     let components = decode_dsd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact)
@@ -245,33 +243,16 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
         .build()
     })?;
 
-    let issuer_signed: Vec<String> = base_obj.keys().cloned().collect();
     for payload in components {
         // Layer single-object delegate payloads; skip multi-alternative arrays.
         if let Value::Object(obj) = payload {
             for (key, value) in obj {
-                if key == EXP_CLAIM {
-                    if is_earlier(&value, base_obj.get(EXP_CLAIM)) {
-                        base_obj.insert(key, value);
-                    }
-                } else if !issuer_signed.contains(&key) {
-                    base_obj.insert(key, value);
-                }
+                base_obj.insert(key, value);
             }
         }
     }
 
     Ok(base)
-}
-
-/// Whether the NumericDate `candidate` is earlier than `current`, or `current` is absent.
-#[cfg(feature = "delegate-sd-jwt")]
-fn is_earlier(candidate: &Value, current: Option<&Value>) -> bool {
-    match (candidate.as_i64(), current) {
-        (Some(_), None) => true,
-        (Some(candidate), Some(current)) => current.as_i64().is_some_and(|c| candidate < c),
-        (None, _) => false,
-    }
 }
 
 /// A verified SD-JWT VC presentation.
@@ -545,9 +526,7 @@ impl SdJwtAPI {
     }
 
     /// The issuer-signed claims of an SD-JWT VC, presentation or dSD-JWT, without `cnf`, as
-    /// [HasClaims::parse_claims] returns them but with no delegate payload layered in. Every
-    /// revocation status check reads `status` from these: a holder can delegate to its own
-    /// key, so a delegate payload must not supply it.
+    /// [HasClaims::parse_claims] returns them but with no delegate payload layered in.
     /// **Does not** perform credential validation.
     #[instrument(level = Level::TRACE, skip_all, err())]
     pub(crate) fn issuer_signed_claims(credential: &Credential) -> Result<Claims> {

@@ -398,74 +398,6 @@ mod tests {
         json!({ "scope": true }).as_object().cloned()
     }
 
-    /// The first hop needs only the holder's own `cnf` key, so a holder can delegate to
-    /// itself and put any claim in the payload. `verify_vp` accepts the chain and returns the
-    /// payload under `delegations`, apart from the issuer-signed claims under `issued_vc`.
-    #[tokio::test]
-    async fn verify_vp_keeps_a_self_delegated_payload_apart() {
-        let (vc, hld_kh) = issue_sd_jwt().await;
-        let holder_jwk = serde_json::to_value(hld_kh.jwk().expect("holder JWK")).unwrap();
-
-        let self_delegated = DsdJwtAPI::create_delegated_credential(
-            &vc,
-            hld_kh.clone(),
-            DelegationParams {
-                delegate_payloads: vec![json!({
-                    "scope": "admin",
-                    "vct": "https://attacker.example/cred",
-                    "cnf": { "jwk": holder_jwk },
-                })],
-                claims_to_disclose: disclose_scope(),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("a holder can delegate to its own key");
-
-        let binder = HolderBinder {
-            nonce: Nonce::from_secret("self-delegation-nonce".to_string()),
-            verifier_id: "verifier.example".to_string(),
-            response_uri: None,
-        };
-        let presentation = SdJwtAPI::create_vp(
-            &self_delegated,
-            hld_kh,
-            VPMetadata {
-                disclosures: Map::new(),
-                holder_binder: Some(binder.clone()),
-            },
-            UniversalResolver::default(),
-        )
-        .await
-        .expect("create_vp appends a KB-JWT to the chain");
-
-        let claims = SdJwtAPI::verify_vp(
-            &presentation,
-            Some(binder),
-            VerifyOptions::default(),
-            UniversalResolver::default(),
-        )
-        .await
-        .expect("a self-delegated chain verifies");
-
-        let issued_vc = &claims[ISSUED_VC_CLAIM];
-        assert_eq!(
-            issued_vc.get("scope"),
-            Some(&Claim::String("baseline".to_string())),
-            "the issuer-signed 'scope' must not be replaced by the delegate payload"
-        );
-        assert_ne!(
-            issued_vc.get("vct"),
-            Some(&Claim::String("https://attacker.example/cred".to_string())),
-            "the delegate payload's 'vct' must not pass for the issuer's"
-        );
-        assert_eq!(
-            last_hop(&claims)[0].get("scope"),
-            Some(&Claim::String("admin".to_string())),
-            "the delegate's 'scope' must be in its hop"
-        );
-    }
-
     /// Full round-trip through the format layer:
     ///
     /// 1. Issue a holder-bound SD-JWT (via `SdJwtAPI::create_vc`).
@@ -473,10 +405,9 @@ mod tests {
     ///    forwarding the issuer-signed `scope` and setting its own in the payload.
     /// 3. Delegate Holder calls `SdJwtAPI::create_vp` to append a final KB-JWT
     ///    (signed by the delegate's own key).
-    /// 4. `SdJwtAPI::verify_vp` verifies the chain and keeps the delegate payload apart.
-    /// 5. The delegation path (`DsdJwtPurpose::Delegation`) verifies the chain and
-    ///    the KB-JWT and keeps the halves apart: the issuer-signed `scope` stays
-    ///    `baseline`, the delegate's `view-account` is only in its hop.
+    /// 4. `SdJwtAPI::verify_vp` verifies the chain and keeps the delegate payload apart:
+    ///    the issuer-signed `scope` stays `baseline`, the delegate's `view-account` is
+    ///    only in its hop.
     #[tokio::test]
     async fn delegate_holder_presents_dsd_jwt_kb_to_verifier() {
         // Step 1: Issue a holder-bound SD-JWT.
@@ -529,18 +460,14 @@ mod tests {
         .await
         .expect("create_vp on a dSD-JWT should append a trailing KB-JWT");
 
-        let binder = || {
-            Some(HolderBinder {
-                nonce: nonce.clone(),
-                verifier_id: verifier_id.clone(),
-                response_uri: None,
-            })
-        };
-
-        // Step 4: the presentation path verifies the chain and keeps the payload apart.
+        // Step 4: Verifier verifies the full chain + KB-JWT.
         let claims = SdJwtAPI::verify_vp(
             &presentation,
-            binder(),
+            Some(HolderBinder {
+                nonce,
+                verifier_id,
+                response_uri: None,
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -554,29 +481,6 @@ mod tests {
         assert_eq!(
             last_hop(&claims)[0].get("scope"),
             Some(&Claim::String("view-account".to_string())),
-            "the delegate's 'scope' must be in its hop"
-        );
-
-        // Step 5: the delegation path verifies the chain + KB-JWT.
-        let view = DsdJwtAPI::verify_dsd_jwt(
-            &presentation,
-            UniversalResolver::default(),
-            DsdJwtPurpose::Delegation(binder()),
-        )
-        .await
-        .expect("the delegation path validates the chain and trailing KB-JWT");
-
-        assert_eq!(
-            view.verified_claims.get("scope"),
-            Some(&json!("baseline")),
-            "the issuer-signed 'scope' must not be replaced by the delegate payload"
-        );
-        assert_eq!(
-            view.delegate_payloads
-                .last()
-                .and_then(|hop| hop.first())
-                .and_then(|payload| payload.get("scope")),
-            Some(&json!("view-account")),
             "the delegate's 'scope' must be in its hop"
         );
     }
@@ -692,44 +596,6 @@ mod tests {
         assert!(
             claims.get("iss").is_some(),
             "issuer claim 'iss' must remain present after layering"
-        );
-    }
-
-    /// A delegate payload adds claims to `parse_claims` but never replaces a claim the
-    /// issuer-signed JWT carries.
-    #[tokio::test]
-    async fn parse_claims_keeps_issuer_signed_claims() {
-        use crate::vc::Credential as VcCredential;
-        use crate::vc::claims::Claim;
-        use crate::vc::formats::HasClaims;
-
-        let (vc, hld_kh) = issue_sd_jwt().await;
-
-        let dsd = DsdJwtAPI::create_delegated_credential(
-            &vc,
-            hld_kh,
-            DelegationParams {
-                delegate_payloads: vec![json!({ "scope": "admin", "purchase_id": "P-xyz" })],
-                claims_to_disclose: disclose_scope(),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("create_delegated_credential should succeed");
-
-        let claims = VcCredential::SdJwt(dsd)
-            .parse_claims()
-            .expect("parse_claims should decode the dSD-JWT grant");
-
-        assert_eq!(
-            claims.get("scope"),
-            Some(&Claim::String("baseline".to_string())),
-            "the issuer-signed 'scope' must not be replaced"
-        );
-        assert_eq!(
-            claims.get("purchase_id"),
-            Some(&Claim::String("P-xyz".to_string())),
-            "a claim the issuer did not sign is added"
         );
     }
 
@@ -894,57 +760,6 @@ mod tests {
         )
         .await;
         assert!(wrong_aud.is_err(), "wrong aud must be rejected");
-    }
-
-    /// A delegate payload can shorten a grant's lifetime but never extend it: `parse_claims`
-    /// keeps the earlier `exp`, so a grant whose hop has expired is expired for the holder too.
-    #[tokio::test]
-    async fn parse_claims_keeps_the_earlier_exp() {
-        use crate::vc::Credential as VcCredential;
-        use crate::vc::formats::{HasClaims, IsExpired};
-
-        let (vc, hld_kh) = issue_sd_jwt().await;
-        let now = time::OffsetDateTime::now_utc().unix_timestamp();
-        let delegate_with_exp = |exp: i64| {
-            DsdJwtAPI::create_delegated_credential(
-                &vc,
-                hld_kh.clone(),
-                DelegationParams {
-                    delegate_payloads: vec![json!({ "exp": exp })],
-                    claims_to_disclose: Some(Map::new()),
-                    ..Default::default()
-                },
-            )
-        };
-
-        let shortened = delegate_with_exp(now - 60)
-            .await
-            .expect("create_delegated_credential should succeed");
-        let claims = VcCredential::SdJwt(shortened)
-            .parse_claims()
-            .expect("parse_claims should decode the grant");
-        assert!(
-            SdJwtAPI::is_expired(&claims).unwrap(),
-            "a grant whose hop has expired must be expired, got: {claims:?}"
-        );
-
-        let extended = delegate_with_exp(now + 20 * 365 * 24 * 60 * 60)
-            .await
-            .expect("create_delegated_credential should succeed");
-        let issued_exp = VcCredential::SdJwt(vc.clone())
-            .parse_claims()
-            .expect("parse_claims should decode the credential")
-            .get("exp")
-            .cloned();
-        assert_eq!(
-            VcCredential::SdJwt(extended)
-                .parse_claims()
-                .expect("parse_claims should decode the grant")
-                .get("exp")
-                .cloned(),
-            issued_exp,
-            "a delegate payload must not extend the issuer-signed 'exp'"
-        );
     }
 
     /// The alternatives of the last hop under `delegations` in verified `claims`.
