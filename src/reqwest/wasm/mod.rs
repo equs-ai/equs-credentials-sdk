@@ -1,8 +1,6 @@
 use crate::http::HttpSnafu;
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
-use futures::StreamExt;
-use oauth2::http::{Method, StatusCode};
 use oauth2::{HttpRequest, HttpResponse};
 use tracing::warn;
 
@@ -46,7 +44,6 @@ impl WasmClient {
             );
         }
 
-        let method = parts.method.clone();
         let mut request_builder = self
             .client
             .request(parts.method, parts.uri.to_string())
@@ -76,22 +73,10 @@ impl WasmClient {
         let status_code = response.status();
         let headers = response.headers().to_owned();
 
-        let resp_body = if has_no_body(&method, status_code) {
-            Vec::new()
-        } else {
-            let content_length = response.content_length();
-            let body = response.bytes_stream().map(|chunk| {
-                chunk.map_err(|err| {
-                    HttpSnafu {
-                        details: err.to_string(),
-                    }
-                    .build()
-                })
-            });
-            self.content_size_limiter
-                .read_limited_body(body, content_length)
-                .await?
-        };
+        let resp_body = self
+            .content_size_limiter
+            .read_response_body(response)
+            .await?;
 
         self.content_type_validator
             .validate_response_content_type(&content_type_to_accept, &headers, &resp_body)
@@ -105,19 +90,12 @@ impl WasmClient {
     }
 }
 
-/// Fetch gives these responses no body stream, and reqwest's wasm `bytes_stream` panics without one.
-fn has_no_body(method: &Method, status: StatusCode) -> bool {
-    method == Method::HEAD
-        || method == Method::CONNECT
-        || matches!(status.as_u16(), 101 | 103 | 204 | 205 | 304)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::utils::http::MIME_TYPE_JSON;
-    use oauth2::http;
     use oauth2::http::header::ACCEPT;
+    use oauth2::http::{self, Method};
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener};
 
