@@ -169,11 +169,9 @@ impl<HC: HttpClient> Introspect<HC> {
     }
 }
 
-/// Allowed clock difference between the authorization server and the issuer.
-const CLOCK_SKEW_SECS: i64 = 60;
-
-/// Requires a numeric `exp` in the future and, when present, a numeric `nbf` in the past.
-fn check_validity_window(payload: &[u8]) -> Result<()> {
+/// Requires a numeric `exp` in the future and, when present, a numeric `nbf` in the past, both
+/// within `clock_skew_secs`.
+fn check_validity_window(payload: &[u8], clock_skew_secs: i64) -> Result<()> {
     let claims: serde_json::Map<String, serde_json::Value> =
         serde_json::from_slice(payload).context(ParseSnafu)?;
     let numeric_date = |name: &str| -> Result<Option<i64>> {
@@ -198,14 +196,14 @@ fn check_validity_window(payload: &[u8]) -> Result<()> {
         .build()
     })?;
     ensure!(
-        now < exp.saturating_add(CLOCK_SKEW_SECS),
+        now < exp.saturating_add(clock_skew_secs),
         TokenSnafu {
             details: "Token is expired"
         }
     );
     if let Some(nbf) = numeric_date("nbf")? {
         ensure!(
-            nbf.saturating_sub(CLOCK_SKEW_SECS) <= now,
+            nbf.saturating_sub(clock_skew_secs) <= now,
             TokenSnafu {
                 details: "Token is not yet valid"
             }
@@ -217,6 +215,7 @@ fn check_validity_window(payload: &[u8]) -> Result<()> {
 pub struct ByJwks<HC: HttpClient> {
     http_client: Arc<HC>,
     jwks_url: JsonWebKeySetUrl,
+    clock_skew: time::Duration,
 }
 
 impl<HC: HttpClient> ByJwks<HC> {
@@ -228,7 +227,15 @@ impl<HC: HttpClient> ByJwks<HC> {
         Self {
             http_client: Arc::new(http_client),
             jwks_url,
+            clock_skew: time::Duration::ZERO,
         }
+    }
+
+    /// Accepts `exp` and `nbf` off by up to `clock_skew` between the authorization server and
+    /// the issuer. Without it, both are checked exactly.
+    pub fn with_clock_skew(mut self, clock_skew: time::Duration) -> Self {
+        self.clock_skew = clock_skew;
+        self
     }
 
     #[instrument(
@@ -279,7 +286,7 @@ impl<HC: HttpClient> ByJwks<HC> {
 
         let (_, payload) =
             ssi::claims::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
-        check_validity_window(&payload)?;
+        check_validity_window(&payload, self.clock_skew.whole_seconds())?;
 
         debug!("access token is valid");
 
@@ -336,6 +343,8 @@ mod tests {
     #[case::missing_exp(json!({ "exp": null }))]
     #[case::non_numeric_exp(json!({ "exp": "99999999999" }))]
     #[case::non_numeric_nbf(json!({ "nbf": "0" }))]
+    #[case::expired_a_moment_ago(json!({ "exp": time::OffsetDateTime::now_utc().unix_timestamp() - 30 }))]
+    #[case::valid_in_a_moment(json!({ "nbf": time::OffsetDateTime::now_utc().unix_timestamp() + 30 }))]
     #[tokio::test]
     async fn by_jwks_validate_rejects_token_outside_its_validity_window(#[case] overrides: Value) {
         let http_client =
@@ -351,6 +360,24 @@ mod tests {
             result.is_err(),
             "token outside its validity window was accepted"
         );
+    }
+
+    #[rstest::rstest]
+    #[case::expired_within_the_skew(json!({ "exp": time::OffsetDateTime::now_utc().unix_timestamp() - 30 }))]
+    #[case::valid_within_the_skew(json!({ "nbf": time::OffsetDateTime::now_utc().unix_timestamp() + 30 }))]
+    #[tokio::test]
+    async fn by_jwks_validate_accepts_token_within_the_clock_skew(#[case] overrides: Value) {
+        let http_client =
+            create_mock_http_client(JWKS_URL, sample_jwks(), Method::GET, StatusCode::OK);
+        let validator = ByJwks::new(
+            http_client,
+            JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+        )
+        .with_clock_skew(time::Duration::minutes(1));
+
+        let result = validator.validate(&token_with(overrides)).await;
+
+        result.unwrap()
     }
 
     #[tokio::test]
