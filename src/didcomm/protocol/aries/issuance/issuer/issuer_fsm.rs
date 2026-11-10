@@ -15,7 +15,7 @@ use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
 use crate::didcomm::protocol::aries::issuance::{
-    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result, VCSnafu,
+    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -230,7 +230,6 @@ impl OfferSentState {
         };
 
         warn!("Credential request does not match the offer: {err}");
-        debug!("Credential request mismatch: {err:?}");
         let problem_report = ProblemReport::create()
             .set_message_type(&self.offer.type_)
             .set_code(ProblemReportCode::InvalidCredentialRequest)
@@ -277,7 +276,7 @@ impl RequestReceivedState {
             agent.did_resolver().clone(),
         )
         .await
-        .context(VCSnafu)?;
+        .unwrap();
 
         let credential_msg = Credential::create()
             .set_ldp_vc_credential(&credential)?
