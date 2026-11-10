@@ -223,19 +223,18 @@ impl<HC: HttpClient> ByJwks<HC> {
         level = Level::TRACE,
         skip(http_client)
     )]
-    pub fn new(http_client: HC, jwks_url: JsonWebKeySetUrl) -> Self {
+    /// `clock_skew` is how far `exp` and `nbf` may be off between the authorization server and
+    /// the issuer; without it, both are checked exactly.
+    pub fn new(
+        http_client: HC,
+        jwks_url: JsonWebKeySetUrl,
+        clock_skew: Option<time::Duration>,
+    ) -> Self {
         Self {
             http_client: Arc::new(http_client),
             jwks_url,
-            clock_skew: time::Duration::ZERO,
+            clock_skew: clock_skew.unwrap_or_default(),
         }
-    }
-
-    /// Accepts `exp` and `nbf` off by up to `clock_skew` between the authorization server and
-    /// the issuer. Without it, both are checked exactly.
-    pub fn with_clock_skew(mut self, clock_skew: time::Duration) -> Self {
-        self.clock_skew = clock_skew;
-        self
     }
 
     #[instrument(
@@ -330,6 +329,7 @@ mod tests {
         let validator = ByJwks::new(
             http_client,
             JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+            None,
         );
 
         let result = validator.validate(&token()).await;
@@ -352,6 +352,7 @@ mod tests {
         let validator = ByJwks::new(
             http_client,
             JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+            None,
         );
 
         let result = validator.validate(&token_with(overrides)).await;
@@ -372,8 +373,8 @@ mod tests {
         let validator = ByJwks::new(
             http_client,
             JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
-        )
-        .with_clock_skew(time::Duration::minutes(1));
+            Some(time::Duration::minutes(1)),
+        );
 
         let result = validator.validate(&token_with(overrides)).await;
 
