@@ -243,7 +243,8 @@ where
     /// Sets the duration for clock skew tolerance.
     ///
     /// Set a duration to account for potential clock skew between different systems.
-    /// It is used while performing time-based validations.
+    /// It is used while performing time-based validations: proof of possession and, with
+    /// `token_validation_jwks`, access token `exp` and `nbf`.
     ///
     /// # Arguments
     ///
@@ -369,7 +370,11 @@ where
                 Some(TokenValidation::Introspect(introspect))
             }
             Some(TokenParams::Jwks(url)) => {
-                let jwks = ByJwks::new(http_client, JsonWebKeySetUrl::from_url(url.to_owned()));
+                let jwks = ByJwks::new(
+                    http_client,
+                    JsonWebKeySetUrl::from_url(url.to_owned()),
+                    self.clock_skew,
+                );
                 Some(TokenValidation::ByJwks(jwks))
             }
             _ => None,
