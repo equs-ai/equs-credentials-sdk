@@ -8,7 +8,7 @@ Provides the abstract `API` trait and concrete implementations for token-based V
 | File | Role |
 |------|------|
 | mod.rs | `API` trait (create status list, get VC status), `StatusListFormat` enum, shared `Error` type. |
-| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. `get_status_list_entry(uri, idx, ..)` is the lookup itself, shared by the SD-JWT VC `status` claim and the mdoc MSO `status`; a response typed `application/statuslist+cwt` fails as "status list format not supported". |
+| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Decodes `lst` with or without base64url padding, not through `JsonStatusList::decode`, which requires it. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. `get_status_list_entry(uri, idx, ..)` is the lookup itself, shared by the SD-JWT VC `status` claim and the mdoc MSO `status`; a response typed `application/statuslist+cwt` fails as "status list format not supported". |
 
 ## Key types / traits
 - `API<CS, ST, SL, MD>` — generic async trait for status list creation and VC status retrieval. `get_vc_status` trusts no X.509 anchors; `StatusListJwt::get_vc_status_with_trusted_certs` is the same call with trusted anchors and the `AnchorPolicy` their chain is checked under (used by `core::VerifierService`).
@@ -18,5 +18,5 @@ Provides the abstract `API` trait and concrete implementations for token-based V
 - `SLMetadata` — metadata for status list JWT creation (URL, size, count).
 
 ## Dependencies
-- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
+- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `base64`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
 - Used by: `core::StatusIssuerService`, `formats::sd_jwt_vc` (status check), `mod.rs` (top-level `VCStatus` re-export)
