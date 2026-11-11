@@ -158,8 +158,7 @@ impl VerifierService {
     }
 
     #[instrument(level = Level::TRACE, skip_all, err())]
-    /// Verifies against `trusted_certs`, without evaluating issuer trust, and classifies the
-    /// issuer-signed claims.
+    /// Verifies against `trusted_certs`, without evaluating issuer trust.
     async fn verify_claims(
         &self,
         holder_binder: Option<HolderBinder>,
@@ -405,7 +404,6 @@ impl VerifierService {
     }
 
     #[instrument(level = Level::TRACE, skip_all, err())]
-    /// Checks the expiry and revocation status in the issuer-signed `claims`.
     async fn check_sd_jwt_expiry_and_status(
         &self,
         claims: &Claims,
@@ -473,8 +471,6 @@ impl VerifierService {
         }
     }
 
-    /// The status of the `status` claim in the issuer-signed `claims`: a delegate payload
-    /// never supplies it, on the presentation and the delegation path alike.
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn obtain_sd_jwt_vc_status(
         &self,
@@ -794,8 +790,7 @@ mod tests {
         VerifierService::new(VERIFIER_ID, UniversalResolver::default())
     }
 
-    /// The first hop of a delegation chain needs only the holder's `cnf` key, so a holder can
-    /// delegate a revoked credential to itself and point `status` at a valid index.
+    /// A holder can self-delegate a revoked credential and point `status` at a valid index.
     #[cfg(feature = "delegate-sd-jwt")]
     mod self_delegated_status {
         use super::{
@@ -886,8 +881,6 @@ mod tests {
             }
         }
 
-        /// The grant and its presentation bound to `binder`, with index 1 of the status list
-        /// `server` serves revoked.
         async fn grant_and_presentation(
             server: &httpmock::MockServer,
             binder: &HolderBinder,

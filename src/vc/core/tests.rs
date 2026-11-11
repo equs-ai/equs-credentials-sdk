@@ -238,9 +238,7 @@ pub mod utils {
         }
     }
 
-    /// An SD-JWT whose issuer-signed `status` is index 1 of `status_list_url`, delegated by
-    /// its holder to its own key with a payload pointing `status` at index 0. The entry
-    /// holds the grant and the holder's key id.
+    /// A revoked SD-JWT (`status` index 1) self-delegated with `status` at index 0.
     #[cfg(feature = "delegate-sd-jwt")]
     pub async fn self_delegated_status(kms: &LocalKms, status_list_url: Url) -> CredentialEntry {
         use crate::vc::formats::DelegationParams;

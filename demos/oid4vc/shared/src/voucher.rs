@@ -18,13 +18,8 @@ pub fn generate_purchase_id() -> String {
 }
 
 /// The Merchant's voucher query: a `dc+sd-jwt` voucher disclosing `amount` and
-/// `currency`, preferably with a `purchase_id` claim equal to `purchase_id`.
-///
-/// `purchase_id` is not issuer-signed: the Holder adds it in the delegate payload.
-/// The Verifier checks DCQL claims against the issuer-signed claims only, so
-/// `purchase_id` is in the preferred claim set, which lets the Agent find the
-/// matching grant, and the Merchant checks it in the verified `delegations`
-/// ([delegated_purchase_id]).
+/// `currency`. `purchase_id` is only in the preferred claim set: the Holder adds it
+/// in the delegate payload, so the Merchant checks it with [delegated_purchase_id].
 ///
 /// Field names (`meta.vct_values`, claim `values`, `claim_sets`) match the
 /// `DCQLCredential` shape in `equs_sdk::vc::dcql` (see `src/vc/dcql/mod.rs`).
@@ -56,8 +51,7 @@ pub fn purchase_id_from_dcql(dcql: &DCQL) -> Option<String> {
     pid["values"][0].as_str().map(ToOwned::to_owned)
 }
 
-/// The `purchase_id` in the last delegation hop of the voucher in the Merchant's
-/// verified claims, if any.
+/// The `purchase_id` in the voucher's last delegation hop, if any.
 pub fn delegated_purchase_id(verified_claims: &Value) -> Option<String> {
     verified_claims["vp_token"][VOUCHER_DCQL_ID][0]["delegations"]
         .as_array()?
