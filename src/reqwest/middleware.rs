@@ -1,7 +1,7 @@
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
 #[cfg(not(target_arch = "wasm32"))]
-use reqwest::{Request, Response};
+use reqwest::{Request, Response, StatusCode, header::HeaderMap};
 #[cfg(not(target_arch = "wasm32"))]
 use tracing::warn;
 
@@ -49,42 +49,33 @@ impl reqwest_middleware::Middleware for ValidatorMiddleware {
             .content_type_validator
             .resolve_request_content_type(req.headers())
             .map_err(reqwest_middleware::Error::middleware)?;
-        // Run the request
-        let mut outcome = next.run(req, extensions).await;
+        let response = next.run(req, extensions).await?;
 
-        if let Ok(response) = outcome.as_mut() {
-            self.content_size_limiter
-                .validate_content_length_header(response)
-                .map_err(reqwest_middleware::Error::middleware)?;
-            let body = self
-                .content_size_limiter
-                .limit_response_body(response)
-                .await
-                .map_err(reqwest_middleware::Error::middleware)?;
+        self.content_size_limiter
+            .validate_content_length_header(&response)
+            .map_err(reqwest_middleware::Error::middleware)?;
+        let status = response.status();
+        let headers = response.headers().to_owned();
+        let body = self
+            .content_size_limiter
+            .read_response_body(response)
+            .await
+            .map_err(reqwest_middleware::Error::middleware)?;
 
-            self.content_type_validator
-                .validate_response_content_type(
-                    &content_type_to_accept,
-                    response.headers(),
-                    body.as_slice(),
-                )
-                .await
-                .map_err(reqwest_middleware::Error::middleware)?;
+        self.content_type_validator
+            .validate_response_content_type(&content_type_to_accept, &headers, body.as_slice())
+            .await
+            .map_err(reqwest_middleware::Error::middleware)?;
 
-            let resp = sanitize_response(response, body);
-
-            return Ok(resp);
-        }
-
-        outcome
+        Ok(sanitize_response(status, headers, body))
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn sanitize_response(response: &mut Response, body: Vec<u8>) -> Response {
+fn sanitize_response(status: StatusCode, headers: HeaderMap, body: Vec<u8>) -> Response {
     let mut resp = oauth2::http::Response::new(body);
-    *resp.status_mut() = response.status();
-    *resp.headers_mut() = response.headers().to_owned();
+    *resp.status_mut() = status;
+    *resp.headers_mut() = headers;
 
     let cookie = resp.headers_mut().remove(reqwest::header::SET_COOKIE);
     if let Some(cookie) = cookie {
