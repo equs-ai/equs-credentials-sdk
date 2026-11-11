@@ -46,8 +46,7 @@ pub struct DelegationChainView {
 #[derive(Debug)]
 pub enum DsdJwtPurpose {
     Delegation(Option<HolderBinder>),
-    /// `sd_jwt_rs`'s chain-aware presentation check, whose claims layer each hop's payload over
-    /// the issuer's; tests use it to build and inspect chains, no verification entry point does.
+    /// Test-only: its claims layer each hop's payload over the issuer's.
     #[cfg(test)]
     Presentation(Option<HolderBinder>),
 }
@@ -393,7 +392,6 @@ mod tests {
         );
     }
 
-    /// `{ "scope": true }`: forward the issuer-signed `scope` disclosure on delegation.
     fn disclose_scope() -> Option<Map<String, serde_json::Value>> {
         json!({ "scope": true }).as_object().cloned()
     }
@@ -405,9 +403,7 @@ mod tests {
     ///    forwarding the issuer-signed `scope` and setting its own in the payload.
     /// 3. Delegate Holder calls `SdJwtAPI::create_vp` to append a final KB-JWT
     ///    (signed by the delegate's own key).
-    /// 4. `SdJwtAPI::verify_vp` verifies the chain and keeps the delegate payload apart:
-    ///    the issuer-signed `scope` stays `baseline`, the delegate's `view-account` is
-    ///    only in its hop.
+    /// 4. `SdJwtAPI::verify_vp` keeps the delegate's `scope` in its hop, apart from the issuer's.
     #[tokio::test]
     async fn delegate_holder_presents_dsd_jwt_kb_to_verifier() {
         // Step 1: Issue a holder-bound SD-JWT.
@@ -487,8 +483,7 @@ mod tests {
 
     /// Purchase-bound delegation: the delegate payload injects `purchase_id`
     /// (a claim absent from the issued voucher). After the Delegate Holder presents
-    /// with its own KB-JWT, the delegation path shows `purchase_id` in the hop's
-    /// payload, apart from the issuer-signed claims.
+    /// with its own KB-JWT, `purchase_id` is in the hop's payload.
     #[tokio::test]
     async fn delegate_payload_injects_purchase_id() {
         let (vc, hld_kh) = issue_sd_jwt().await;
@@ -762,7 +757,6 @@ mod tests {
         assert!(wrong_aud.is_err(), "wrong aud must be rejected");
     }
 
-    /// The alternatives of the last hop under `delegations` in verified `claims`.
     fn last_hop(claims: &Claims) -> &Vec<Claim> {
         claims[DELEGATIONS_CLAIM]
             .as_vec()
