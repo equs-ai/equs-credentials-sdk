@@ -142,6 +142,10 @@ jobs:
       contents: write
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: release-manifest-*
@@ -181,6 +185,9 @@ jobs:
           ls release-manifest-*.yaml
           prerelease=()
           [[ "$TAG" == *-rc.* ]] && prerelease=(--prerelease)
+          bash .github/scripts/release-notes.sh "$REPO" "$TAG" > release-notes.md
+          notes=(--notes-file release-notes.md)
+          [ -s release-notes.md ] || notes=(--generate-notes)
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" "${prerelease[@]}"
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" "${notes[@]}" "${prerelease[@]}"
           gh release upload "$TAG" release-manifest-*.yaml android/* ios/* npm/* crate/* --repo "$REPO" --clobber
