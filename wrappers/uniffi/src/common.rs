@@ -15,7 +15,6 @@ pub enum OID4VCIProtocolErrorType {
 #[derive(uniffi::Error, Debug)]
 pub enum Error {
     OID4VPHolder(String),
-    /// A `delegate` transaction-data payload has expired; `exp` is its Unix-seconds `exp`.
     OID4VPTransactionDataExpired {
         exp: i64,
     },

@@ -133,13 +133,6 @@ pub(crate) fn decode_delegate_payload_disclosure(
     Ok(payload)
 }
 
-/// Rejects the delegate payloads if any has an `exp` (RFC 7519 section 4.1.4) that has passed.
-/// A payload without `exp` never expires.
-///
-/// # Errors
-///
-/// * Returns [`Error::TransactionDataExpired`] if `exp` is now or earlier.
-/// * Returns [`Error::Protocol`] (`InvalidTransactionData`) if `exp` is not an integer.
 #[cfg(feature = "delegate-sd-jwt")]
 pub(crate) fn check_delegate_payloads_not_expired(
     payloads: &[serde_json::Value],
