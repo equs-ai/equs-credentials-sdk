@@ -1,4 +1,5 @@
 use super::{ContentSizeSnafu, Result};
+use futures::StreamExt;
 use reqwest::Response;
 use tracing::{Level, instrument};
 
@@ -79,41 +80,29 @@ impl ContentSizeLimiter {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    #[instrument(level = Level::TRACE, skip(self), ret(), err())]
-    pub(crate) async fn limit_response_body(&self, response: &mut Response) -> Result<Vec<u8>> {
-        let mut resp_body: Vec<u8> = match response.content_length() {
-            Some(content_len) => Vec::with_capacity(content_len.try_into().unwrap_or_default()),
-            None => Vec::new(),
-        };
+    /// Reads the body chunk by chunk and fails at the first chunk over the response size limit.
+    /// The buffer is never sized from `Content-Length`, which the server controls.
+    pub(crate) async fn read_response_body(&self, response: Response) -> Result<Vec<u8>> {
+        let mut chunks = std::pin::pin!(response.bytes_stream());
+        let mut body = Vec::new();
 
-        while let Some(body_part) = response.chunk().await.map_err(|e| {
-            ContentSizeSnafu {
-                details: "cannot parse response body as a stream chunk",
-            }
-            .build()
-        })? {
-            // make sure that operation (resp_body.len() + body_part.len()) does not overflow
-            if (usize::MAX - resp_body.len()) < body_part.len() {
-                return ContentSizeSnafu {
-                    details: "response body size exceeds usize::MAX value",
+        while let Some(chunk) = chunks.next().await {
+            let chunk = chunk.map_err(|e| {
+                ContentSizeSnafu {
+                    details: format!("cannot read response body: {e}"),
                 }
-                .fail();
-            }
-
-            let current_resp_size = resp_body.len() + body_part.len();
-
-            if self.is_resp_body_out_of_limit(current_resp_size) {
+                .build()
+            })?;
+            if self.is_resp_body_out_of_limit(body.len() + chunk.len()) {
                 return ContentSizeSnafu {
                     details: "response body size exceeds the limit",
                 }
                 .fail();
             }
-
-            resp_body.append(&mut body_part.to_vec());
+            body.extend_from_slice(&chunk);
         }
 
-        Ok(resp_body)
+        Ok(body)
     }
 
     #[instrument(level = Level::TRACE, skip(self), ret(), err())]
@@ -143,7 +132,9 @@ impl ContentSizeLimiter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::stream;
     use rstest::rstest;
+    use std::io;
 
     #[test]
     fn unlimited_initializes_both_limits_to_none() {
@@ -213,5 +204,48 @@ mod tests {
         #[case] expected: bool,
     ) {
         assert_eq!(limiter.is_req_body_out_of_limit(body_size), expected);
+    }
+
+    #[tokio::test]
+    async fn read_response_body_joins_chunks_within_the_limit() {
+        let limiter = ContentSizeLimiter::unlimited().with_response_size_limit(10);
+        let response = chunked_response(vec![Ok("hello"), Ok("world")]);
+
+        let body = limiter.read_response_body(response).await.unwrap();
+
+        assert_eq!(body, b"helloworld");
+    }
+
+    #[tokio::test]
+    async fn read_response_body_stops_reading_past_the_limit() {
+        let limiter = ContentSizeLimiter::unlimited().with_response_size_limit(10);
+        let response = chunked_response(vec![
+            Ok("hello"),
+            Ok("world!"),
+            Err(io::Error::other("read past the limit")),
+        ]);
+
+        let err = limiter.read_response_body(response).await.unwrap_err();
+
+        assert!(err.to_string().contains("exceeds the limit"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn read_response_body_fails_on_a_read_error() {
+        let limiter = ContentSizeLimiter::unlimited();
+        let response = chunked_response(vec![Ok("hello"), Err(io::Error::other("reset"))]);
+
+        let err = limiter.read_response_body(response).await.unwrap_err();
+
+        assert!(
+            err.to_string().contains("cannot read response body"),
+            "{err}"
+        );
+    }
+
+    /// A response whose body arrives as `chunks`, without `Content-Length`.
+    fn chunked_response(chunks: Vec<io::Result<&'static str>>) -> Response {
+        let body = reqwest::Body::wrap_stream(stream::iter(chunks));
+        oauth2::http::Response::new(body).into()
     }
 }

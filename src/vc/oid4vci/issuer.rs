@@ -1484,6 +1484,7 @@ mod tests {
         let token_validator = ByJwks(token_validation::ByJwks::new(
             http_client,
             JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+            None,
         ));
         let issuer = issuer_service(
             None,
