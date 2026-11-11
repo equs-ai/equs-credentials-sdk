@@ -4869,8 +4869,7 @@ mod delegation_e2e_tests {
     ///    carries the Verifier's `client_id` and nonce → the wallet discovers the grant in
     ///    the vault by the DCQL's `$.vct` field and presents it with its own KB-JWT.
     /// 5. Verifier calls `verify_presentation` with the matching `PresentationSession`.
-    ///    Its request carried no `delegate` item; it accepts the chain and returns the
-    ///    issuer-signed claims and the Delegate Payloads apart.
+    /// 6. Assert `scope` is in the last hop, not in `issued_vc`.
     #[tokio::test]
     async fn delegation_end_to_end_grant_present_verify() {
         let orig_holder_kms = LocalKms::new();
@@ -5341,8 +5340,6 @@ mod delegation_e2e_tests {
         );
     }
 
-    /// The verified credential under [DELEGATE_CRED_ID] carries the issuer-signed claims under
-    /// `issued_vc`, without the delegate's `scope`, and `scope` in the last hop's payload.
     fn assert_delegated_scope(claims: &Claims, scope: &str) {
         let credential = &claims["vp_token"][DELEGATE_CRED_ID]
             .as_vec()

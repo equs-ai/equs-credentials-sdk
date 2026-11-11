@@ -703,10 +703,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Verify a `Presentation` and evaluate its issuer against the trust anchors.
     ///
-    /// For an SD-JWT presentation carrying a delegation chain, the returned claims hold the
-    /// issuer-signed claims under `issued_vc` and each hop's Delegate Payloads under
-    /// `delegations`, as `verify_delegation` returns them; issuer trust, expiry and status are
-    /// evaluated on the issuer-signed claims.
+    /// For a delegation chain, the claims are `issued_vc` and per-hop `delegations`.
     ///
     /// # Arguments
     ///
@@ -740,9 +737,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// # Returns
     ///
     /// Verified claims: `issued_vc` (issuer-signed claims) and `delegations` (per-hop Delegate
-    /// Payloads), with the issuer trust of the issued credential, whose issuer is a DID. A
-    /// Delegate Payload never replaces an issuer-signed claim, and revocation status is read
-    /// from the issuer-signed claims.
+    /// Payloads), with the issuer trust of the issued credential, whose issuer is a DID.
     ///
     /// # Errors
     ///
@@ -761,7 +756,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         unimplemented!();
     }
 
-    /// Obtains the status for presented VC, from its issuer-signed claims.
+    /// Obtains the status for presented VC.
     ///
     /// # Arguments
     ///

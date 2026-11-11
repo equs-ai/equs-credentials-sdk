@@ -316,8 +316,6 @@ async fn presentation_response(
     HttpResponse::Ok().finish()
 }
 
-/// The voucher is bound to the purchase by the Holder's delegate payload, not by an
-/// issuer-signed claim, so the Merchant reads `purchase_id` from `delegations`.
 fn check_purchase_binding(session: &PresentationSession, verified_claims: &Value) {
     let ResolvedPresentationQuery::DCQL(dcql) = &session.resolved_presentation_query else {
         return;
