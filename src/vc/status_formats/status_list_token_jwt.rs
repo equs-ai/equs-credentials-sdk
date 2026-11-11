@@ -30,6 +30,9 @@ use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::status_formats::StatusListCreatingSnafu;
+use base64::Engine;
+use base64::alphabet::URL_SAFE;
+use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use flate2::Compression;
 use oauth2::http;
 use oauth2::http::Method;
@@ -52,6 +55,18 @@ const STATUS_CLAIM: &str = "status";
 const STATUS_LIST_TYPE: &str = "statuslist+jwt";
 const CONTENT_TYPE_HEADER: &str = "application/statuslist+jwt";
 const CWT_CONTENT_TYPE: &str = "application/statuslist+cwt";
+
+const LST_ENGINE: GeneralPurpose = GeneralPurpose::new(
+    &URL_SAFE,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
+
+#[derive(Deserialize)]
+struct EncodedStatusList {
+    bits: StatusSize,
+    lst: String,
+}
+
 pub type StatusList = String;
 
 /// # Status type values.
@@ -443,20 +458,30 @@ impl StatusListJwt {
             .build()
         })?;
 
-        let json_status_list: JsonStatusList =
-            serde_json::from_value(status_list_value).map_err(|err| {
+        let encoded_status_list: EncodedStatusList = serde_json::from_value(status_list_value)
+            .map_err(|err| {
                 MalformedStatusListSnafu {
                     details: err.to_string(),
                 }
                 .build()
             })?;
 
-        let bit_string = json_status_list.decode(None).map_err(|err| {
+        let compressed = LST_ENGINE.decode(&encoded_status_list.lst).map_err(|err| {
             MalformedStatusListSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
+
+        let bit_string =
+            BitString::from_compressed_bytes(encoded_status_list.bits, &compressed, None).map_err(
+                |err| {
+                    MalformedStatusListSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                },
+            )?;
 
         Ok(bit_string)
     }
@@ -567,6 +592,22 @@ pub(crate) mod tests {
     #[case::two_bit_invalid(2, status_list_jwt_token_2bit(), VCStatus::Invalid)]
     #[case::two_bit_suspended(3, status_list_jwt_token_2bit(), VCStatus::Suspended)]
     #[case::two_bit_app_specific(4, status_list_jwt_token_2bit(), VCStatus::AppSpecific(3))]
+    #[case::unpadded_lst_valid(1, status_list_jwt_token_lst_needing_padding(""), VCStatus::Valid)]
+    #[case::unpadded_lst_suspended(
+        3,
+        status_list_jwt_token_lst_needing_padding(""),
+        VCStatus::Suspended
+    )]
+    #[case::unpadded_lst_invalid(
+        8,
+        status_list_jwt_token_lst_needing_padding(""),
+        VCStatus::Invalid
+    )]
+    #[case::padded_lst_invalid(
+        8,
+        status_list_jwt_token_lst_needing_padding("=="),
+        VCStatus::Invalid
+    )]
     #[tokio::test]
     async fn vc_status_is_validated_correctly(
         #[case] vc_index: usize,
@@ -869,6 +910,23 @@ pub(crate) mod tests {
             "http://example.com/status_list",
             1763024416,
             "eNqbwMwABgAEnQCU",
+            2,
+        )
+    }
+
+    /// Status list token whose `lst` encodes 13 compressed bytes, so its base64url form needs
+    /// `==` padding, followed by `padding`:
+    /// token idx - status:
+    /// 2 - Invalid
+    /// 3 - Suspended
+    /// 8 - Invalid
+    ///
+    /// Status bit size - 2
+    fn status_list_jwt_token_lst_needing_padding(padding: &str) -> String {
+        status_list_jwt(
+            "http://example.com/status_list",
+            1763024416,
+            &format!("eNqbwMDIAAIABI4Akg{padding}"),
             2,
         )
     }
