@@ -165,12 +165,13 @@ impl CredentialInfo {
         })
     }
 
-    /// The offered credential, issued to the subject `request` names.
+    /// The offered credential, issued to the subject `request` names unless the offer names one.
     ///
     /// # Errors
     ///
     /// * [super::Error::InvalidCredentialRequest] - the first credential subject has no string
-    ///   `id`, or the requested credential differs from the offer in anything but that `id`.
+    ///   `id`, or the requested credential differs from the offer in anything but an `id` the
+    ///   offer leaves out.
     /// * Any error of [CredentialRequest::get_ldp_vc_credential].
     pub(crate) fn credential_for(
         &self,
@@ -188,12 +189,15 @@ impl CredentialInfo {
             })?;
 
         let mut offered = self.data.clone();
-        subjects_mut(&mut offered)
-            .first_mut()
-            .context(InvalidCredentialRequestSnafu {
-                details: "offer has no credential subject",
-            })?
-            .insert("id".to_owned(), subject_id);
+        let offered_subject =
+            subjects_mut(&mut offered)
+                .first_mut()
+                .context(InvalidCredentialRequestSnafu {
+                    details: "offer has no credential subject",
+                })?;
+        if offered_subject.get("id").is_none() {
+            offered_subject.insert("id".to_owned(), subject_id);
+        }
 
         ensure!(
             serde_json::to_value(&requested).context(ParseSnafu)?
@@ -500,11 +504,11 @@ pub mod test {
     use crate::didcomm::core::protocol::message_handler::MessageHandler;
     use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
-    use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::aries::issuance::issuer::fixture::credential_info;
     use crate::didcomm::protocol::aries::issuance::issuer::states::{
         FinishedState, InitialState, IssuerState, OfferSentState,
     };
+    use crate::didcomm::protocol::aries::issuance::issuer::{CredentialInfo, Issuer, subjects_mut};
     use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
     use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
     use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
@@ -517,6 +521,7 @@ pub mod test {
     use crate::inmem::storage::InMemStorage;
     use crate::kms::KeyType;
     use crate::storage::Storage;
+    use crate::vc::claims::Claim;
     use crate::vc::formats::json_ld_vc;
 
     #[tokio::test]
@@ -708,9 +713,14 @@ pub mod test {
         InMemStorage<String, IssuerState>,
     >;
 
+    #[rstest]
+    #[case::unbound_offer(None)]
+    #[case::offer_bound_to_the_holder(Some(HOLDER_DID))]
     #[tokio::test]
-    async fn send_credential_signs_the_offer_for_the_requested_subject() {
-        let (issuer, transport, connection, offer) = issuer_with_offer_sent().await;
+    async fn send_credential_signs_the_offer_for_the_requested_subject(
+        #[case] offered_subject: Option<&str>,
+    ) {
+        let (issuer, transport, connection, offer) = issuer_with_offer_sent(offered_subject).await;
         let request = credential_request(&offer, |_| {});
 
         issuer
@@ -728,18 +738,20 @@ pub mod test {
     }
 
     #[rstest]
-    #[case::claim(|vc: &mut Value| vc["credentialSubject"]["givenName"] = json!("MALLORY"))]
-    #[case::type_(|vc: &mut Value| vc["type"] = json!(["VerifiableCredential", "AdminCredential"]))]
-    #[case::expiry(|vc: &mut Value| vc["expirationDate"] = json!("2999-01-01T00:00:00Z"))]
-    #[case::context(|vc: &mut Value| vc["@context"]
+    #[case::claim(None, |vc: &mut Value| vc["credentialSubject"]["givenName"] = json!("MALLORY"))]
+    #[case::type_(None, |vc: &mut Value| vc["type"] = json!(["VerifiableCredential", "AdminCredential"]))]
+    #[case::expiry(None, |vc: &mut Value| vc["expirationDate"] = json!("2999-01-01T00:00:00Z"))]
+    #[case::context(None, |vc: &mut Value| vc["@context"]
         .as_array_mut()
         .unwrap()
         .push(json!("https://www.w3.org/2018/credentials/examples/v1")))]
+    #[case::subject(Some("did:example:other"), |_: &mut Value| {})]
     #[tokio::test]
     async fn credential_request_differing_from_the_offer_is_not_signed(
+        #[case] offered_subject: Option<&str>,
         #[case] tamper: fn(&mut Value),
     ) {
-        let (issuer, transport, connection, offer) = issuer_with_offer_sent().await;
+        let (issuer, transport, connection, offer) = issuer_with_offer_sent(offered_subject).await;
         let request = credential_request(&offer, tamper);
 
         issuer
@@ -765,10 +777,16 @@ pub mod test {
         let _offer_only: CredentialOffer = transport.next_message().await;
     }
 
-    async fn issuer_with_offer_sent()
-    -> (TestIssuer, MockTransport, ConnectionRecord, CredentialOffer) {
+    async fn issuer_with_offer_sent(
+        offered_subject: Option<&str>,
+    ) -> (TestIssuer, MockTransport, ConnectionRecord, CredentialOffer) {
         let (agent, transport) = test_agent();
-        let initial_state = initial_state(agent.kms()).await;
+        let mut credential_info = credential_info(agent.kms()).await;
+        if let Some(subject) = offered_subject {
+            subjects_mut(&mut credential_info.data)[0]
+                .insert("id".to_owned(), Claim::String(subject.to_owned()));
+        }
+        let initial_state = initial_state_for(credential_info);
         let offer = initial_state.offer.clone();
         let storage = InMemStorage::<String, IssuerState>::new();
         storage
@@ -808,7 +826,10 @@ pub mod test {
     }
 
     async fn initial_state(kms: &LocalKms) -> InitialState {
-        let credential_info = credential_info(kms).await;
+        initial_state_for(credential_info(kms).await)
+    }
+
+    fn initial_state_for(credential_info: CredentialInfo) -> InitialState {
         let offer = CredentialOffer::create()
             .set_comment(credential_info.name.clone())
             .append_credential_preview(&credential_info.data)
