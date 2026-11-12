@@ -67,6 +67,7 @@ pub type HashAlgorithm = openid4vp::core::authorization_request::parameters::Has
 pub type ExpectedOrigins = openid4vp::core::authorization_request::parameters::ExpectedOrigins;
 pub type VerifierInfo = openid4vp::core::authorization_request::parameters::VerifierInfo;
 pub type VerifierInfoEntry = openid4vp::core::authorization_request::parameters::VerifierInfoEntry;
+pub type VerifierInfoData = openid4vp::core::authorization_request::parameters::VerifierInfoData;
 
 use crate::utils::b64::get_hash_and_base64;
 use crate::vc::oid4vp::Error::Protocol;
@@ -202,6 +203,7 @@ pub enum PresentationResult {
 /// `response_uri` URI to send the response.
 /// `state` - may be used by a verifier to link requests and responses
 /// `transaction_data` - Array of strings, where each string is a base64url encoded JSON object that contains a typed parameter set with details about the transaction that the Verifier is requesting the End-User to authorize.
+/// `verifier_info` - Attestations about the Verifier, passed through unverified: the SDK checks only their shape.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedAuthRequest {
     pub client_id: ClientId,
@@ -217,6 +219,9 @@ pub struct ResolvedAuthRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_data: Option<Vec<TransactionDataItem>>,
     pub expected_origins: Option<Vec<String>>,
+    // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.12.1
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verifier_info: Option<Vec<VerifierInfoEntry>>,
 }
 
 /// An `OID4VP` response configuration of authorization request object.
