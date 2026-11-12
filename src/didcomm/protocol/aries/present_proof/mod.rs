@@ -4,7 +4,7 @@ use crate::nonce::Nonce;
 use crate::storage;
 use crate::vc::core::HolderBinder;
 use common_macros::DebugError;
-use snafu::{Location, OptionExt, Snafu};
+use snafu::{Location, OptionExt, Snafu, ensure};
 use ssi::dids::InvalidDIDURL;
 
 pub mod holder;
@@ -133,24 +133,136 @@ pub enum Error {
     },
 }
 
-/// The binding a presentation answering `request` carries: the request's `id` as challenge and
-/// the DID the verifier sent the request from as domain.
+/// The challenge and domain a presentation for `request` must carry. Missing values fall back
+/// to the request id and `verifier_did`.
+///
+/// Any domain is accepted, but a DID domain must be `verifier_did`, so one verifier can't pass
+/// on another verifier's request.
 ///
 /// # Errors
 ///
-/// * [Error::InvalidState] - `verifier_did` is `None`, as in a state stored without it. Such a
-///   state never produces or verifies a presentation; the exchange restarts with a new request.
+/// * [Error::InvalidState] - `verifier_did` is missing (state stored before binding existed).
+/// * [Error::InvalidCredentialRequest] - the domain is another verifier's DID.
+/// * Any error from reading the request attachment.
 fn holder_binder(
     request: &message::presentation_request::PresentationRequest,
     verifier_did: Option<&str>,
 ) -> Result<HolderBinder> {
-    let verifier_id = verifier_did.context(InvalidStateSnafu {
+    let verifier_did = verifier_did.context(InvalidStateSnafu {
         details: "state has no verifier DID; restart with a new presentation request",
     })?;
+    let options = request
+        .attachments
+        .first()
+        .map(message::proof_request::ProofRequest::try_from)
+        .transpose()?
+        .and_then(|proof_request| proof_request.options)
+        .unwrap_or_default();
+
+    let domain = match options.domain {
+        Some(domain) => {
+            ensure!(
+                !domain.starts_with("did:") || domain == verifier_did,
+                InvalidCredentialRequestSnafu {
+                    details: "request domain is a DID other than the one the request was sent from",
+                }
+            );
+            domain
+        }
+        None => verifier_did.to_owned(),
+    };
+    let challenge = options.challenge.unwrap_or_else(|| request.id.to_string());
 
     Ok(HolderBinder {
-        nonce: Nonce::from_secret(request.id.to_string()),
-        verifier_id: verifier_id.to_owned(),
+        nonce: Nonce::from_secret(challenge),
+        verifier_id: domain,
         response_uri: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use serde_json::json;
+
+    use super::*;
+    use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
+    use crate::didcomm::protocol::aries::present_proof::message::proof_request::{
+        ProofOptions, ProofRequest,
+    };
+
+    const VERIFIER_DID: &str = "did:example:verifier";
+
+    #[rstest]
+    #[case::did_domain(Some("challenge"), Some(VERIFIER_DID), "challenge", VERIFIER_DID)]
+    #[case::operational_domain(
+        Some("challenge"),
+        Some("us.gov/DriversLicense"),
+        "challenge",
+        "us.gov/DriversLicense"
+    )]
+    #[case::challenge_only(Some("challenge"), None, "challenge", VERIFIER_DID)]
+    fn holder_binder_takes_the_request_options(
+        #[case] challenge: Option<&str>,
+        #[case] domain: Option<&str>,
+        #[case] expected_nonce: &str,
+        #[case] expected_verifier_id: &str,
+    ) {
+        let request = request(Some(ProofOptions {
+            challenge: challenge.map(str::to_owned),
+            domain: domain.map(str::to_owned),
+        }));
+
+        let binder = holder_binder(&request, Some(VERIFIER_DID)).unwrap();
+
+        assert_eq!(binder.nonce.secret(), expected_nonce);
+        assert_eq!(binder.verifier_id, expected_verifier_id);
+    }
+
+    #[rstest]
+    #[case::without_options(None)]
+    #[case::domain_only(Some(ProofOptions { challenge: None, domain: Some(VERIFIER_DID.to_owned()) }))]
+    fn holder_binder_falls_back_to_the_request_id_without_a_challenge(
+        #[case] options: Option<ProofOptions>,
+    ) {
+        let request = request(options);
+
+        let binder = holder_binder(&request, Some(VERIFIER_DID)).unwrap();
+
+        assert_eq!(binder.nonce.secret(), request.id.to_string());
+        assert_eq!(binder.verifier_id, VERIFIER_DID);
+    }
+
+    #[rstest]
+    #[case::did_of_another_verifier(Some(VERIFIER_DID), "did:example:another-verifier")]
+    #[case::state_without_verifier_did(None, VERIFIER_DID)]
+    fn holder_binder_rejects_a_request_it_cannot_bind(
+        #[case] verifier_did: Option<&str>,
+        #[case] domain: &str,
+    ) {
+        let request = request(Some(ProofOptions {
+            challenge: Some("challenge".to_owned()),
+            domain: Some(domain.to_owned()),
+        }));
+
+        let result = holder_binder(&request, verifier_did);
+
+        assert!(
+            matches!(
+                result,
+                Err(Error::InvalidCredentialRequest { .. } | Error::InvalidState { .. })
+            ),
+            "{result:?}"
+        );
+    }
+
+    fn request(options: Option<ProofOptions>) -> PresentationRequest {
+        let definition =
+            serde_json::from_value(json!({ "id": "pd", "input_descriptors": [] })).unwrap();
+        let mut proof_request = ProofRequest::new(definition);
+        if let Some(options) = options {
+            proof_request = proof_request.set_options(options);
+        }
+        PresentationRequest::new().add_attachment(proof_request.try_into().unwrap())
+    }
 }

@@ -85,7 +85,7 @@ pub struct PresentationRequestSentState {
     #[serde(default)]
     pub thread: Thread,
     pub connection_id: String,
-    /// The DID the request was sent from; a presentation must carry it as its domain.
+    /// DID this verifier sent the request from.
     #[serde(default)]
     pub verifier_did: Option<String>,
 }
@@ -104,6 +104,35 @@ impl PresentationRequestSentState {
     {
         let thread = self.thread.to_owned();
         // .update_received_order(&self.connection.data.did_doc.id);
+
+        // A request stored before binding existed can't be answered, so end the exchange.
+        if self.verifier_did.is_none() {
+            warn!("Presentation request has no verifier DID and cannot be answered");
+            let problem_report = ProblemReport::create()
+                .set_message_type(&self.presentation_request.type_)
+                .set_code(ProblemReportCode::InvalidPresentationRequest)
+                .set_comment(String::from(
+                    "presentation request is no longer valid; request a new one",
+                ))
+                .set_thread(thread.to_owned());
+
+            agent
+                .send_message(
+                    &mut problem_report.to_owned().try_into().context(ParseSnafu)?,
+                    &self.connection_id,
+                )
+                .await
+                .context(AgentSnafu)?;
+
+            return Ok(VerifierState::Finished(
+                (
+                    self.presentation_request,
+                    Status::Failed(problem_report),
+                    thread,
+                )
+                    .into(),
+            ));
+        }
 
         match self
             .verify_presentation(&presentation, verifier_service)
@@ -250,14 +279,53 @@ impl From<(PresentationRequest, Status, Thread)> for FinishedState {
 #[cfg(test)]
 mod tests {
     use crate::did::universal::UniversalResolver;
+    use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
     use crate::didcomm::protocol::aries::present_proof::Error;
     use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
     use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
     use crate::didcomm::protocol::aries::present_proof::verifier::states::{
-        PresentationRequestSentState, VerifierState,
+        FinishedState, PresentationRequestSentState, VerifierState,
+    };
+    use crate::didcomm::protocol::aries::problem_report::message::{
+        ProblemReport, ProblemReportCode,
     };
     use crate::vc::core::VerifierService;
+
+    #[tokio::test]
+    async fn presentation_for_a_state_stored_without_verifier_did_ends_the_exchange() {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let state = PresentationRequestSentState {
+            presentation_request: PresentationRequest::new(),
+            thread: Thread::new().set_thid("thread".to_owned()),
+            connection_id: connection.id,
+            verifier_did: None,
+        };
+        let verifier_service =
+            VerifierService::new("did:example:verifier", UniversalResolver::default());
+
+        let state = state
+            .handle_received_presentation(&agent, Presentation::create(), &verifier_service)
+            .await
+            .unwrap();
+
+        let VerifierState::Finished(FinishedState {
+            status: Status::Failed(report),
+            ..
+        }) = &state
+        else {
+            panic!("exchange did not finish: {state:?}");
+        };
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidPresentationRequest.code()
+        );
+        let sent: ProblemReport = transport.next_message().await;
+        assert_eq!(&sent, report);
+    }
 
     #[tokio::test]
     async fn verify_presentation_failed_for_state_stored_without_verifier_did() {

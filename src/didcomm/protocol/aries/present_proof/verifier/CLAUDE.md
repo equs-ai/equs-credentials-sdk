@@ -25,7 +25,7 @@ Fields: `agent`, `storage`, `event_emitter`, `oob`, `connection_key_type`, `key_
 ### Public API
 ```
 create_presentation_request(proof_request) → String (ID)
-create_invitation(pr_id, config)           → Url
+create_invitation(pr_id, config)           → Url  (Initiated only; makes the invitation DID, sets the request's RFC 0510 options, stores the bound request)
 get_state(id)                              → VerifierState
 get_presentation_request(id)               → PresentationRequest
 step(id, message)                          → ()
@@ -47,7 +47,7 @@ Finished → Finished (terminal)
 
 ### States
 - `InitialState` — holds `presentation_request`
-- `PresentationRequestSentState` — holds `verifier_did`, the DID the request was sent from; calls `VerifierService::verify_presentation` with the request's `HolderBinder` (see [../CLAUDE.md](../CLAUDE.md)). On failure it sends an `invalid-presentation` `ProblemReport` with the fixed comment `presentation verification failed`, logs the error locally, and stays in `PresentationRequestSent`. A state without `verifier_did` fails with `InvalidState` before the presentation is read; the DID is not taken from the connection, whose `my_did` changes when the holder's first message completes it.
+- `PresentationRequestSentState` — holds `verifier_did`, the DID the request was sent from; calls `VerifierService::verify_presentation` with the request's `HolderBinder` (see [../CLAUDE.md](../CLAUDE.md)). On failure it sends an `invalid-presentation` `ProblemReport` with the fixed comment `presentation verification failed`, logs the error locally, and stays in `PresentationRequestSent`. A state without `verifier_did` (stored before binding) cannot be answered: on a presentation it sends an `invalid-request` `ProblemReport` (`presentation request is no longer valid; request a new one`) and finishes `Failed`; the DID is not taken from the connection, whose `my_did` changes when the holder's first message completes it.
 - `FinishedState` — holds `presentation_request`, optional `presentation`, `status`, `thread`
 
 ## Dependencies

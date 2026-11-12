@@ -11,7 +11,9 @@ use crate::didcomm::protocol::aries::empty::EMPTY;
 use crate::didcomm::protocol::aries::empty::protocol::EmptyProtocol;
 use crate::didcomm::protocol::aries::present_proof::message::VerifierMessages;
 use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
-use crate::didcomm::protocol::aries::present_proof::message::proof_request::ProofRequest;
+use crate::didcomm::protocol::aries::present_proof::message::proof_request::{
+    ProofOptions, ProofRequest,
+};
 use crate::didcomm::protocol::aries::present_proof::protocol::PresentationProtocol;
 use crate::didcomm::protocol::aries::present_proof::verifier::state_machine::VerifierSM;
 use crate::didcomm::protocol::aries::present_proof::verifier::states::{
@@ -105,9 +107,36 @@ where
         presentation_request_id: String,
         mut invitation_config: InvitationConfig,
     ) -> Result<Url> {
-        let presentation_request = self
-            .get_presentation_request(presentation_request_id.to_owned())
-            .await?;
+        let VerifierState::Initiated(initial) = self.get_state(&presentation_request_id).await?
+        else {
+            return InvalidStateSnafu {
+                details: "presentation request was already sent",
+            }
+            .fail();
+        };
+
+        // Make the DID first: the request names it as its domain.
+        let my_did = self
+            .oob
+            .create_did(invitation_config.key_type.clone())
+            .await
+            .context(OOBSnafu)?;
+        let presentation_request =
+            initial
+                .presentation_request
+                .with_proof_options(ProofOptions {
+                    challenge: Some(uuid::Uuid::new_v4().to_string()),
+                    domain: Some(my_did.to_owned()),
+                })?;
+        self.storage
+            .put(
+                presentation_request_id.to_owned(),
+                VerifierState::Initiated(InitialState {
+                    presentation_request: presentation_request.to_owned(),
+                }),
+            )
+            .await
+            .context(StorageSnafu)?;
 
         invitation_config
             .attachments
@@ -115,7 +144,7 @@ where
 
         let (url, connection) = self
             .oob
-            .create_invitation(invitation_config)
+            .create_invitation_from(invitation_config, my_did)
             .await
             .context(OOBSnafu)?;
 

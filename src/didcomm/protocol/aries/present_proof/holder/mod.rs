@@ -179,14 +179,14 @@ where
         self.step(HolderMessages::PreparePresentation).await
     }
 
-    /// The binding a presentation answering the received request carries: the request's `id` as
-    /// nonce and the DID the verifier sent it from as `verifier_id`.
+    /// The challenge and domain a presentation for the received request must carry.
     ///
     /// # Errors
     ///
-    /// * [super::Error::InvalidState] - the holder is not in the `RequestReceived` state, or that
-    ///   state has no `verifier_did`.
-    /// * [super::Error::Storage] - fails to load the state.
+    /// * [super::Error::InvalidState] - no request is waiting to be answered, or it was stored
+    ///   before binding existed.
+    /// * [super::Error::InvalidCredentialRequest] - the request names another verifier's DID.
+    /// * [super::Error::Storage] - the state can't be loaded.
     pub async fn holder_binder(&self) -> Result<HolderBinder> {
         let holder_sm = self.holder_sm().await?;
         let PresentationHolderState::RequestReceived(state) = holder_sm.state() else {
@@ -199,10 +199,9 @@ where
         holder_binder(&state.presentation_request, state.verifier_did.as_deref())
     }
 
-    /// Sets a presentation the caller built, in place of [Self::prepare_presentation].
+    /// Sets a presentation the caller built, instead of [Self::prepare_presentation].
     ///
-    /// The verifier accepts it only when its VP is bound with [Self::holder_binder]: every proof
-    /// carries the binder's nonce as `challenge` and its `verifier_id` as `domain`.
+    /// Bind it with [Self::holder_binder], or the verifier rejects it.
     pub async fn set_presentation(&self, presentation: Presentation) -> Result<()> {
         trace!("Holder::set_presentation >>>");
         debug!(

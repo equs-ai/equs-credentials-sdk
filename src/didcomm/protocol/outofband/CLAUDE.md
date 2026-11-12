@@ -16,6 +16,8 @@ Created via `OutOfBandV2Protocol::new(agent)`.
 
 ```
 create_invitation(config: InvitationConfig) → (Url, ConnectionRecord)
+create_did(key_type)                        → DID   (pub(crate))
+create_invitation_from(config, my_did)      → (Url, ConnectionRecord)  (pub(crate); lets a caller put the invitation DID into its attachments first)
 accept_invitation(invitation, key_type)     → ConnectionRecord
 establish_connection(connection_id, their_did, key_type) → ()
 parse_invitation(str)                       → Invitation
