@@ -504,6 +504,7 @@ pub mod test {
     use crate::didcomm::core::protocol::message_handler::MessageHandler;
     use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
+    use crate::didcomm::protocol::aries::issuance::Error;
     use crate::didcomm::protocol::aries::issuance::issuer::fixture::credential_info;
     use crate::didcomm::protocol::aries::issuance::issuer::states::{
         FinishedState, InitialState, IssuerState, OfferSentState,
@@ -720,7 +721,8 @@ pub mod test {
     async fn send_credential_signs_the_offer_for_the_requested_subject(
         #[case] offered_subject: Option<&str>,
     ) {
-        let (issuer, transport, connection, offer) = issuer_with_offer_sent(offered_subject).await;
+        let (issuer, transport, connection, offer) =
+            issuer_with_offer_sent(offered_to(offered_subject)).await;
         let request = credential_request(&offer, |_| {});
 
         issuer
@@ -751,7 +753,8 @@ pub mod test {
         #[case] offered_subject: Option<&str>,
         #[case] tamper: fn(&mut Value),
     ) {
-        let (issuer, transport, connection, offer) = issuer_with_offer_sent(offered_subject).await;
+        let (issuer, transport, connection, offer) =
+            issuer_with_offer_sent(offered_to(offered_subject)).await;
         let request = credential_request(&offer, tamper);
 
         issuer
@@ -777,15 +780,31 @@ pub mod test {
         let _offer_only: CredentialOffer = transport.next_message().await;
     }
 
+    #[tokio::test]
+    async fn send_credential_returns_signing_failure() {
+        let (issuer, _transport, connection, offer) = issuer_with_offer_sent(|info| {
+            info.key_metadata.did_url = "did:example:unresolvable#key-1".to_owned()
+        })
+        .await;
+        issuer
+            .handle(request_message(
+                credential_request(&offer, |_| {}),
+                &connection,
+            ))
+            .await
+            .unwrap();
+
+        let result = issuer.send_credential(&offer.id.to_string()).await;
+
+        assert!(matches!(result, Err(Error::VC { .. })), "{result:?}");
+    }
+
     async fn issuer_with_offer_sent(
-        offered_subject: Option<&str>,
+        edit: impl FnOnce(&mut CredentialInfo),
     ) -> (TestIssuer, MockTransport, ConnectionRecord, CredentialOffer) {
         let (agent, transport) = test_agent();
         let mut credential_info = credential_info(agent.kms()).await;
-        if let Some(subject) = offered_subject {
-            subjects_mut(&mut credential_info.data)[0]
-                .insert("id".to_owned(), Claim::String(subject.to_owned()));
-        }
+        edit(&mut credential_info);
         let initial_state = initial_state_for(credential_info);
         let offer = initial_state.offer.clone();
         let storage = InMemStorage::<String, IssuerState>::new();
@@ -801,6 +820,15 @@ pub mod test {
             .unwrap();
 
         (issuer, transport, connection, offer)
+    }
+
+    fn offered_to(subject: Option<&str>) -> impl FnOnce(&mut CredentialInfo) + '_ {
+        move |info| {
+            if let Some(subject) = subject {
+                subjects_mut(&mut info.data)[0]
+                    .insert("id".to_owned(), Claim::String(subject.to_owned()));
+            }
+        }
     }
 
     /// What an honest holder sends, after `tamper` edits the credential.

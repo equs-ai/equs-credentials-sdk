@@ -15,7 +15,7 @@ use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
 use crate::didcomm::protocol::aries::issuance::{
-    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result,
+    AgentSnafu, DidUrlResolutionSnafu, KMSSnafu, ParseSnafu, Result, VCSnafu,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -276,7 +276,7 @@ impl RequestReceivedState {
             agent.did_resolver().clone(),
         )
         .await
-        .unwrap();
+        .context(VCSnafu)?;
 
         let credential_msg = Credential::create()
             .set_ldp_vc_credential(&credential)?
