@@ -45,5 +45,6 @@ Implements the DIDComm V2 protocol engine for secure, decentralised agent-to-age
 - Outbound `from` is authenticated too: `MessageSender` authcrypts as `SendOptions.from`, else `msg.from`, and anoncrypts only when neither is set.
 - Present-proof presentations are bound to their request: the holder signs with, and the verifier requires, the request's `id` as challenge and the verifier's invitation DID as domain, so a presentation is not accepted by another verifier or for another request. A caller-built presentation takes the binding from `PresentationHolder::holder_binder`; a request state stored without the verifier DID fails with `InvalidState` and the exchange restarts with a new request.
 - Aries problem reports carry a fixed comment; error details stay in local logs and are never sent to the peer.
+- The Aries issuance holder requests credentials for its own DID only: an offer whose first subject `id` names another subject gets an `invalid-credential-offer` problem report.
 - `StatefulMessageHandler` + `StateMachine` enforce a strict event-sourced state-transition model; state is always persisted before the handler returns.
 

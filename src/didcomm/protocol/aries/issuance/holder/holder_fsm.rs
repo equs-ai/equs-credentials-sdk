@@ -24,6 +24,7 @@ use crate::didcomm::protocol::aries::problem_report::message::{
 };
 use crate::kms::{KeyHandle, Kms};
 use crate::utils::serde::Helpers;
+use crate::vc::claims::Claim;
 use crate::vc::core::KeyMetadata;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
@@ -462,7 +463,16 @@ impl OfferReceivedState {
             .build()
         })?;
 
-        cred_subject.put_str("id", holder_did.to_string());
+        match cred_subject.get("id") {
+            None => cred_subject.put_str("id", holder_did.to_string()),
+            Some(Claim::String(id)) if id == holder_did => {}
+            Some(_) => {
+                return InvalidCredentialOfferSnafu {
+                    details: "Credential offer is bound to another subject",
+                }
+                .fail();
+            }
+        }
 
         let cred_req = CredentialRequest::create().set_ldp_vc_credential(&credential);
 
@@ -480,6 +490,9 @@ impl FinishedHolderState {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+    use serde_json::json;
+
     use crate::didcomm::agent::test_utils::test_agent;
     use crate::didcomm::connection::test_utils::create_test_connection;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
@@ -490,11 +503,52 @@ mod tests {
     };
     use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
     use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
+    use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
     use crate::didcomm::protocol::aries::problem_report::message::{
         ProblemReport, ProblemReportCode,
     };
     use crate::inmem::vault::InMemVault;
     use crate::vc::core::KeyMetadata;
+    use crate::vc::formats::json_ld_vc;
+
+    const HOLDER_DID: &str = "did:example:holder";
+
+    #[rstest]
+    #[case::unbound_offer(None)]
+    #[case::offer_bound_to_the_holder(Some(HOLDER_DID))]
+    #[tokio::test]
+    async fn credential_request_names_the_holder(#[case] offered_subject: Option<&str>) {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let state = offer_received(offered_subject, connection.id);
+
+        HolderSM::step(state, key_metadata(), agent, InMemVault::new())
+            .handle_message(HolderMessages::CredentialRequestSend)
+            .await
+            .unwrap();
+
+        let request: CredentialRequest = transport.next_message().await;
+        let vc = serde_json::to_value(request.get_ldp_vc_credential().unwrap()).unwrap();
+        assert_eq!(vc["credentialSubject"]["id"], json!(HOLDER_DID));
+    }
+
+    #[tokio::test]
+    async fn offer_bound_to_another_subject_is_not_requested() {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let state = offer_received(Some("did:example:other"), connection.id);
+
+        let result = HolderSM::step(state, key_metadata(), agent, InMemVault::new())
+            .handle_message(HolderMessages::CredentialRequestSend)
+            .await;
+
+        assert!(result.is_err());
+        let report: ProblemReport = transport.next_message().await;
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidCredentialOffer.code()
+        );
+    }
 
     #[tokio::test]
     async fn unusable_offer_reported_without_error_details() {
@@ -550,6 +604,28 @@ mod tests {
         );
     }
 
+    fn offer_received(subject: Option<&str>, connection_id: String) -> IssuanceHolderState {
+        let mut credential = json!({
+            "@context": ["https://www.w3.org/2018/credentials/v1"],
+            "type": ["VerifiableCredential"],
+            "issuer": "did:example:issuer",
+            "issuanceDate": "2026-01-01T00:00:00Z",
+            "credentialSubject": { "givenName": "JANE" }
+        });
+        if let Some(subject) = subject {
+            credential["credentialSubject"]["id"] = json!(subject);
+        }
+        let credential: json_ld_vc::Credential = serde_json::from_value(credential).unwrap();
+
+        IssuanceHolderState::OfferReceived(OfferReceivedState {
+            offer: CredentialOffer::create()
+                .set_ldp_vc_credential(&credential)
+                .unwrap(),
+            connection_id,
+            thread: thread(),
+        })
+    }
+
     fn thread() -> Thread {
         Thread::new().set_thid("thread".to_owned())
     }
@@ -557,7 +633,7 @@ mod tests {
     fn key_metadata() -> KeyMetadata {
         KeyMetadata {
             kid: "kid".to_owned(),
-            did_url: "did:example:holder#key-1".to_owned(),
+            did_url: format!("{HOLDER_DID}#key-1"),
         }
     }
 }

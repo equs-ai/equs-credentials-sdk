@@ -575,7 +575,6 @@ async fn credential_info(
         "familyName": "SMITH",
         "gender": "Female",
         "image": "data:image/png;base64,iVBORw0KGgoAA...Jggg==",
-        "id": "urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f",
         "residentSince": "2015-01-01",
         "commuterClassification": "C1",
         "birthCountry": "Arcadia",
