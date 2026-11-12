@@ -6,7 +6,7 @@ use crate::didcomm::protocol::aries::present_proof::message::presentation::Prese
 use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
 use crate::didcomm::protocol::aries::present_proof::{
     AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    ParseSnafu, Result, VerificationFailedSnafu,
+    ParseSnafu, Result, VerificationFailedSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -17,7 +17,7 @@ use base64::prelude::BASE64_STANDARD;
 use didcomm::AttachmentData;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 // Possible Transitions:
 //
@@ -68,7 +68,13 @@ impl InitialState {
         thread = thread.set_opt_pthid(connection.parent_thread_id.to_owned());
 
         Ok(VerifierState::PresentationRequestSent(
-            (self.presentation_request, thread, connection.id).into(),
+            (
+                self.presentation_request,
+                thread,
+                connection.id,
+                connection.my_did,
+            )
+                .into(),
         ))
     }
 }
@@ -79,6 +85,9 @@ pub struct PresentationRequestSentState {
     #[serde(default)]
     pub thread: Thread,
     pub connection_id: String,
+    /// The DID the request was sent from; a presentation must carry it as its domain.
+    #[serde(default)]
+    pub verifier_did: Option<String>,
 }
 
 impl PresentationRequestSentState {
@@ -105,11 +114,13 @@ impl PresentationRequestSentState {
             )),
             Err(err) => {
                 // thread = thread.increment_sender_order();
+                warn!("Presentation verification failed: {err}");
+                debug!("Presentation verification error: {err:?}");
 
                 let problem_report = ProblemReport::create()
                     .set_message_type(&self.presentation_request.type_)
                     .set_code(ProblemReportCode::InvalidPresentation)
-                    .set_comment(format!("error occurred: {:?}", err))
+                    .set_comment(String::from("presentation verification failed"))
                     .set_thread(thread.to_owned());
 
                 agent
@@ -135,6 +146,9 @@ impl PresentationRequestSentState {
         );
         debug!("verifier verifying received presentation");
 
+        let holder_binder =
+            holder_binder(&self.presentation_request, self.verifier_did.as_deref())?;
+
         let attachment = presentation
             .attachments
             .first()
@@ -159,9 +173,9 @@ impl PresentationRequestSentState {
             }
         };
 
-        let result = verifier_service
+        verifier_service
             .verify_presentation(
-                None,
+                Some(holder_binder),
                 &presentation,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
@@ -182,9 +196,14 @@ pub struct FinishedState {
     pub thread: Thread,
 }
 
-impl From<(PresentationRequest, Thread, String)> for PresentationRequestSentState {
+impl From<(PresentationRequest, Thread, String, String)> for PresentationRequestSentState {
     fn from(
-        (presentation_request, thread, connection_id): (PresentationRequest, Thread, String),
+        (presentation_request, thread, connection_id, verifier_did): (
+            PresentationRequest,
+            Thread,
+            String,
+            String,
+        ),
     ) -> Self {
         trace!("VerifierSM transit state to PresentationRequestSentState");
         trace!("Thread: {:?}", thread);
@@ -192,6 +211,7 @@ impl From<(PresentationRequest, Thread, String)> for PresentationRequestSentStat
             presentation_request,
             thread,
             connection_id,
+            verifier_did: Some(verifier_did),
         }
     }
 }
@@ -224,5 +244,49 @@ impl From<(PresentationRequest, Status, Thread)> for FinishedState {
             status,
             thread,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::did::universal::UniversalResolver;
+    use crate::didcomm::protocol::aries::common::message::thread::Thread;
+    use crate::didcomm::protocol::aries::present_proof::Error;
+    use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
+    use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
+    use crate::didcomm::protocol::aries::present_proof::verifier::states::{
+        PresentationRequestSentState, VerifierState,
+    };
+    use crate::vc::core::VerifierService;
+
+    #[tokio::test]
+    async fn verify_presentation_failed_for_state_stored_without_verifier_did() {
+        let state = VerifierState::PresentationRequestSent(PresentationRequestSentState {
+            presentation_request: PresentationRequest::new(),
+            thread: Thread::new().set_thid("thread".to_owned()),
+            connection_id: "connection".to_owned(),
+            verifier_did: Some("did:example:verifier".to_owned()),
+        });
+        let mut stored = serde_json::to_value(state).unwrap();
+        stored["PresentationRequestSent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("verifier_did");
+        let VerifierState::PresentationRequestSent(state) = serde_json::from_value(stored).unwrap()
+        else {
+            panic!("stored state is not PresentationRequestSent");
+        };
+        let verifier_service =
+            VerifierService::new("did:example:verifier", UniversalResolver::default());
+
+        let result = state
+            .verify_presentation(&Presentation::create(), &verifier_service)
+            .await;
+
+        assert_eq!(state.verifier_did, None);
+        assert!(
+            matches!(&result, Err(Error::InvalidState { details }) if details.contains("no verifier DID")),
+            "unexpected result: {result:?}"
+        );
     }
 }

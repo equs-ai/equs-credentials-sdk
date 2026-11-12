@@ -21,14 +21,15 @@ Fields: `agent`, `key_metadata`, `source_id`, `storage`, `vault`, `event_emitter
 ### Construction (`PresentationHolder::new`)
 1. Parses OOB invitation URL → extracts `PresentationRequest` from first attachment.
 2. Accepts OOB invitation → creates `ConnectionRecord`.
-3. Stores initial `PresentationHolderState::RequestReceived` state.
+3. Stores initial `PresentationHolderState::RequestReceived` state, with the invitation's `from` as `verifier_did`.
 4. Creates `HolderService` (wraps KMS + vault).
 5. Registers `PresentationProtocol::new_with_holder(self)` with the agent.
 
 ### Public API
 ```
+holder_binder()        → HolderBinder for the received request (RequestReceived state only)
 prepare_presentation() → PresentationPrepared state (auto-creates VP)
-set_presentation(pres) → sets manually supplied VP
+set_presentation(pres) → sets a caller-built VP, which must be bound with holder_binder()
 send_presentation()    → Finished state, sends VP on wire
 step(message)          → generic state transition
 observe_state()        → (Subscription, EventObservable<PresentationHolderState>)
@@ -37,8 +38,8 @@ observe_state()        → (Subscription, EventObservable<PresentationHolderStat
 ### State machine (`HolderSM`)
 ```
 RequestReceived
-  + PreparePresentation        → PresentationPrepared  (auto-creates VP via HolderService)
-  + SetPresentation            → PresentationPrepared  (caller supplies VP)
+  + PreparePresentation        → PresentationPrepared  (auto-creates a VP for the first input descriptor, bound to the request; fails without a descriptor or `verifier_did`)
+  + SetPresentation            → PresentationPrepared  (caller supplies a VP bound with `holder_binder()`)
   + RejectPresentationRequest  → Finished
 
 PresentationPrepared

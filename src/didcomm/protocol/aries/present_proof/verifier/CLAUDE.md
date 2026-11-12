@@ -47,7 +47,7 @@ Finished → Finished (terminal)
 
 ### States
 - `InitialState` — holds `presentation_request`
-- `PresentationRequestSentState` — calls `VerifierService::verify_presentation`; sends `ProblemReport` on failure
+- `PresentationRequestSentState` — holds `verifier_did`, the DID the request was sent from; calls `VerifierService::verify_presentation` with the request's `HolderBinder` (see [../CLAUDE.md](../CLAUDE.md)). On failure it sends an `invalid-presentation` `ProblemReport` with the fixed comment `presentation verification failed`, logs the error locally, and stays in `PresentationRequestSent`. A state without `verifier_did` fails with `InvalidState` before the presentation is read; the DID is not taken from the connection, whose `my_did` changes when the holder's first message completes it.
 - `FinishedState` — holds `presentation_request`, optional `presentation`, `status`, `thread`
 
 ## Dependencies

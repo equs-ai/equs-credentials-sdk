@@ -20,6 +20,7 @@ Groups all Aries-compatible DIDComm protocol implementations. Each sub-module is
 - State is persisted to `Storage<String, StateEnum>` keyed by thread/request ID.
 - `EventEmitter<String, StateEnum>` is embedded for subscriber notification of state transitions.
 - `impl_didcomm_message_conversion!` macro generates `TryFrom<Message>` / `TryInto<Message>` for wire message structs.
+- A problem report sent on an internal failure carries a fixed comment; the error itself goes only to local logs (`warn!` with its `Display`, `debug!` with its `Debug` chain).
 
 ## Dependency graph within Aries
 `present_proof` and `issuance` both depend on:
