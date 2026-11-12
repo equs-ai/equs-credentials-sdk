@@ -37,6 +37,9 @@ pub struct RequestReceivedState {
     pub connection_id: String,
     #[serde(default)]
     pub thread: Thread,
+    /// The DID the request came from; the presentation carries it as its domain.
+    #[serde(default)]
+    pub verifier_did: Option<String>,
 }
 
 impl RequestReceivedState {
@@ -45,11 +48,17 @@ impl RequestReceivedState {
             presentation_request,
             connection_id,
             thread: Default::default(),
+            verifier_did: None,
         }
     }
 
     pub fn set_thread_id(mut self, id: String) -> Self {
         self.thread = Thread::new().set_thid(id);
+        self
+    }
+
+    pub fn set_verifier_did(mut self, did: String) -> Self {
+        self.verifier_did = Some(did);
         self
     }
 }

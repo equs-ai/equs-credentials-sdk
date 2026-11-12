@@ -1,8 +1,10 @@
 use crate::didcomm::protocol::outofband;
 use crate::didcomm::{agent, connection, service};
+use crate::nonce::Nonce;
 use crate::storage;
+use crate::vc::core::HolderBinder;
 use common_macros::DebugError;
-use snafu::{Location, Snafu};
+use snafu::{Location, OptionExt, Snafu};
 use ssi::dids::InvalidDIDURL;
 
 pub mod holder;
@@ -129,4 +131,26 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+}
+
+/// The binding a presentation answering `request` carries: the request's `id` as challenge and
+/// the DID the verifier sent the request from as domain.
+///
+/// # Errors
+///
+/// * [Error::InvalidState] - `verifier_did` is `None`, as in a state stored without it. Such a
+///   state never produces or verifies a presentation; the exchange restarts with a new request.
+fn holder_binder(
+    request: &message::presentation_request::PresentationRequest,
+    verifier_did: Option<&str>,
+) -> Result<HolderBinder> {
+    let verifier_id = verifier_did.context(InvalidStateSnafu {
+        details: "state has no verifier DID; restart with a new presentation request",
+    })?;
+
+    Ok(HolderBinder {
+        nonce: Nonce::from_secret(request.id.to_string()),
+        verifier_id: verifier_id.to_owned(),
+        response_uri: None,
+    })
 }
