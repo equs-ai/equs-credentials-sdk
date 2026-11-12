@@ -37,7 +37,7 @@ pub struct RequestReceivedState {
     pub connection_id: String,
     #[serde(default)]
     pub thread: Thread,
-    /// The DID the request came from; the presentation carries it as its domain.
+    /// DID of the verifier that sent the request.
     #[serde(default)]
     pub verifier_did: Option<String>,
 }

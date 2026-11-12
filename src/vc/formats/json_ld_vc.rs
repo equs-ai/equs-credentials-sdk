@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde::de::{DeserializeOwned, IntoDeserializer};
 use snafu::{ResultExt, ensure};
 use ssi::claims::data_integrity::{
-    AnyInputSuiteOptions, AnySelectionOptions, AnySignatureOptions, Proofs,
+    AnyInputSuiteOptions, AnySelectionOptions, AnySignature, AnySignatureOptions, Proofs,
 };
 use ssi::claims::vc::AnySpecializedJsonCredential;
 use ssi::claims::vc::syntax::IdOr;
@@ -480,6 +480,12 @@ impl JsonLdAPI {
         let verifier = VerificationParameters::from_resolver(did_resolver.clone());
         let mut selection_opts = AnySelectionOptions::default();
         selection_opts.selective_pointers = metadata.disclosures;
+        // A BBS presentation has no proof of its own, so the binding goes in the derived proof.
+        selection_opts.presentation_header = metadata
+            .holder_binder
+            .as_ref()
+            .map(Self::bbs_presentation_header)
+            .transpose()?;
 
         let derived = Self::create_derived_vc_from_base(&vc, &verifier, selection_opts).await?;
 
@@ -853,6 +859,11 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
                             }
                             .build()
                         })?;
+
+                    // The header can be trusted now that the proof verified.
+                    if let Some(binder) = &holder_binder {
+                        Self::ensure_bbs_bound_to_request(&vc.proofs, binder)?;
+                    }
                 }
             }
             _ => {
@@ -967,6 +978,44 @@ impl JsonLdAPI {
             )
             .await
             .context(SpruceSigningSnafu)
+    }
+
+    /// The BBS presentation header for `binder`: `{"challenge": ..., "domain": ...}` as JSON.
+    ///
+    /// The BBS specs leave the header's contents open, so only SDK verifiers check this format.
+    fn bbs_presentation_header(binder: &HolderBinder) -> Result<Vec<u8>> {
+        #[derive(serde::Serialize)]
+        struct Header<'a> {
+            challenge: &'a str,
+            domain: &'a str,
+        }
+
+        serde_json::to_vec(&Header {
+            challenge: binder.nonce.secret(),
+            domain: &binder.verifier_id,
+        })
+        .context(JsonSnafu)
+    }
+
+    /// Checks that every BBS proof carries `binder`'s header. Call only after the proofs verify.
+    fn ensure_bbs_bound_to_request(proofs: &Proofs<AnySuite>, binder: &HolderBinder) -> Result<()> {
+        let expected = Self::bbs_presentation_header(binder)?;
+        let bound = proofs
+            .iter()
+            .filter(|proof| proof.type_ == AnySuite::Bbs2023)
+            .all(|proof| match &proof.signature {
+                AnySignature::Bbs2023(signature) => signature
+                    .decode_derived()
+                    .is_ok_and(|derived| derived.presentation_header.as_ref() == Some(&expected)),
+                _ => false,
+            });
+        ensure!(
+            bound,
+            VerifyingSnafu {
+                details: "Verifiable Presentation is not bound to this request"
+            }
+        );
+        Ok(())
     }
 
     fn ensure_bound_to_request(presentation: &VP, binder: &HolderBinder) -> Result<()> {
@@ -2242,6 +2291,58 @@ mod tests {
         assert_eq!(JsonLdAPI::did_of(vm), Some(did.to_string()));
     }
 
+    #[rstest]
+    #[case::bound_to_another_nonce(true, "verifier_id")]
+    #[case::bound_to_another_verifier(false, "other_verifier")]
+    #[tokio::test]
+    async fn verify_vp_rejects_bbs_presentation_bound_to_another_request(
+        #[case] fresh_nonce: bool,
+        #[case] expected_verifier: &str,
+    ) {
+        let nonce_handler = LocalNonceHandler::default();
+        let nonce = nonce_handler.generate().await.unwrap();
+        let vp = bbs_presentation(binder(nonce.clone(), "verifier_id")).await;
+        let expected_nonce = if fresh_nonce {
+            nonce_handler.generate().await.unwrap()
+        } else {
+            nonce
+        };
+
+        let result = JsonLdAPI::verify_vp(
+            &vp,
+            binder(expected_nonce, expected_verifier),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("not bound to this request"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_vp_rejects_unbound_bbs_presentation_when_a_binding_is_required() {
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
+        let vp = bbs_presentation(None).await;
+
+        let result = JsonLdAPI::verify_vp(
+            &vp,
+            binder(nonce, "verifier_id"),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("not bound to this request"),
+            "{err}"
+        );
+    }
+
     fn binder(nonce: crate::nonce::Nonce, verifier_id: &str) -> Option<HolderBinder> {
         Some(HolderBinder {
             nonce,
@@ -2332,5 +2433,50 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+    /// A BBS presentation of an alumni credential, bound with `holder_binder`.
+    async fn bbs_presentation(holder_binder: Option<HolderBinder>) -> VP {
+        let kms = LocalKms::new();
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::Bls12381).await;
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let mut metadata = VCMetadata::new(
+            vec![
+                IriRefBuf::from_str("https://www.w3.org/ns/credentials/v2").unwrap(),
+                IriRefBuf::from_str("https://www.w3.org/ns/credentials/examples/v2").unwrap(),
+            ],
+            vec![
+                "VerifiableCredential".to_string(),
+                "AlumniCredential".to_string(),
+            ],
+            Some(Duration::days(5 * 365)),
+        )
+        .unwrap();
+        metadata.mandatory_claims = Some(vec!["/type".parse().unwrap()]);
+        metadata.credential_id =
+            Some(UriBuf::from_str("urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f").unwrap());
+        let claims = json!({
+            "id": hld_did_url.did().to_string(),
+            "alumniOf": "The School of Examples",
+            "degree": "Bachelor of Schools",
+        });
+        let vc = JsonLdAPI::create_vc(
+            claims.try_into().unwrap(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            metadata,
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let mut vp_metadata = VPMetadata::new(&vc, holder_binder).unwrap();
+        vp_metadata.disclosures = vec![
+            "/type".parse().unwrap(),
+            "/issuer".parse().unwrap(),
+            "/credentialSubject/alumniOf".parse().unwrap(),
+        ];
+        JsonLdAPI::create_vp(&vc, hld_kh, vp_metadata, UniversalResolver::default())
+            .await
+            .unwrap()
     }
 }

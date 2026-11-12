@@ -149,6 +149,15 @@ where
         config: InvitationConfig,
     ) -> Result<(Url, ConnectionRecord)> {
         let my_did = self.create_did(config.key_type.clone()).await?;
+        self.create_invitation_from(config, my_did).await
+    }
+
+    /// Like [Self::create_invitation], but from a DID made earlier with [Self::create_did].
+    pub(crate) async fn create_invitation_from(
+        &self,
+        config: InvitationConfig,
+        my_did: DID,
+    ) -> Result<(Url, ConnectionRecord)> {
         let invite = Invitation {
             id: MessageId::new().to_string(),
             type_: INVITATION_TYPE.to_string(),
@@ -200,7 +209,7 @@ where
         Ok((invitation_url, connection))
     }
 
-    async fn create_did(&self, key_type: KeyType) -> Result<DID> {
+    pub(crate) async fn create_did(&self, key_type: KeyType) -> Result<DID> {
         let (_, kh) = self
             .agent
             .kms()
