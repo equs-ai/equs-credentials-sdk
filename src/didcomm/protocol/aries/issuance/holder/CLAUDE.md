@@ -23,3 +23,4 @@ Implements the credential holder side of the WACI Aries issuance protocol: parsi
 
 ## Constraints
 - An offer it cannot turn into a request, or a credential it cannot store, gets an `invalid-credential-offer` / `invalid-credential` problem report with a fixed comment; the error is logged locally, never sent to the issuer.
+- The credential request names the holder's DID as the first subject's `id`; an offer whose subject `id` is anything else is rejected.

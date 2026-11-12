@@ -810,14 +810,6 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         Ok(())
     }
 
-    /// Verifies a presentation and every credential it carries; credential expiry is left to
-    /// [IsExpired].
-    ///
-    /// A presentation with its own proof is accepted only when each embedded credential's proof
-    /// verifies and, when `holder_binder` is given, every presentation proof carries its nonce as
-    /// `challenge` and its verifier id among `domains`. A V2 presentation without its own proof is
-    /// accepted only when every credential is BBS-signed; such presentations carry no holder
-    /// binding.
     #[instrument(level = Level::TRACE, skip(holder_binder, did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &VP,
@@ -829,12 +821,6 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
 
         match &presentation.claims {
             Presentation::V2(vp) if presentation.proofs.is_empty() => {
-                ensure!(
-                    !vp.verifiable_credentials.is_empty(),
-                    VerifyingSnafu {
-                        details: "Verifiable Presentation does not contain a proof"
-                    }
-                );
                 for vc in &vp.verifiable_credentials {
                     let is_bbs_signed = vc.proofs.iter().any(|s| s.type_ == AnySuite::Bbs2023);
 
@@ -1033,16 +1019,6 @@ impl JsonLdAPI {
         Ok(())
     }
 
-    /// The DID a verification method id belongs to: the DID URL up to its path, query or
-    /// fragment.
-    fn did_of(verification_method: &str) -> Option<String> {
-        let end = verification_method
-            .find(['/', '?', '#'])
-            .unwrap_or(verification_method.len());
-        let did = &verification_method[..end];
-        did.starts_with("did:").then(|| did.to_string())
-    }
-
     /// The presentation must be signed, and every DID that signed it must be one of the subject
     /// `id`s of each credential whose subjects carry any.
     fn ensure_signed_by_subject(presentation: &VP) -> Result<()> {
@@ -1056,20 +1032,19 @@ impl JsonLdAPI {
             }
         }
 
-        let to_json = |e: serde_json::Error| {
+        let signer_dids: Vec<String> = presentation
+            .proofs
+            .iter()
+            .filter_map(|p| DIDURL::new(p.verification_method.id().as_str()).ok())
+            .map(|url| url.did().to_string())
+            .collect();
+
+        let claims = serde_json::to_value(&presentation.claims).map_err(|e| {
             VerifyingSnafu {
                 details: e.to_string(),
             }
             .build()
-        };
-        let proofs = serde_json::to_value(&presentation.proofs).map_err(to_json)?;
-        let signer_dids: Vec<String> = one_or_many(&proofs)
-            .into_iter()
-            .filter_map(|p| p.get("verificationMethod").and_then(Value::as_str))
-            .filter_map(Self::did_of)
-            .collect();
-
-        let claims = serde_json::to_value(&presentation.claims).map_err(to_json)?;
+        })?;
         let signed_by_subject = one_or_many(&claims["verifiableCredential"])
             .into_iter()
             .all(|vc| {
