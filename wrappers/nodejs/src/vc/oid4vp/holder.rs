@@ -215,6 +215,11 @@ pub struct _AuthorizationRequest {
         js_name = "expected_origins"
     )]
     pub expected_origins: Option<Vec<String>>,
+    #[napi(
+        ts_type = "Array<VerifierInfoEntry> | null | undefined",
+        js_name = "verifier_info"
+    )]
+    pub verifier_info: Option<Vec<JsonObject>>,
 }
 
 impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
@@ -250,6 +255,10 @@ impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
             state: value.state,
             transaction_data,
             expected_origins: value.expected_origins,
+            verifier_info: value
+                .verifier_info
+                .map(|entries| entries.into_iter().map(from_json_object).collect())
+                .transpose()?,
         })
     }
 }
@@ -278,6 +287,10 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
             state: value.state,
             transaction_data,
             expected_origins: value.expected_origins,
+            verifier_info: value
+                .verifier_info
+                .map(|entries| entries.into_iter().map(to_json_object).collect())
+                .transpose()?,
         })
     }
 }

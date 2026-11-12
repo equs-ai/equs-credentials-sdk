@@ -1023,6 +1023,16 @@ pub mod fixtures {
             /// `auth_request_json()` signed by the fixture verifier key as
             /// `application/oauth-authz-req+jwt`, the request object `request_uri()` points at.
             pub fn auth_request_jwt() -> String {
+                sign_auth_request(&auth_request_json())
+            }
+
+            pub fn auth_request_jwt_with_verifier_info(verifier_info: serde_json::Value) -> String {
+                let mut request = auth_request_json();
+                request["verifier_info"] = verifier_info;
+                sign_auth_request(&request)
+            }
+
+            fn sign_auth_request(request: &serde_json::Value) -> String {
                 let verifier = &test_fixtures::keys().verifier;
                 test_fixtures::jws(
                     &serde_json::json!({
@@ -1030,7 +1040,7 @@ pub mod fixtures {
                         "kid": test_fixtures::did_key_url(verifier),
                         "typ": "application/oauth-authz-req+jwt"
                     }),
-                    &auth_request_json(),
+                    request,
                     verifier,
                 )
             }
