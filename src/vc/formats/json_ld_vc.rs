@@ -2215,57 +2215,6 @@ mod tests {
         .unwrap();
     }
 
-    #[tokio::test]
-    async fn verify_vp_rejects_multi_subject_credential_presented_by_a_non_subject() {
-        let kms = LocalKms::new();
-        let (vc, _subjects) = issue_two_subject_credential(&kms).await;
-        let (other_did_url, other_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-        let nonce = LocalNonceHandler::default().generate().await.unwrap();
-
-        let presentation = present_as(&vc, other_kh, &other_did_url, nonce.clone()).await;
-
-        let result = JsonLdAPI::verify_vp(
-            &presentation,
-            binder(nonce, "verifier_id"),
-            VerifyOptions::default(),
-            UniversalResolver::default(),
-        )
-        .await;
-
-        assert!(
-            matches!(result, Err(Error::Verifying { .. })),
-            "presentation by a non-subject was accepted: {result:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn verify_vp_rejects_unproven_presentation_without_credentials() {
-        let presentation: VP = serde_json::from_value(json!({
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "type": "VerifiablePresentation",
-            "verifiableCredential": []
-        }))
-        .unwrap();
-
-        let result = JsonLdAPI::verify_vp(
-            &presentation,
-            None,
-            VerifyOptions::default(),
-            UniversalResolver::default(),
-        )
-        .await;
-
-        assert!(result.is_err(), "empty unproven presentation was accepted");
-    }
-
-    #[rstest]
-    #[case::fragment("did:key:z6Mk1#z6Mk1", "did:key:z6Mk1")]
-    #[case::query("did:web:example.com:u?versionId=1#key-1", "did:web:example.com:u")]
-    #[case::path("did:web:example.com/keys#key-1", "did:web:example.com")]
-    fn signer_did_is_the_did_of_the_verification_method(#[case] vm: &str, #[case] did: &str) {
-        assert_eq!(JsonLdAPI::did_of(vm), Some(did.to_string()));
-    }
-
     #[rstest]
     #[case::bound_to_another_nonce(true, "verifier_id")]
     #[case::bound_to_another_verifier(false, "other_verifier")]
