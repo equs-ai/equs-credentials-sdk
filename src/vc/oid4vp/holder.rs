@@ -23,7 +23,7 @@ use crate::vc::oid4vp::{
     CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequest,
     DeclineAuthorizationRequestReason, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
     ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, STATE,
-    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, as_delegate,
+    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, VerifierInfo, as_delegate,
     get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
@@ -1118,6 +1118,21 @@ where
             }
             Err(e) => return Err(e),
         };
+        let verifier_info = match aro.get::<VerifierInfo>().transpose() {
+            Ok(verifier_info) => verifier_info.map(|v| Vec::from(v.0)),
+            Err(_) => {
+                let source = ProtocolError::new(
+                    ErrorType::InvalidRequest,
+                    Some("verifier_info is malformed".to_string()),
+                    aro.state(),
+                );
+                let source = self
+                    .handle_auth_error_resp(aro.return_uri(), aro.response_mode(), source)
+                    .await?;
+
+                return Err(Protocol { source });
+            }
+        };
         if let Some(td) = aro.get_transaction_data_items()? {
             self.validate_transaction_data(&rpq, &td)?;
         }
@@ -1137,6 +1152,7 @@ where
                     .map(|v| v.unicode_serialization())
                     .collect::<Vec<String>>()
             }),
+            verifier_info,
         })
     }
 
@@ -1516,7 +1532,7 @@ mod tests {
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
         AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_REDIRECT_URI,
         AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
-        auth_request_json, auth_request_jwt,
+        auth_request_json, auth_request_jwt, auth_request_jwt_with_verifier_info,
     };
     use crate::vc::oid4vp::tests::fixtures::{
         STATE, VERIFIER_URL, multi_presentation, request_uri, sample_credential_status_list,
@@ -1656,6 +1672,81 @@ mod tests {
             .unwrap();
 
         assert_eq!(request_obj.state, Some(STATE.to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_auth_request_passes_verifier_info_through() {
+        let verifier_info = json!([
+            {
+                "format": "registration_cert",
+                "data": { "name": "Example Shop" },
+                "credential_ids": ["Identity-1"]
+            },
+            { "format": "dtk_agent_info", "data": "eyJhbGciOiJFUzI1NiJ9.e30.c2ln" }
+        ]);
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            build_url(VERIFIER_URL, "request"),
+            auth_request_jwt_with_verifier_info(verifier_info.clone()),
+            1.into(),
+        );
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
+
+        let request_obj = holder
+            .get_authorization_request(&request_uri())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            request_obj.verifier_info,
+            Some(serde_json::from_value(verifier_info).unwrap())
+        );
+    }
+
+    #[rstest]
+    #[case::empty(json!([]))]
+    #[case::not_an_array(json!({ "format": "dtk_agent_info", "data": "x" }))]
+    #[case::no_format(json!([{ "data": "x" }]))]
+    #[case::number_data(json!([{ "format": "dtk_agent_info", "data": 1 }]))]
+    #[tokio::test]
+    async fn get_auth_request_rejects_malformed_verifier_info(#[case] verifier_info: Value) {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            build_url(VERIFIER_URL, "request"),
+            auth_request_jwt_with_verifier_info(verifier_info),
+            1.into(),
+        );
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            move |req| {
+                let body = String::from_utf8(req.body().to_owned()).unwrap();
+                assert_eq!(
+                    body,
+                    format!(
+                        "error=invalid_request&error_description=verifier_info+is+malformed&state={STATE}"
+                    )
+                );
+                Ok(HttpResponse::default())
+            },
+            1.into(),
+        );
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
+
+        let err = holder
+            .get_authorization_request(&request_uri())
+            .await
+            .expect_err("malformed verifier_info must be rejected");
+
+        assert!(matches!(
+            err,
+            Error::Protocol { source } if *source.error_type() == ErrorType::InvalidRequest
+        ));
     }
 
     #[rstest]

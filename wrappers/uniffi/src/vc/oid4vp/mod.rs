@@ -5,7 +5,8 @@ use crate::utils::parse_url_arg;
 use equs_sdk::vc::oid4vp::{
     AuthorizationResponse as EqusSdkAuthorizationResponse,
     AuthorizationResponseObject as EqusSdkAuthorizationResponseObject,
-    PresentationResult as EqusSdkPresentationResult,
+    PresentationResult as EqusSdkPresentationResult, VerifierInfoData as EqusSdkVerifierInfoData,
+    VerifierInfoEntry as EqusSdkVerifierInfoEntry,
 };
 use equs_sdk::vc::oid4vp::{
     ClientId, FORMAT_DSD_JWT, FORMAT_DSD_JWT_KB, ResolvedAuthRequest, TRANSACTION_TYPE_DELEGATE,
@@ -163,6 +164,60 @@ fn unparsed_delegate_reason(data: &JsonMap) -> &'static str {
     }
 }
 
+/// A `verifier_info` entry of an authorization request: an attestation about the Verifier.
+/// The SDK checks only its shape, not its content or signature.
+#[derive(uniffi::Record)]
+pub struct VerifierInfoEntry {
+    pub format: String,
+    pub data: VerifierInfoData,
+    pub credential_ids: Option<Vec<String>>,
+}
+
+/// The `data` of a [`VerifierInfoEntry`]; its `format` says which form it takes.
+#[derive(uniffi::Enum)]
+pub enum VerifierInfoData {
+    /// A string, e.g. a JWT.
+    Text(String),
+    /// A JSON object.
+    Object(JsonMap),
+}
+
+impl From<EqusSdkVerifierInfoEntry> for VerifierInfoEntry {
+    fn from(value: EqusSdkVerifierInfoEntry) -> Self {
+        VerifierInfoEntry {
+            format: value.format,
+            data: match value.data {
+                EqusSdkVerifierInfoData::String(s) => VerifierInfoData::Text(s),
+                EqusSdkVerifierInfoData::Object(o) => VerifierInfoData::Object(o),
+            },
+            credential_ids: value.credential_ids.map(Vec::from),
+        }
+    }
+}
+
+impl TryFrom<VerifierInfoEntry> for EqusSdkVerifierInfoEntry {
+    type Error = Error;
+
+    fn try_from(value: VerifierInfoEntry) -> Result<Self> {
+        Ok(EqusSdkVerifierInfoEntry {
+            format: value.format,
+            data: match value.data {
+                VerifierInfoData::Text(s) => EqusSdkVerifierInfoData::String(s),
+                VerifierInfoData::Object(o) => EqusSdkVerifierInfoData::Object(o),
+            },
+            credential_ids: value
+                .credential_ids
+                .map(|ids| ids.try_into())
+                .transpose()
+                .map_err(|_| {
+                    Error::OID4VPHolder(
+                        "verifier_info credential_ids must not be empty".to_string(),
+                    )
+                })?,
+        })
+    }
+}
+
 #[derive(uniffi::Record)]
 pub struct AuthorizationRequest {
     pub client_id: String,
@@ -175,6 +230,8 @@ pub struct AuthorizationRequest {
     pub state: Option<String>,
     pub transaction_data: Option<Vec<TransactionDataItem>>,
     pub expected_origins: Option<Vec<String>>,
+    #[uniffi(default = None)]
+    pub verifier_info: Option<Vec<VerifierInfoEntry>>,
 }
 
 impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
@@ -204,6 +261,10 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             state: value.state,
             transaction_data: value.transaction_data,
             expected_origins: value.expected_origins,
+            verifier_info: value
+                .verifier_info
+                .map(|entries| entries.into_iter().map(TryInto::try_into).collect())
+                .transpose()?,
         })
     }
 }
@@ -225,6 +286,9 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             state: value.state,
             transaction_data: value.transaction_data,
             expected_origins: value.expected_origins,
+            verifier_info: value
+                .verifier_info
+                .map(|entries| entries.into_iter().map(Into::into).collect()),
         })
     }
 }

@@ -2,6 +2,7 @@ import {PresentationDefinition} from "./presentation-definition";
 import {ClientMetadata} from "./client-metadata";
 import {Dcql} from "./dcql";
 import {TransactionDataItem} from "./transaction-data-item";
+import {VerifierInfoEntry} from "./verifier-info-entry";
 
 
 type InternalRustAuthorizationRequest = {
@@ -14,7 +15,8 @@ type InternalRustAuthorizationRequest = {
     response_uri: string,
     state?: string,
     transaction_data?: Array<TransactionDataItem> | null | undefined,
-    expected_origins?: Array<string> | null | undefined
+    expected_origins?: Array<string> | null | undefined,
+    verifier_info?: Array<VerifierInfoEntry> | null | undefined
 }
 
 type ResolvedPresentationQueryWithPD = {
@@ -63,7 +65,8 @@ export class AuthorizationRequest {
             client_metadata: this.authRequest.client_metadata,
             resolved_presentation_query: this.presentationQuery,
             transaction_data: this.authRequest.transaction_data,
-            expected_origins: this.authRequest.expected_origins
+            expected_origins: this.authRequest.expected_origins,
+            verifier_info: this.authRequest.verifier_info
         }
     }
 
