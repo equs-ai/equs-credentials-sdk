@@ -6,7 +6,7 @@ use crate::didcomm::protocol::aries::present_proof::message::presentation::Prese
 use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
 use crate::didcomm::protocol::aries::present_proof::{
     AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    ParseSnafu, Result, VerificationFailedSnafu, holder_binder,
+    ParseSnafu, ReqwestClientBuilderSnafu, Result, VerificationFailedSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
@@ -177,7 +177,9 @@ impl PresentationRequestSentState {
             .verify_presentation(
                 Some(holder_binder),
                 &presentation,
-                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+                &ReqwestClientBuilder::new()
+                    .build()
+                    .context(ReqwestClientBuilderSnafu)?,
             )
             .await
             .context(VerificationFailedSnafu)?;

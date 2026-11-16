@@ -43,7 +43,9 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     let holder_kms = LocalKms::new();
     let nonce_gen = LocalNonceHandler::default();
 
-    let issuer = build_issuer_with_sd_jwt_credential_profile().await;
+    let issuer_kms = LocalKms::new();
+    let (_, issuer_key_metadata, _) = create_did_keymetadata_keyhandle(&issuer_kms).await;
+    let issuer = build_issuer_with_sd_jwt_credential_profile(issuer_kms, issuer_key_metadata).await;
     let holder = build_holder(holder_kms.clone()).await;
     let verifier = build_verifier(VERIFIER_ID);
 
@@ -293,8 +295,15 @@ async fn credential_issuance_and_status_verification() {
     let holder_kms = LocalKms::new();
     let nonce_gen = LocalNonceHandler::default();
 
-    let status_issuer = build_status_issuer(status_list_url.clone()).await;
-    let issuer = build_issuer_with_sd_jwt_credential_profile().await;
+    let issuer_kms = LocalKms::new();
+    let (_, issuer_key_metadata, _) = create_did_keymetadata_keyhandle(&issuer_kms).await;
+    let status_issuer = build_status_issuer(
+        status_list_url.clone(),
+        issuer_kms.clone(),
+        issuer_key_metadata.clone(),
+    )
+    .await;
+    let issuer = build_issuer_with_sd_jwt_credential_profile(issuer_kms, issuer_key_metadata).await;
     let holder = build_holder(holder_kms.clone()).await;
     let verifier = build_verifier(VERIFIER_ID);
 
@@ -412,12 +421,12 @@ async fn credential_issuance_and_status_verification() {
     println!("{:?}", cred_status);
 }
 
-async fn build_issuer_with_sd_jwt_credential_profile() -> impl Issuer {
+async fn build_issuer_with_sd_jwt_credential_profile(
+    kms: LocalKms,
+    key_metadata: KeyMetadata,
+) -> impl Issuer {
     // Initialization
     println!("Issuer creating...");
-
-    let kms = LocalKms::new();
-    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     let metadata = IssuerMetadata {
         issuer_id: key_metadata.did_url.to_string(),
@@ -494,12 +503,13 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
     IssuerService::new(kms, metadata, UniversalResolver::default())
 }
 
-async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
+async fn build_status_issuer(
+    status_list_url: Url,
+    kms: LocalKms,
+    key_metadata: KeyMetadata,
+) -> impl StatusIssuer {
     // Initialization
     println!("Status issuer creating...");
-
-    let kms = LocalKms::new();
-    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     let metadata = StatusIssuerMetadata {
         issuer_id: "123456".to_string(),

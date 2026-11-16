@@ -115,7 +115,6 @@ where
             .context(StorageSnafu)?;
 
         let http_client = ReqwestClientBuilder::new()
-            .insecure()
             .build()
             .context(ReqwestClientBuilderSnafu)?;
 

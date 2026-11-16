@@ -16,6 +16,7 @@ use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{API, AnchorPolicy, HasCredential, IsExpired, VerifyOptions};
+use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::trust::issuer::{
@@ -466,6 +467,7 @@ impl VerifierService {
             MdocStatus::StatusList { uri, idx } => StatusListJwt::get_status_list_entry(
                 uri,
                 *idx,
+                None,
                 http_client,
                 self.did_resolver.clone(),
                 None,
@@ -491,9 +493,14 @@ impl VerifierService {
         anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
+        let issuer = match SdJwtAPI::extract_issuer_identifier(presentation).context(VCSnafu)? {
+            Some(CredentialIssuerIdentifier::DID(did_url)) => Some(did_url.did().to_owned()),
+            _ => None,
+        };
 
         let status = StatusListJwt::get_vc_status_with_trusted_certs(
             &claims,
+            issuer.as_deref(),
             http_client,
             self.did_resolver.clone(),
             None,
@@ -872,6 +879,99 @@ mod tests {
         let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
 
         status_list
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod sd_jwt_status {
+        use crate::did::universal::UniversalResolver;
+        use crate::http::MockHttpClient;
+        use crate::nonce::Nonce;
+        use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
+        use crate::vc::Presentation;
+        use crate::vc::core::tests::fixtures::VERIFIER_ID;
+        use crate::vc::core::{HolderBinder, Verifier, VerifierService};
+        use crate::vc::status_formats::status_list_token_jwt::tests::did_status_list_token;
+        use crate::vc::trust::issuer::IssuerTrustVerification;
+        use oauth2::http::Method;
+        use serde_json::json;
+        use std::str::FromStr;
+        use url::Url;
+
+        const STATUS_LIST_URI: &str = "https://status.example/sd-jwt/1";
+        const NONCE: &str = "n0NcE";
+
+        /// SD-JWT VC presentation issued by the fixture issuer's `did:key`, valid at index 0 of
+        /// the status list at [STATUS_LIST_URI].
+        fn presentation() -> Presentation {
+            let keys = test_fixtures::keys();
+            let now = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+            let sd_jwt = test_fixtures::sd_jwt(
+                &json!({
+                    "typ": "dc+sd-jwt", "alg": "ES256",
+                    "kid": test_fixtures::did_key_url(&keys.issuer)
+                }),
+                &json!({
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "iss": test_fixtures::did_key(&keys.issuer),
+                    "cnf": { "jwk": keys.holder.to_public() },
+                    "status": { "status_list": { "idx": 0, "uri": STATUS_LIST_URI } },
+                    "exp": now + 3600,
+                    "iat": now - 60
+                }),
+                &[],
+                &keys.issuer,
+            );
+            Presentation::SdJwtVp(test_fixtures::sd_jwt_kb(
+                &sd_jwt,
+                &json!({ "typ": "kb+jwt", "alg": "ES256" }),
+                &json!({ "aud": VERIFIER_ID, "iat": now - 60, "nonce": NONCE }),
+                &keys.holder,
+            ))
+        }
+
+        async fn verify(status_list: String) -> crate::vc::core::Result<IssuerTrustVerification> {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn_with_plain_text_resp(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                status_list,
+                1.into(),
+            );
+
+            VerifierService::new(VERIFIER_ID, UniversalResolver::default())
+                .verify_presentation(
+                    Some(HolderBinder {
+                        nonce: Nonce::from_secret(NONCE.to_string()),
+                        verifier_id: VERIFIER_ID.to_string(),
+                        response_uri: None,
+                    }),
+                    &presentation(),
+                    &http_client,
+                )
+                .await
+        }
+
+        #[tokio::test]
+        async fn status_list_signed_by_the_issuer_did_is_accepted() {
+            let status_list =
+                did_status_list_token(STATUS_LIST_URI, &test_fixtures::keys().issuer, false);
+
+            verify(status_list).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn status_list_signed_by_another_did_is_rejected() {
+            let status_list =
+                did_status_list_token(STATUS_LIST_URI, &test_fixtures::JWK::generate_p256(), false);
+
+            let error = verify(status_list).await.unwrap_err().to_string();
+
+            assert!(
+                error.contains("status list is not signed by the credential issuer"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
