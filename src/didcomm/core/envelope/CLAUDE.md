@@ -8,7 +8,7 @@ Wraps the external `didcomm` crate to provide DIDComm V2 message packing and unp
 | File | Role |
 |------|------|
 | `mod.rs` | `EnvelopeService`, type aliases, `DIDCommKms` re-export, `Error`/`Result`, tests |
-| `kms.rs` | `KmsWrapper<KMS, KH>` — adapts `Kms<KH>` to `didcomm::secrets::KeyManagementService` |
+| `kms.rs` | `KmsWrapper<KMS, KH>` — adapts `Kms<KH>` to `didcomm::secrets::KeyManagementService`; a key ID whose DID doesn't resolve is `SecretNotFound` on secret lookups and `DIDNotResolved` in key derivation, never a panic |
 | `did_resolver.rs` | `DidResolverWrapper` — adapts `UniversalResolver` to `didcomm::did::DIDResolver` |
 
 ## Key types / traits
@@ -40,6 +40,8 @@ Single-variant snafu struct: `Error { source: didcomm::error::Error, location: L
 - `pack_plaintext_succeeded` — verifies exact JSON output of plaintext pack.
 - Two `#[should_panic]` tests: incorrect sender DID and incorrect recipient DID.
 - `unpack_failed_with_from_not_matching_signer` (`#[should_panic]`) — a JWS signed by one DID with `from` naming another; guards that the `didcomm` dependency enforces the sender binding.
+
+`kms.rs` tests: a key ID that doesn't resolve is skipped by `find_secrets` and fails `get_key_alg` and `resolve_key` with an error.
 
 All tests use `LocalKms` + `UniversalResolver::default()` + `DIDPeer::generate_did_peer4`.
 

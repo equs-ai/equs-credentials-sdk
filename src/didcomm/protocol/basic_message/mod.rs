@@ -174,8 +174,8 @@ where
         content: String,
         options: SendOptions,
     ) -> Result<String> {
-        info!("Sending basic message to {}: {}", their_did, content);
         let message_id = Uuid::new_v4().to_string();
+        info!("Sending basic message {message_id}");
         let utc_now = OffsetDateTime::now_utc().unix_timestamp();
         let message_content = BasicMessageContent {
             content: content.clone(),
@@ -274,7 +274,7 @@ where
     }
 
     async fn handle(&self, msg: Message) -> protocol::Result<()> {
-        debug!("Handling basic message: {:?}", msg);
+        debug!("Handling basic message {}", msg.id);
 
         // Parse the message content
         let content: BasicMessageContent = match serde_json::from_value(msg.body.clone()) {

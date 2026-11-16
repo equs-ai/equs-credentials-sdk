@@ -373,6 +373,7 @@ where
 
         let delegate_payloads = Self::resolve_delegate_payloads(state, &items)
             .map_err(|err| Error::Protocol { source: err })?;
+        vc::oid4vp::delegate::check_delegate_payloads_not_expired(&delegate_payloads, state)?;
 
         let claims_to_disclose = Some(
             vc::formats::sd_jwt_vc::SdJwtAPI::resolve_disclosures(input)

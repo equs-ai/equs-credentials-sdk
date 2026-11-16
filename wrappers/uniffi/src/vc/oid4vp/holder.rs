@@ -81,7 +81,7 @@ impl OID4VPHolder {
             .holder
             .present_credentials_auto(&auth_request, &auth_response_metadata)
             .await
-            .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
+            .map_err(Error::from)?;
 
         Ok(result.into())
     }
@@ -155,7 +155,7 @@ impl OID4VPHolder {
             .holder
             .present_credentials(&auth_request, &credential_mapping, &auth_response_metadata)
             .await
-            .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
+            .map_err(Error::from)?;
 
         Ok(result.into())
     }
