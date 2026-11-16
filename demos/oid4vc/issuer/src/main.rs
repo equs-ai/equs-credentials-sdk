@@ -74,8 +74,11 @@ struct AppState {
 async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let (issuer, did_document) = issuer().await;
-    let status_issuer = status_issuer().await;
+    let kms = LocalKms::new();
+    // In the real service these should be generated beforehand/taken from configuration/persistence
+    let (did, key_metadata, did_document) = create_did_and_key_metadata(&kms).await;
+    let issuer = issuer(kms.clone(), key_metadata.clone()).await;
+    let status_issuer = status_issuer(kms, did, key_metadata);
 
     let app_state = web::Data::new(AppState {
         issuer: Arc::new(issuer),
@@ -514,12 +517,9 @@ async fn get_credential_claims(cred_def: &CredDefMetadata) -> Result<Claims, Err
     }
 }
 
-async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
+async fn issuer(kms: LocalKms, key_metadata: KeyMetadata) -> impl oid4vci::Issuer {
     println!("Initializing issuer...");
-    let kms = LocalKms::new();
     let nonce_handler = LocalNonceHandler::default();
-    // In the real service these should be generated beforehand/taken from configuration/persistence
-    let (_, key_metadata, did_doc) = create_did_and_key_metadata(&kms).await;
 
     let issuer_metadata = sample_issuer_metadata(ISSUER_SERVER_URL, AUTH_SRV_URL);
 
@@ -543,28 +543,11 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
         .unwrap();
 
     println!("Done");
-    (issuer, did_doc)
+    issuer
 }
 
-async fn status_issuer() -> impl StatusIssuer {
+fn status_issuer(kms: LocalKms, did: DID, key_metadata: KeyMetadata) -> impl StatusIssuer {
     println!("Initializing status issuer...");
-
-    let kms = LocalKms::new();
-    let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
-        .await
-        .unwrap();
-
-    let did = DIDKey::generate(kh).unwrap();
-
-    let vm = UniversalResolver::default()
-        .resolve_into_any_verification_method(DIDBuf::from_string(did.clone()).unwrap().as_did())
-        .await
-        .unwrap()
-        .unwrap()
-        .id
-        .as_did_url()
-        .to_string();
 
     let status_size: StatusSize = StatusSize::try_from(DEFAULT_STATUS_SIZE).unwrap();
     let metadata = StatusIssuerMetadata {
@@ -578,7 +561,7 @@ async fn status_issuer() -> impl StatusIssuer {
                     status_size,
                 },
             ),
-            key_metadata: KeyMetadata { kid, did_url: vm },
+            key_metadata,
         }],
     };
 

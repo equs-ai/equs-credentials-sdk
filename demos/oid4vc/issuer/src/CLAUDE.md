@@ -12,7 +12,8 @@ Runnable demo binary implementing the Issuer role in a full OID4VCI flow. Expose
 ## Key types / traits
 - Uses `vc::oid4vci::Issuer` from `equs_sdk`.
 - Exposes `IssuerMetadata`, `AuthorizationMetadata`, `CredentialOfferGrants`, `PreAuthorizedCodeGrant`, `AuthorizationCodeGrant`.
-- `AppState` — actix shared state holding the `Issuer` instance and a pre-generated `did:key` DID.
+- `AppState` — actix shared state holding the `Issuer` instance and the issuer's `did:web` DID document.
+- The status list is signed with the issuer's own `did:web` key, the key its SD-JWT credentials are signed with.
 
 ## Dependencies
 - Depends on: `equs_sdk` (oid4vci, kms, inmem, vc::core), `test_fixtures` (the Keycloak-shaped access token `/token` returns), `actix-web`, `tokio`
