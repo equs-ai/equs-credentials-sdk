@@ -199,8 +199,13 @@ fn validate_did_match(
         .fail()?,
     };
 
+    let key_did = key_metadata
+        .did_url
+        .split_once('#')
+        .map_or(key_metadata.did_url.as_str(), |(did, _)| did);
+
     ensure!(
-        key_metadata.did_url.starts_with(cred_did.as_str()),
+        cred_did == key_did || cred_did == &key_metadata.did_url,
         ResolvingSnafu {
             details: format!(
                 "Credential and key-metadata DIDs does not match: credential DID = {}, key metadata DID url = {}",
@@ -251,6 +256,34 @@ mod tests {
         assert_eq!(metadata.kid, key_metadata.kid);
         assert_eq!(metadata.format, case.format);
         assert_eq!(metadata.type_, case.type_);
+    }
+
+    #[rstest]
+    #[case::did("did:web:host:alice")]
+    #[case::did_url("did:web:host:alice#key-1")]
+    #[test]
+    fn subject_matching_the_key_did_is_accepted(#[case] subject: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for(subject),
+            alice_key_metadata(),
+        );
+
+        assert!(res.is_ok());
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::scheme("did:")]
+    #[case::did_prefix("did:web:host")]
+    #[case::did_url_prefix("did:web:host:alice#key")]
+    #[test]
+    fn subject_prefixing_the_key_did_is_rejected(#[case] subject: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for(subject),
+            alice_key_metadata(),
+        );
+
+        assert!(matches!(res.err(), Some(Error::Resolving { .. })));
     }
 
     #[test]
@@ -369,6 +402,19 @@ mod tests {
                 did_url: "did:example:d23dd687a7dc6787646f2eb98d0".to_owned(),
                 kid: "12345".to_string(),
             },
+        }
+    }
+
+    fn ldp_vc_cred_for(subject: &str) -> Credential {
+        let mut credential: serde_json::Value = serde_json::from_str(LDP_VC_CRED).unwrap();
+        credential["credentialSubject"]["id"] = serde_json::json!(subject);
+        Credential::LdpVc(serde_json::from_value(credential).unwrap())
+    }
+
+    fn alice_key_metadata() -> KeyMetadata {
+        KeyMetadata {
+            did_url: "did:web:host:alice#key-1".to_owned(),
+            kid: "12345".to_string(),
         }
     }
 

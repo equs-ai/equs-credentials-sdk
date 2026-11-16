@@ -48,5 +48,6 @@ Implements the DIDComm V2 protocol engine for secure, decentralised agent-to-age
 - Aries problem reports carry a fixed comment; error details stay in local logs and are never sent to the peer.
 - The Aries issuer signs only what it offered: a `request-credential` whose credential differs from the offer in anything but a first-subject `id` the offer leaves out gets an `invalid-credential-request` problem report and is never signed.
 - The Aries issuance holder requests credentials for its own DID only: an offer whose first subject `id` names another subject gets an `invalid-credential-offer` problem report.
+- The Aries issuance holder stores only the credential it requested: one whose claims other than `proof` differ from the request, whose proof fails `JsonLdAPI::verify_vc`, or whose proof is not by its `issuer` DID gets an `invalid-credential` problem report and is never stored, acked or reported as issued.
 - `StatefulMessageHandler` + `StateMachine` enforce a strict event-sourced state-transition model; state is always persisted before the handler returns.
 
