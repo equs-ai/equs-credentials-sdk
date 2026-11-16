@@ -1,7 +1,8 @@
 /**
  * A single `verifier_info` entry for an OID4VP authorization request.
  *
- * Carries an attestation about the Verifier relevant to the Credential Request.
+ * Carries an attestation about the Verifier relevant to the Credential Request. The SDK returns only
+ * entries whose signature and binding it verified.
  *
  * @property format - Identifier of the attestation format.
  * @property data - The attestation itself. A compact JWS is passed as a string, any other format

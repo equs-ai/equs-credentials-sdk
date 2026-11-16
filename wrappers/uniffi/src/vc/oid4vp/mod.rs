@@ -165,7 +165,7 @@ fn unparsed_delegate_reason(data: &JsonMap) -> &'static str {
 }
 
 /// A `verifier_info` entry of an authorization request: an attestation about the Verifier.
-/// The SDK checks only its shape, not its content or signature.
+/// The SDK returns only entries whose signature and binding it verified.
 #[derive(uniffi::Record)]
 pub struct VerifierInfoEntry {
     pub format: String,

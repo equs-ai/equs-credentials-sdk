@@ -23,8 +23,8 @@ use crate::vc::oid4vp::{
     CredentialsFindResult, CredentialsMapping, DeclineAuthorizationRequest,
     DeclineAuthorizationRequestReason, ID_TOKEN, PRESENTATION_SUBMISSION, PresentationResult,
     ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, STATE,
-    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, VerifierInfo, as_delegate,
-    get_transaction_data_hash,
+    TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, VerifierInfo, VerifierInfoData,
+    VerifierInfoEntry, as_delegate, get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{
@@ -35,12 +35,12 @@ use async_trait::async_trait;
 use futures::future;
 use futures::future::join_all;
 use oauth2::http::{Request, Response};
+use openid4vp::core::authorization_request::parameters::{
+    ClientIdPrefix, HashAlgorithm, ResponseType, WalletNonce,
+};
 #[cfg(feature = "delegate-sd-jwt")]
 use openid4vp::core::authorization_request::parameters::{
     DelegateSdJwtTransactionData, DelegateSdJwtTransactionDataFormat,
-};
-use openid4vp::core::authorization_request::parameters::{
-    HashAlgorithm, ResponseType, WalletNonce,
 };
 use openid4vp::core::authorization_request::verification::{RequestVerifier, did};
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
@@ -65,7 +65,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{Level, info, instrument};
+use tracing::{Level, info, instrument, warn};
 use url::Url;
 
 pub type Error = api::Error;
@@ -1011,6 +1011,61 @@ where
         }
         Ok(())
     }
+
+    /// Keeps the `verifier_info` entries whose signature and binding verify (OID4VP 1.0 §5.1).
+    /// `None` when none does.
+    async fn verified_verifier_info(
+        &self,
+        aro: &AuthorizationRequestObject,
+        entries: Vec<VerifierInfoEntry>,
+    ) -> Option<Vec<VerifierInfoEntry>> {
+        let mut verified = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if self.is_verifier_info_entry_verified(aro, &entry).await {
+                verified.push(entry);
+            } else {
+                warn!("verifier_info entry dropped: signature or binding not verified");
+            }
+        }
+        (!verified.is_empty()).then_some(verified)
+    }
+
+    /// An entry verifies when its `data` is a JWT signed by a key of the request's
+    /// `decentralized_identifier` client, its `iss` is the request's `client_id` and its `exp`,
+    /// if any, has not passed.
+    async fn is_verifier_info_entry_verified(
+        &self,
+        aro: &AuthorizationRequestObject,
+        entry: &VerifierInfoEntry,
+    ) -> bool {
+        let VerifierInfoData::String(jwt) = &entry.data else {
+            return false;
+        };
+        if *aro.client_id().get_prefix() != ClientIdPrefix::DecentralizedIdentifier {
+            return false;
+        }
+        let signed = Box::pin(did::verify_with_resolver(
+            self.metadata(),
+            aro,
+            jwt.clone(),
+            None,
+            &self.public_jwk_resolver,
+        ))
+        .await;
+        if signed.is_err() {
+            return false;
+        }
+        let Ok(claims) = ssi::claims::jwt::decode_unverified::<Map<String, Value>>(jwt) else {
+            return false;
+        };
+        let bound = claims.get("iss").and_then(Value::as_str)
+            == Some(aro.client_id().get_full_id().as_str());
+        let current = claims.get("exp").is_none_or(|exp| {
+            exp.as_i64()
+                .is_some_and(|exp| time::OffsetDateTime::now_utc().unix_timestamp() < exp)
+        });
+        bound && current
+    }
 }
 
 /// A `delegate` transaction-data item may target
@@ -1120,7 +1175,11 @@ where
             Err(e) => return Err(e),
         };
         let verifier_info = match aro.get::<VerifierInfo>().transpose() {
-            Ok(verifier_info) => verifier_info.map(|v| Vec::from(v.0)),
+            Ok(Some(verifier_info)) => {
+                self.verified_verifier_info(&aro, verifier_info.0.into())
+                    .await
+            }
+            Ok(None) => None,
             Err(_) => {
                 let source = ProtocolError::new(
                     ErrorType::InvalidRequest,
@@ -1537,7 +1596,7 @@ mod tests {
     };
     use crate::vc::oid4vp::tests::fixtures::{
         STATE, VERIFIER_URL, multi_presentation, request_uri, sample_credential_status_list,
-        sample_sd_jwt_with_status, single_presentation,
+        sample_sd_jwt_with_status, single_presentation, verifier_client_id,
     };
     use crate::vc::oid4vp::tests::utils::{
         PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
@@ -1547,7 +1606,7 @@ mod tests {
         AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
         CredentialsFindResult, DeclineAuthorizationRequest, DeclineAuthorizationRequestReason,
         Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError, PresentationResult,
-        ProtocolError, ResolvedPresentationQuery, ResponseType,
+        ProtocolError, ResolvedPresentationQuery, ResponseType, VerifierInfoEntry,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::status_formats::status_list_token_jwt;
@@ -1564,6 +1623,7 @@ mod tests {
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
     use serde_json::{Value, json};
+    use ssi::jwk::JWK;
     use std::collections::HashMap;
     use std::sync::Arc;
     use url::Url;
@@ -1675,35 +1735,89 @@ mod tests {
         assert_eq!(request_obj.state, Some(STATE.to_string()));
     }
 
-    #[tokio::test]
-    async fn get_auth_request_passes_verifier_info_through() {
-        let verifier_info = json!([
-            {
-                "format": "registration_cert",
-                "data": { "name": "Example Shop" },
-                "credential_ids": ["Identity-1"]
-            },
-            { "format": "dtk_agent_info", "data": "eyJhbGciOiJFUzI1NiJ9.e30.c2ln" }
-        ]);
+    fn verifier_info_jwt(kid_key: &JWK, signer: &JWK, claims: Value) -> Value {
+        test_fixtures::jws(
+            &json!({ "alg": "ES256", "kid": test_fixtures::did_key_url(kid_key) }),
+            &claims,
+            signer,
+        )
+        .into()
+    }
+
+    fn verifier_info_claims() -> Value {
+        json!({ "iss": verifier_client_id(), "name": "Example Shop", "exp": 4102444800i64 })
+    }
+
+    async fn resolve_verifier_info(verifier_info: Value) -> Option<Vec<VerifierInfoEntry>> {
         let mut http_client = MockHttpClient::new();
         mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            auth_request_jwt_with_verifier_info(verifier_info.clone()),
+            auth_request_jwt_with_verifier_info(verifier_info),
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
-        let request_obj = holder
+        holder
             .get_authorization_request(&request_uri())
             .await
-            .unwrap();
+            .unwrap()
+            .verifier_info
+    }
+
+    #[tokio::test]
+    async fn get_auth_request_keeps_verified_verifier_info() {
+        let keys = test_fixtures::keys();
+        let verified = json!({
+            "format": "jwt",
+            "data": verifier_info_jwt(&keys.verifier, &keys.verifier, verifier_info_claims()),
+            "credential_ids": ["Identity-1"]
+        });
+        let unverified =
+            json!({ "format": "registration_cert", "data": { "name": "Example Shop" } });
+
+        let verifier_info = resolve_verifier_info(json!([verified, unverified])).await;
 
         assert_eq!(
-            request_obj.verifier_info,
-            Some(serde_json::from_value(verifier_info).unwrap())
+            verifier_info,
+            Some(vec![serde_json::from_value(verified).unwrap()])
         );
+    }
+
+    #[rstest]
+    #[case::object_data(json!({ "name": "Example Shop" }))]
+    #[case::not_a_jwt(json!("x"))]
+    #[case::wrong_signer(verifier_info_jwt(
+        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().holder,
+        verifier_info_claims()
+    ))]
+    #[case::other_did(verifier_info_jwt(
+        &test_fixtures::keys().holder,
+        &test_fixtures::keys().holder,
+        verifier_info_claims()
+    ))]
+    #[case::wrong_iss(verifier_info_jwt(
+        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().verifier,
+        json!({ "iss": "decentralized_identifier:did:example:other" })
+    ))]
+    #[case::no_iss(verifier_info_jwt(
+        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().verifier,
+        json!({ "name": "Example Shop" })
+    ))]
+    #[case::expired(verifier_info_jwt(
+        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().verifier,
+        json!({ "iss": verifier_client_id(), "exp": 1 })
+    ))]
+    #[tokio::test]
+    async fn get_auth_request_drops_unverified_verifier_info(#[case] data: Value) {
+        let verifier_info = resolve_verifier_info(json!([{ "format": "jwt", "data": data }])).await;
+
+        assert_eq!(verifier_info, None);
     }
 
     #[rstest]
