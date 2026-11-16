@@ -85,6 +85,17 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Invitation `from` is not a DID"))]
+    InvalidInviterDid {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Inviter DID resolution error"))]
+    InviterDidResolution {
+        source: ssi::dids::resolution::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 // OOB v2 Invitation as per the spec
@@ -246,15 +257,16 @@ where
         invitation: Invitation,
         key_type: KeyType, //TODO: Should be replaced with new AcceptConfig struct
     ) -> Result<ConnectionRecord> {
-        let their_did = ssi::dids::DID::new(invitation.from.as_bytes()).unwrap();
+        let their_did = ssi::dids::DID::new(invitation.from.as_bytes())
+            .map_err(|_| InvalidInviterDidSnafu.build())?;
         let resolution = self
             .agent
             .did_resolver()
             .resolve_representation(their_did, Default::default())
             .await
-            .unwrap()
+            .context(InviterDidResolutionSnafu)?
             .document;
-        let their_did_doc: Represented = serde_json::from_slice(&resolution).unwrap();
+        let their_did_doc: Represented = serde_json::from_slice(&resolution).context(ParseSnafu)?;
 
         let my_did = self.create_did(key_type.clone()).await?;
         let mut connection = self
@@ -428,7 +440,9 @@ mod tests {
     use crate::didcomm::connection::{
         ConnectionRole, ConnectionService, ConnectionState, CreateOptions,
     };
-    use crate::didcomm::protocol::outofband::{Error, OutOfBandV2Protocol};
+    use crate::didcomm::protocol::outofband::{
+        Error, Invitation, InvitationBody, OutOfBandV2Protocol,
+    };
     use crate::kms::KeyType;
 
     const ALICE_DID: &str = "did:example:alice";
@@ -505,6 +519,46 @@ mod tests {
             .unwrap();
         assert_eq!(connection.state, ConnectionState::Invited);
         assert_eq!(connection.their_did, None);
+    }
+
+    #[tokio::test]
+    async fn accept_invitation_failed_with_from_not_did() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+
+        let err = oob
+            .accept_invitation(invitation("not-a-did"), KeyType::P256)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::InvalidInviterDid { .. }));
+    }
+
+    #[tokio::test]
+    async fn accept_invitation_failed_with_unresolvable_from() {
+        let (agent, _) = test_agent();
+        let oob = OutOfBandV2Protocol::new(&agent);
+
+        let err = oob
+            .accept_invitation(invitation("did:example:unresolvable"), KeyType::P256)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::InviterDidResolution { .. }));
+    }
+
+    fn invitation(from: &str) -> Invitation {
+        Invitation {
+            id: "invitation-id".to_owned(),
+            type_: "https://didcomm.org/out-of-band/2.0/invitation".to_owned(),
+            from: from.to_owned(),
+            body: InvitationBody {
+                goal_code: "goal-code".to_owned(),
+                goal: None,
+                accept: None,
+            },
+            attachments: vec![],
+        }
     }
 
     fn invited_options() -> CreateOptions {

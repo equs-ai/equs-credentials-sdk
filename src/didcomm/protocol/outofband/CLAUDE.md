@@ -28,7 +28,7 @@ parse_invitation(str)                       → Invitation
 4. Emits `INVITATION_CREATED_EVENT`.
 
 `accept_invitation` flow:
-1. Resolves inviter's DID document.
+1. Resolves inviter's DID document. A `from` that isn't a DID fails with `InvalidInviterDid`; a resolution failure with `InviterDidResolution`.
 2. Creates a local `did:peer:4` DID.
 3. Creates `ConnectionRecord` (Invitee, Accepted).
 

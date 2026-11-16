@@ -1,6 +1,6 @@
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
-use snafu::{Location, ResultExt, Snafu};
+use snafu::{Location, OptionExt, ResultExt, Snafu};
 use std::sync::Arc;
 use time::OffsetDateTime;
 
@@ -36,6 +36,11 @@ pub enum Error {
     #[snafu(display("Parse error"))]
     Parse {
         source: serde_json::error::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Recipient DID has no DIDComm service"))]
+    MissingService {
         #[snafu(implicit)]
         location: Location,
     },
@@ -76,6 +81,7 @@ impl MessageSender {
     ///
     /// * [Error::EnvelopeService] - fails to pack the message, e.g. `options.from` and `msg.from`
     ///   name different DIDs.
+    /// * [Error::MissingService] - `to_did` has no DIDComm service to send to.
     /// * [Error::Transport] - fails to send the packed message.
     pub async fn send_message(
         &self,
@@ -100,8 +106,10 @@ impl MessageSender {
             .await
             .context(EnvelopeServiceSnafu)?;
 
+        let service = metadata.messaging_service.context(MissingServiceSnafu)?;
+
         let outbound_message = OutboundMessage::new(
-            metadata.messaging_service.unwrap().service_endpoint,
+            service.service_endpoint,
             packed_msg.as_bytes().to_vec(),
             MIME_DIDCOMM_ENCRYPTED_JSON.to_string(),
             MIME_TYPE_TEXT_PLAIN.to_string(),
@@ -285,6 +293,21 @@ mod tests {
         assert!(transport.0.lock().unwrap().is_empty());
     }
 
+    #[tokio::test]
+    async fn send_message_failed_with_recipient_without_service() {
+        let kms = LocalKms::new();
+        let bob_did = create_did_with_services(&kms, &[]).await;
+        let (_, transport, sender) = create_sender(kms);
+
+        let err = sender
+            .send_message(&example_message(None), bob_did, &SendOptions::default())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::MissingService { .. }));
+        assert!(transport.0.lock().unwrap().is_empty());
+    }
+
     fn create_sender(kms: LocalKms) -> (EnvelopeService, RecordingTransport, MessageSender) {
         let envelope_service = EnvelopeService::new(kms, UniversalResolver::default());
         let transport = RecordingTransport::default();
@@ -325,11 +348,6 @@ mod tests {
     }
 
     async fn create_did(kms: &LocalKms) -> DID {
-        let (_, kh) = kms
-            .create_and_handle(KeyType::P256, Default::default())
-            .await
-            .unwrap();
-
         let service: DidPeerService = serde_json::from_value(json!({
             "id": "#didcomm-1",
             "type": "DIDCommMessaging",
@@ -341,6 +359,15 @@ mod tests {
         }))
         .unwrap();
 
+        create_did_with_services(kms, &[service]).await
+    }
+
+    async fn create_did_with_services(kms: &LocalKms, services: &[DidPeerService]) -> DID {
+        let (_, kh) = kms
+            .create_and_handle(KeyType::P256, Default::default())
+            .await
+            .unwrap();
+
         DIDPeer::generate_did_peer4(
             &[VerificationMethodKey {
                 key: &kh,
@@ -351,7 +378,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             }],
-            &[service],
+            services,
         )
         .unwrap()
     }
