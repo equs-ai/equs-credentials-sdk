@@ -863,7 +863,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<()> {
-        Self::verify_vc_signer(credential, opts, did_resolver)
+        Box::pin(Self::verify_vc_signer(credential, opts, did_resolver))
             .await
             .map(|_| ())
     }

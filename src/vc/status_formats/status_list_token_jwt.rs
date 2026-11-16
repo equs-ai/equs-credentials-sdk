@@ -423,14 +423,18 @@ impl StatusListJwt {
             anchor_policy,
             ..Default::default()
         };
-        let signer = SdJwtAPI::verify_vc_signer(&status_list_sdjwt_vc, opts, did_resolver) // TODO: consider using sd_jwt API directly
-            .await
-            .map_err(|err| {
-                VCStatusSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
+        let signer = Box::pin(SdJwtAPI::verify_vc_signer(
+            &status_list_sdjwt_vc,
+            opts,
+            did_resolver,
+        )) // TODO: consider using sd_jwt API directly
+        .await
+        .map_err(|err| {
+            VCStatusSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
         if let Some(signer) = signer
             && issuer != Some(signer.as_did())
