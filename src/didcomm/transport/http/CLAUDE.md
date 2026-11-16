@@ -28,6 +28,7 @@ Created via `HttpTransport::new(endpoint, client)`.
 ### Inbound (`InboundTransport` impl)
 - `start(message_receiver)`: binds a `hyper::Server` to the parsed socket address.
   - Only `POST` requests accepted; all others return `405 Method Not Allowed`.
+  - A body larger than `MessageReceiver::max_message_size()` returns `413 Payload Too Large`; it is read chunk by chunk and never buffered past the limit.
   - Body forwarded to `MessageReceiver::receive_message` in a `tokio::spawn` task.
   - Responds immediately with `202 Accepted` (fire-and-forget).
   - Graceful shutdown via `oneshot::channel` stored in `shutdown_tx`.
