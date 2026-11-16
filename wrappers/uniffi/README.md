@@ -75,8 +75,8 @@ API instead.
 an OID4VP request.
 
 `AuthorizationRequest.verifierInfo` carries the request's `verifier_info` entries (e.g. an agent's name), each with a
-`format` and `data` as `VerifierInfoData.Text` or `VerifierInfoData.Object`. The SDK checks only their shape, so use
-them for display, never to decide whether to trust the Verifier.
+`format` and `data` as `VerifierInfoData.Text` or `VerifierInfoData.Object`. The SDK checks only their shape, not their
+signature or binding, so verify both before using an entry, even only to display it (OID4VP 1.0 §5.1).
 
 # Android
 

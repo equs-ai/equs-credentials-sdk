@@ -204,6 +204,7 @@ pub enum PresentationResult {
 /// `state` - may be used by a verifier to link requests and responses
 /// `transaction_data` - Array of strings, where each string is a base64url encoded JSON object that contains a typed parameter set with details about the transaction that the Verifier is requesting the End-User to authorize.
 /// `verifier_info` - Attestations about the Verifier, passed through unverified: the SDK checks only their shape.
+/// Verify their signature and binding before using them, even only to display them (OID4VP 1.0 §5.1).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedAuthRequest {
     pub client_id: ClientId,
