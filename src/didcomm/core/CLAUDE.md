@@ -13,7 +13,7 @@ Infrastructure layer beneath the DIDComm agent. Provides envelope cryptography, 
 | `protocol_registry.rs` | Runtime registry mapping message types to handlers; shared via `Arc<RwLock<_>>` |
 | `dispatcher.rs` | Receives a decoded `Message`, looks up handler in registry, calls `handle` |
 | `message_receiver.rs` | Unpacks raw bytes → `Message`; rejects input larger than `MessageReceiverConfig::max_message_size` (default 1 MiB) and a `from` that neither authcrypt nor a signature authenticated; feeds to `DispatcherService` |
-| `message_sender.rs` | Packs a `Message` and sends via `OutboundTransport`; authcrypts as `SendOptions.from`, else `msg.from`, so a set `from` is always authenticated |
+| `message_sender.rs` | Packs a `Message` and sends via `OutboundTransport`; authcrypts as `SendOptions.from`, else `msg.from`, so a set `from` is always authenticated; a recipient DID without a DIDComm service fails with `MissingService` |
 | `message_type.rs` | `MessageType` struct + `parse_message_type` utility |
 | `message_id.rs` | `MessageId` newtype (UUID-backed) |
 | `event_emitter.rs` | Pub/sub `EventEmitter<K, V>` used by protocols to emit state-transition events |
