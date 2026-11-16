@@ -52,3 +52,4 @@ MESSAGE_SENT_EVENT     = "basic-message-sent"
 
 ## Constraints
 - Non-wasm only.
+- Logs carry only the message `id`, never its content or the peer DID.
