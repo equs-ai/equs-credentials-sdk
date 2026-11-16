@@ -15,7 +15,7 @@ Implements the Aries Present Proof protocol v3.0 (`present-proof/3.0`). Provides
 
 ## Key types / traits
 - `PresentationProtocol` — wraps either a `Verifier` or `PresentationHolder`; registered with `Agent`; routes `PRESENTATION` / `REQUEST_PRESENTATION` / `PROBLEM_REPORT` / `EMPTY` messages.
-- `Error` — snafu enum covering: `Agent`, `NotReady`, `InvalidState`, `CreatePresentation`, `DIDCommService`, `Connection`, `Parse`, `Decode`, `DidUrlResolution`, `InvalidProof`, `VerificationFailed`, `Storage`, `OOB`, `InvalidAttachment`, `InvalidAttachmentEncoding`, `NonceGeneration`, `InvalidCredentialRequest`, `PresentationDefinitionParse`, `ReqwestClientBuilder`.
+- `Error` — snafu enum covering: `Agent`, `NotReady`, `InvalidState`, `CreatePresentation`, `DIDCommService`, `Connection`, `Parse`, `Decode`, `DidUrlResolution`, `InvalidProof`, `VerificationFailed`, `Storage`, `OOB`, `InvalidAttachment`, `InvalidAttachmentEncoding`, `NonceGeneration`, `InvalidCredentialRequest`, `PresentationDefinitionParse`, `PresentationDefinitionNotSatisfied`, `ReqwestClientBuilder`.
 
 ## Protocol constants
 ```
@@ -33,7 +33,7 @@ A caller that builds its own VP takes the binding from `PresentationHolder::hold
 A state stored without `verifier_did` cannot bind: `holder_binder` fails with `InvalidState` on both roles (the verifier before it reads the presentation), and the exchange restarts with a new request. The verifier DID is not recovered from the connection, because completing an inviter's connection gives it a new `my_did`.
 
 ## Dependencies
-- Depends on: `vc::core::{HolderService, VerifierService}`, `protocol::outofband`, `protocol::aries::{common, problem_report, empty}`, `crate::didcomm::agent`, `crate::kms`, `crate::vault`
+- Depends on: `vc::core::{HolderService, VerifierService}`, `vc::presentation_exchange`, `protocol::outofband`, `protocol::aries::{common, problem_report, empty}`, `crate::didcomm::agent`, `crate::kms`, `crate::vault`
 - Used by: application code that calls `Verifier::new` or `PresentationHolder::new`
 
 ## Constraints
