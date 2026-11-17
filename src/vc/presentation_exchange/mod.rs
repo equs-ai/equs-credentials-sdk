@@ -193,6 +193,14 @@ pub(crate) fn validate_presented_credential(
     let descriptor_map = presentation_definition
         .input_descriptors()
         .iter()
+        .filter(|input_descriptor| {
+            let accepted = if input_descriptor.format.is_empty() {
+                presentation_definition.format()
+            } else {
+                &input_descriptor.format
+            };
+            accepted.is_empty() || accepted.contains_key(&format)
+        })
         .map(|input_descriptor| {
             DescriptorMap::new(&input_descriptor.id, format.to_owned(), path.to_owned())
         })
@@ -849,12 +857,43 @@ mod tests {
         create_input_descriptor(id, constraints, sample_input_descriptor_format_sdjwtvc())
     }
 
-    #[test]
-    fn validate_presented_credential_accepts_claims_matching_every_input_descriptor() {
+    fn mixed_format_definition(requirement: Value) -> PresentationDefinition {
+        serde_json::from_value(json!({
+            "id": "presentation_definition_id",
+            "submission_requirements": [requirement],
+            "input_descriptors": [
+                {
+                    "id": "identity",
+                    "group": ["A"],
+                    "format": { "dc+sd-jwt": {} },
+                    "constraints": { "fields": [{
+                        "path": ["$.vct"],
+                        "filter": { "type": "string", "const": IDENTITY_VCT }
+                    }] }
+                },
+                {
+                    "id": "degree",
+                    "group": ["A"],
+                    "format": { "ldp_vc": { "proof_type": ["Ed25519Signature2018"] } },
+                    "constraints": { "fields": [{ "path": ["$.type"] }] }
+                }
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[rstest]
+    #[case::matching_every_descriptor(create_multiple_presentation_definition())]
+    #[case::picked_from_descriptors_in_other_formats(mixed_format_definition(
+        json!({ "rule": "pick", "count": 1, "from": "A" })
+    ))]
+    fn validate_presented_credential_accepts_claims_satisfying_the_definition(
+        #[case] presentation_definition: PresentationDefinition,
+    ) {
         let result = validate_presented_credential(
             &Presentation::SdJwtVp(String::new()),
             &sdjwt_claims(IDENTITY_VCT),
-            &create_multiple_presentation_definition(),
+            &presentation_definition,
         );
 
         assert!(result.is_ok(), "unexpected result: {result:?}");
@@ -878,6 +917,10 @@ mod tests {
                     .unwrap(),
             ),
         )
+    )]
+    #[case::leaving_required_descriptor_in_another_format_unanswered(
+        sdjwt_claims(IDENTITY_VCT),
+        mixed_format_definition(json!({ "rule": "all", "from": "A" }))
     )]
     fn validate_presented_credential_rejects_claims_not_satisfying_the_definition(
         #[case] claims: Claims,

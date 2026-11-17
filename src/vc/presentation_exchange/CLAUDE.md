@@ -15,7 +15,7 @@ Implements the DIF Presentation Exchange spec: converts a `PresentationDefinitio
 - `ClaimFormat`, `ClaimFormatMap`, `ClaimFormatPayload` — credential format descriptors.
 - `SubmissionRequirement` — grouping/selection rules for submission.
 - `PresentationResponse` — internal struct pairing serialized presentations with submission metadata.
-- `validate_presented_credential` — checks the verified claims of one presented credential against every input descriptor through `validate_against_presentation_definition`, with a submission it builds from the VP's own format: an `ldp_vp` as `ldp_vc` at `$.verifiableCredential`, an SD-JWT VP as `dc+sd-jwt` at `$`; any other VP fails with `FormatNotSupported`. Descriptor formats, constraint filters (full JSON Schema) and `submission_requirements` all apply.
+- `validate_presented_credential` — checks the verified claims of one presented credential through `validate_against_presentation_definition`, with a submission it builds from the VP's own format: an `ldp_vp` as `ldp_vc` at `$.verifiableCredential`, an SD-JWT VP as `dc+sd-jwt` at `$`; any other VP fails with `FormatNotSupported`. The submission answers every input descriptor that accepts that format (its own `format`, else the definition's, else any); the rest stay unanswered, which fails unless `submission_requirements` allow it. Constraint filters (full JSON Schema) and `submission_requirements` apply.
 
 ## Dependencies
 - Depends on: `openid4vp::core`, `crate::vc::core::api`, `crate::vc::claims`, `crate::vault`, `test_fixtures` (tests only: the SD-JWT presentation)
