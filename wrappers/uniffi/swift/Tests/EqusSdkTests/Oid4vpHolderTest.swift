@@ -1136,9 +1136,9 @@ static let presentationDefinitionWithFakeConstraints = """
 	static let requestUriForVerifierInfo =
 		"openid4vp://?client_id=\(encodedVerifierClientId)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request_verifier_info"
 	static let verifierInfoJwt: String = try! fixtureJws(
-		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))"}"#,
-		payloadJson: #"{"iss":"\#(verifierClientId)","name":"Example Shop"}"#,
-		role: .verifier
+		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.issuer))"}"#,
+		payloadJson: #"{"iss":"\#(Fixtures.didKey(.issuer))","sub":"\#(verifierClientId)","name":"Example Shop"}"#,
+		role: .issuer
 	)
 	static let verifierInfoAuthRequestJwt: String = try! fixtureJws(
 		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,

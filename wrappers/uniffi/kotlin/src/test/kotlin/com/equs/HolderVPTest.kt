@@ -194,9 +194,9 @@ val REQUEST_URI_FOR_VERIFIER_INFO: String by lazy {
 }
 val VERIFIER_INFO_JWT: String by lazy {
     fixtureJws(
-        """{"alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.VERIFIER)}"}""",
-        """{"iss":"$VERIFIER_CLIENT_ID","name":"Example Shop"}""",
-        FixtureKey.VERIFIER,
+        """{"alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.ISSUER)}"}""",
+        """{"iss":"${fixtureDidKey(FixtureKey.ISSUER)}","sub":"$VERIFIER_CLIENT_ID","name":"Example Shop"}""",
+        FixtureKey.ISSUER,
     )
 }
 val VERIFIER_INFO_AUTH_REQUEST_JWT: String by lazy {
