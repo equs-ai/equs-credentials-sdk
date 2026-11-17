@@ -204,7 +204,8 @@ pub enum PresentationResult {
 /// `state` - may be used by a verifier to link requests and responses
 /// `transaction_data` - Array of strings, where each string is a base64url encoded JSON object that contains a typed parameter set with details about the transaction that the Verifier is requesting the End-User to authorize.
 /// `verifier_info` - Attestations about the Verifier whose signature and binding verified (OID4VP 1.0 §5.1): JWTs
-/// signed by a key of the request's `decentralized_identifier` client, with its `client_id` as `iss`. Others are dropped.
+/// a third party signed with the key of its `kid` DID URL, with its DID as `iss` and the request's
+/// `decentralized_identifier` client as `sub`. Others are dropped. Trust in the third party is the caller's to decide.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedAuthRequest {
     pub client_id: ClientId,

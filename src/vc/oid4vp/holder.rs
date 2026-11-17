@@ -1,3 +1,4 @@
+use crate::did::JWKResolver;
 use crate::did::universal::UniversalResolver;
 use crate::http::{HttpClient, HttpResponse};
 use crate::kms::{KeyHandle, Kms};
@@ -1030,9 +1031,10 @@ where
         (!verified.is_empty()).then_some(verified)
     }
 
-    /// An entry verifies when its `data` is a JWT signed by a key of the request's
-    /// `decentralized_identifier` client, its `iss` is the request's `client_id` and its `exp`,
-    /// if any, has not passed.
+    /// An entry verifies when its `data` is a JWT signed by a party other than the Verifier with
+    /// the key its `kid` DID URL names, its `iss` is that party's DID, its `sub` is the request's
+    /// `decentralized_identifier` client (OID4VP 1.0 §5.11.1, claim-bound) and its `exp`, if any,
+    /// has not passed. Whether that party is trusted is left to the caller.
     async fn is_verifier_info_entry_verified(
         &self,
         aro: &AuthorizationRequestObject,
@@ -1041,30 +1043,38 @@ where
         let VerifierInfoData::String(jwt) = &entry.data else {
             return false;
         };
-        if *aro.client_id().get_prefix() != ClientIdPrefix::DecentralizedIdentifier {
+        let client_id = aro.client_id();
+        if *client_id.get_prefix() != ClientIdPrefix::DecentralizedIdentifier {
             return false;
         }
-        let signed = Box::pin(did::verify_with_resolver(
-            self.metadata(),
-            aro,
-            jwt.clone(),
-            None,
-            &self.public_jwk_resolver,
-        ))
-        .await;
-        if signed.is_err() {
-            return false;
-        }
-        let Ok(claims) = ssi::claims::jwt::decode_unverified::<Map<String, Value>>(jwt) else {
+        let Some(kid) = ssi::claims::jws::decode_unverified(jwt)
+            .ok()
+            .and_then(|(header, _)| header.key_id)
+        else {
             return false;
         };
-        let bound = claims.get("iss").and_then(Value::as_str)
-            == Some(aro.client_id().get_full_id().as_str());
+        let Some((issuer, _)) = kid.split_once('#') else {
+            return false;
+        };
+        if issuer == client_id.get_id() {
+            return false;
+        }
+        let Ok(jwk) = Box::pin(self.public_jwk_resolver.fetch_public_jwk(Some(&kid))).await else {
+            return false;
+        };
+        let Ok(claims) = ssi::claims::jwt::decode_verify::<Map<String, Value>>(jwt, &jwk) else {
+            return false;
+        };
+        let issued = claims.get("iss").and_then(Value::as_str) == Some(issuer);
+        let bound = claims
+            .get("sub")
+            .and_then(Value::as_str)
+            .is_some_and(|sub| sub == client_id.get_id() || sub == client_id.get_full_id());
         let current = claims.get("exp").is_none_or(|exp| {
             exp.as_i64()
                 .is_some_and(|exp| time::OffsetDateTime::now_utc().unix_timestamp() < exp)
         });
-        bound && current
+        issued && bound && current
     }
 }
 
@@ -1744,8 +1754,25 @@ mod tests {
         .into()
     }
 
-    fn verifier_info_claims() -> Value {
-        json!({ "iss": verifier_client_id(), "name": "Example Shop", "exp": 4102444800i64 })
+    fn attester_did() -> String {
+        test_fixtures::did_key(&test_fixtures::keys().issuer)
+    }
+
+    fn verifier_info_claims(sub: String) -> Value {
+        json!({ "iss": attester_did(), "sub": sub, "name": "Example Shop", "exp": 4102444800i64 })
+    }
+
+    fn attested(claims: Value) -> Value {
+        let attester = &test_fixtures::keys().issuer;
+        verifier_info_jwt(attester, attester, claims)
+    }
+
+    fn unsigned_jwt(header: Value, claims: Value) -> String {
+        use base64::Engine;
+        let b64 = |value: Value| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string())
+        };
+        format!("{}.{}.", b64(header), b64(claims))
     }
 
     async fn resolve_verifier_info(verifier_info: Value) -> Option<Vec<VerifierInfoEntry>> {
@@ -1766,12 +1793,14 @@ mod tests {
             .verifier_info
     }
 
+    #[rstest]
+    #[case::full_client_id(verifier_client_id())]
+    #[case::client_did(test_fixtures::did_key(&test_fixtures::keys().verifier))]
     #[tokio::test]
-    async fn get_auth_request_keeps_verified_verifier_info() {
-        let keys = test_fixtures::keys();
+    async fn get_auth_request_keeps_verified_verifier_info(#[case] sub: String) {
         let verified = json!({
             "format": "jwt",
-            "data": verifier_info_jwt(&keys.verifier, &keys.verifier, verifier_info_claims()),
+            "data": attested(verifier_info_claims(sub)),
             "credential_ids": ["Identity-1"]
         });
         let unverified =
@@ -1789,29 +1818,27 @@ mod tests {
     #[case::object_data(json!({ "name": "Example Shop" }))]
     #[case::not_a_jwt(json!("x"))]
     #[case::wrong_signer(verifier_info_jwt(
-        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().issuer,
         &test_fixtures::keys().holder,
-        verifier_info_claims()
+        verifier_info_claims(verifier_client_id())
     ))]
-    #[case::other_did(verifier_info_jwt(
-        &test_fixtures::keys().holder,
-        &test_fixtures::keys().holder,
-        verifier_info_claims()
+    #[case::self_attested(verifier_info_jwt(
+        &test_fixtures::keys().verifier,
+        &test_fixtures::keys().verifier,
+        json!({ "iss": test_fixtures::did_key(&test_fixtures::keys().verifier), "sub": verifier_client_id() })
     ))]
-    #[case::wrong_iss(verifier_info_jwt(
-        &test_fixtures::keys().verifier,
-        &test_fixtures::keys().verifier,
-        json!({ "iss": "decentralized_identifier:did:example:other" })
+    #[case::iss_not_signer(attested(
+        json!({ "iss": "did:example:other", "sub": verifier_client_id() })
     ))]
-    #[case::no_iss(verifier_info_jwt(
-        &test_fixtures::keys().verifier,
-        &test_fixtures::keys().verifier,
-        json!({ "name": "Example Shop" })
-    ))]
-    #[case::expired(verifier_info_jwt(
-        &test_fixtures::keys().verifier,
-        &test_fixtures::keys().verifier,
-        json!({ "iss": verifier_client_id(), "exp": 1 })
+    #[case::unsigned(json!(unsigned_jwt(
+        json!({ "alg": "none", "kid": test_fixtures::did_key_url(&test_fixtures::keys().issuer) }),
+        verifier_info_claims(verifier_client_id())
+    )))]
+    #[case::no_iss(attested(json!({ "sub": verifier_client_id() })))]
+    #[case::other_sub(attested(verifier_info_claims("did:example:other".to_owned())))]
+    #[case::no_sub(attested(json!({ "iss": attester_did() })))]
+    #[case::expired(attested(
+        json!({ "iss": attester_did(), "sub": verifier_client_id(), "exp": 1 })
     ))]
     #[tokio::test]
     async fn get_auth_request_drops_unverified_verifier_info(#[case] data: Value) {
