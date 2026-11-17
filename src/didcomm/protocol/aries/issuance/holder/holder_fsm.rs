@@ -363,6 +363,13 @@ impl RequestSentState {
             }
         );
 
+        ensure!(
+            signed_by_issuer(&credential),
+            InvalidCredentialSnafu {
+                details: "credential is not signed by its issuer",
+            }
+        );
+
         JsonLdAPI::verify_vc(
             &credential,
             Default::default(),
@@ -370,13 +377,6 @@ impl RequestSentState {
         )
         .await
         .context(VCSnafu)?;
-
-        ensure!(
-            signed_by_issuer(&credential),
-            InvalidCredentialSnafu {
-                details: "credential is not signed by its issuer",
-            }
-        );
 
         let credential = vc::Credential::LdpVc(credential);
 

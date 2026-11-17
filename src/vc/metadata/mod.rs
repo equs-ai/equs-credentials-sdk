@@ -1,6 +1,7 @@
 //! Credential metadata and metadata processors.
 
 use snafu::{Location, Snafu, ensure};
+use ssi::dids::DIDURL;
 use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;
 use tracing::{Level, instrument};
@@ -199,13 +200,20 @@ fn validate_did_match(
         .fail()?,
     };
 
-    let key_did = key_metadata
-        .did_url
-        .split_once('#')
-        .map_or(key_metadata.did_url.as_str(), |(did, _)| did);
+    let key_did = DIDURL::new(key_metadata.did_url.as_str())
+        .map_err(|_| {
+            ResolvingSnafu {
+                details: format!(
+                    "Key metadata DID url is not a DID URL: {}",
+                    key_metadata.did_url
+                ),
+            }
+            .build()
+        })?
+        .did();
 
     ensure!(
-        cred_did == key_did || cred_did == &key_metadata.did_url,
+        cred_did == key_did.as_str() || cred_did == &key_metadata.did_url,
         ResolvingSnafu {
             details: format!(
                 "Credential and key-metadata DIDs does not match: credential DID = {}, key metadata DID url = {}",
@@ -281,6 +289,35 @@ mod tests {
         let res = DefaultMetadataProcessor::resolve_metadata(
             &ldp_vc_cred_for(subject),
             alice_key_metadata(),
+        );
+
+        assert!(matches!(res.err(), Some(Error::Resolving { .. })));
+    }
+
+    #[rstest]
+    #[case::path("did:web:host:alice/keys#key-1")]
+    #[case::query("did:web:host:alice?versionId=1#key-1")]
+    #[test]
+    fn subject_matching_the_did_of_a_key_url_with_path_or_query_is_accepted(#[case] did_url: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for("did:web:host:alice"),
+            KeyMetadata {
+                did_url: did_url.to_owned(),
+                kid: "12345".to_string(),
+            },
+        );
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn key_metadata_that_is_not_a_did_url_is_rejected() {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for("alice"),
+            KeyMetadata {
+                did_url: "alice".to_owned(),
+                kid: "12345".to_string(),
+            },
         );
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));

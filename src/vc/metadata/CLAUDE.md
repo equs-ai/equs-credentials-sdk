@@ -11,7 +11,7 @@ Resolves `CredentialMetadata` (type string, format, key-id, claim-field paths) f
 
 ## Key types / traits
 - `CredentialMetadataProcessor` — trait with `resolve_metadata(credential, key_metadata) -> Result<CredentialMetadata>`.
-- `DefaultMetadataProcessor` — default implementation; extracts `vct` (SD-JWT) or last `type` (JSON-LD) and validates DID match: the `sub` (SD-JWT) or `credentialSubject.id` (JSON-LD) must equal the key metadata's DID (its `did_url` before `#`) or the whole `did_url`.
+- `DefaultMetadataProcessor` — default implementation; extracts `vct` (SD-JWT) or last `type` (JSON-LD) and validates DID match: the `sub` (SD-JWT) or `credentialSubject.id` (JSON-LD) must equal the DID of the key metadata's `did_url` (without path, query or fragment) or the whole `did_url`; a `did_url` that is not a DID URL fails with `Resolving`.
 - `Error` — `FormatNotSupported`, `Resolving`.
 
 ## Dependencies
