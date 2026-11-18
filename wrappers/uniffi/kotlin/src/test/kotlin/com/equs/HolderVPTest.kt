@@ -189,6 +189,25 @@ val DELEGATION_AUTH_REQUEST_JWT: String by lazy {
     )
 }
 
+val REQUEST_URI_FOR_VERIFIER_INFO: String by lazy {
+    "openid4vp://?client_id=$ENCODED_VERIFIER_CLIENT_ID&request_uri=http%3A%2F%2Flocalhost%3A9008"
+}
+val VERIFIER_INFO_JWT: String by lazy {
+    fixtureJws(
+        """{"alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.VERIFIER)}"}""",
+        """{"iss":"$VERIFIER_CLIENT_ID","name":"Example Shop"}""",
+        FixtureKey.VERIFIER,
+    )
+}
+val VERIFIER_INFO_AUTH_REQUEST_JWT: String by lazy {
+    val presentationDefinition = Json.parseToJsonElement(presentationDefinitionJson).jsonObject["presentation_definition"]
+    fixtureJws(
+        """{"alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.VERIFIER)}","typ":"application/oauth-authz-req+jwt"}""",
+        """{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":$clientMetadata,"client_id":"$VERIFIER_CLIENT_ID","presentation_definition":$presentationDefinition,"response_uri":"http://localhost:9008/response","verifier_info":[{"format":"jwt","data":"$VERIFIER_INFO_JWT","credential_ids":["Identity-1"]}]}""",
+        FixtureKey.VERIFIER,
+    )
+}
+
 //Note: The webserver sends the auth requests as queue object and whichever test thread is first gets the top of the queue.
 // This works when all the tests need the same request but for other tests that need different request, we created another server in a different port.
 
@@ -252,6 +271,51 @@ class HolderVPTest {
         assert(transactionData == authorizationRequest.transactionData)
         mockServer.shutdown()
 
+    }
+
+    @Test
+    fun testVerifierInfoRoundTrip() = runTest {
+        val server = MockWebServer()
+        server.start(9008)
+        val request = try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(VERIFIER_INFO_AUTH_REQUEST_JWT)
+                    .setHeader("content-type", "application/oauth-authz-req+jwt")
+            )
+            holder.getAuthorizationRequest(REQUEST_URI_FOR_VERIFIER_INFO)
+        } finally {
+            server.shutdown()
+        }
+        val entry = VerifierInfoEntry(
+            format = "jwt",
+            data = VerifierInfoData.Text(VERIFIER_INFO_JWT),
+            credentialIds = listOf("Identity-1"),
+        )
+        assertEquals(listOf(entry), request.verifierInfo)
+
+        val dcApiRequest = request.copy(responseMode = "dc_api", responseUri = null)
+        val metadata = AuthorizationResponseMetadata(
+            claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = "https://example.verifier.org"
+        )
+        val objectEntry = VerifierInfoEntry(
+            format = "registration_cert",
+            data = VerifierInfoData.Object("""{"name":"Example Shop"}"""),
+            credentialIds = null,
+        )
+        val result = holder.presentCredentialsAuto(dcApiRequest.copy(verifierInfo = listOf(entry, objectEntry)), metadata)
+        assertTrue(result is PresentationResult.AuthResponse)
+
+        val error = assertThrows<Exception.Oid4vpHolder> {
+            runBlocking {
+                holder.presentCredentialsAuto(
+                    dcApiRequest.copy(verifierInfo = listOf(entry.copy(credentialIds = emptyList()))),
+                    metadata,
+                )
+            }
+        }
+        assertTrue(error.message.contains("credential_ids"), error.message)
     }
 
     @Test
