@@ -6,9 +6,10 @@ use crate::didcomm::protocol::aries::common::message::thread::Thread;
 use crate::didcomm::protocol::aries::present_proof::holder::states::PresentationHolderState;
 use crate::didcomm::protocol::aries::present_proof::message::HolderMessages;
 use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
+use crate::didcomm::protocol::aries::present_proof::message::proof_request::ProofRequest;
 use crate::didcomm::protocol::aries::present_proof::{
-    AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    InvalidStateSnafu, ParseSnafu, PresentationDefinitionParseSnafu, holder_binder,
+    AgentSnafu, InvalidCredentialRequestSnafu, InvalidStateSnafu, ParseSnafu,
+    PresentationDefinitionParseSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::present_proof::{CreatePresentationSnafu, Result};
 use crate::didcomm::protocol::aries::problem_report::message::{
@@ -17,9 +18,6 @@ use crate::didcomm::protocol::aries::problem_report::message::{
 use crate::kms::{KeyHandle, Kms};
 use crate::vc::core::{Holder, KeyMetadata};
 use crate::vc::presentation_exchange::split_to_inputs_for_pd;
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
-use didcomm::AttachmentData;
 use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
@@ -73,61 +71,61 @@ where
             PresentationHolderState::RequestReceived(state) => match message {
                 HolderMessages::PreparePresentation => {
                     let thread = state.thread.to_owned();
-                    // todo add check that only one type of presentation is requested
-                    let attachment =
-                        state
-                            .presentation_request
-                            .attachments
-                            .first()
-                            .ok_or_else(|| {
+                    match holder_binder(&state.presentation_request, state.verifier_did.as_deref())
+                    {
+                        Err(err) => {
+                            warn!("Presentation request cannot be answered: {err}");
+                            let problem_report = send_problem_report(
+                                &self.agent,
+                                state.presentation_request.type_.to_owned(),
+                                thread.to_owned(),
+                                state.connection_id.to_owned(),
+                                ProblemReportCode::InvalidPresentationRequest,
+                                "presentation request cannot be answered; send a new request",
+                            )
+                            .await?;
+                            PresentationHolderState::Finished(
+                                (state, thread, problem_report, Reason::Fail).into(),
+                            )
+                        }
+                        Ok(holder_binder) => {
+                            // TODO: check that only one presentation type is requested.
+                            let attachment =
+                                state.presentation_request.attachments.first().context(
+                                    InvalidCredentialRequestSnafu {
+                                        details: "attachment not found",
+                                    },
+                                )?;
+                            let proof_request = ProofRequest::try_from(attachment)?;
+                            let presentation_input =
+                                split_to_inputs_for_pd(&proof_request.input, None)
+                                    .context(PresentationDefinitionParseSnafu)?;
+                            let presentation_input = presentation_input.first().context(
                                 InvalidCredentialRequestSnafu {
-                                    details: "attachment not found",
-                                }
-                                .build()
-                            })?;
+                                    details: "presentation definition has no input descriptors",
+                                },
+                            )?;
+                            let vp = self
+                                .holder_service
+                                .create_presentation_auto(Some(holder_binder), presentation_input)
+                                .await
+                                .context(CreatePresentationSnafu)?;
 
-                    let pd = match attachment.data.to_owned() {
-                        AttachmentData::Json { value } => {
-                            serde_json::from_value(value.json).context(ParseSnafu)?
+                            let presentation = Presentation::create().add_attachment(
+                                Attachment::json(serde_json::to_value(vp).unwrap()).finalize(),
+                            );
+
+                            let presentation = if let Some(id) = &thread.thid {
+                                presentation.set_thread_id(id)
+                            } else {
+                                presentation
+                            };
+
+                            PresentationHolderState::PresentationPrepared(
+                                (state, presentation, thread).into(),
+                            )
                         }
-                        AttachmentData::Base64 { value } => {
-                            let base64 =
-                                BASE64_STANDARD.decode(value.base64).context(DecodeSnafu)?;
-                            serde_json::from_slice(base64.as_slice()).context(ParseSnafu)?
-                        }
-                        AttachmentData::Links { .. } => {
-                            InvalidAttachmentEncodingSnafu { details: "Links" }.fail()?
-                        }
-                    };
-                    let presentation_input = split_to_inputs_for_pd(&pd, None)
-                        .context(PresentationDefinitionParseSnafu)?;
-                    let presentation_input =
-                        presentation_input
-                            .first()
-                            .context(InvalidCredentialRequestSnafu {
-                                details: "presentation definition has no input descriptors",
-                            })?;
-                    let holder_binder =
-                        holder_binder(&state.presentation_request, state.verifier_did.as_deref())?;
-                    let vp = self
-                        .holder_service
-                        .create_presentation_auto(Some(holder_binder), presentation_input)
-                        .await
-                        .context(CreatePresentationSnafu)?;
-
-                    let presentation = Presentation::create().add_attachment(
-                        Attachment::json(serde_json::to_value(vp).unwrap()).finalize(),
-                    );
-
-                    let presentation = if let Some(id) = &thread.thid {
-                        presentation.set_thread_id(id)
-                    } else {
-                        presentation
-                    };
-
-                    PresentationHolderState::PresentationPrepared(
-                        (state, presentation, thread).into(),
-                    )
+                    }
                 }
                 HolderMessages::SetPresentation(presentation) => {
                     let thread = state.thread.to_owned();
@@ -247,6 +245,37 @@ where
     Ok((problem_report, thread))
 }
 
+/// Sends the verifier a problem report.
+async fn send_problem_report<KMS, KH, C>(
+    agent: &Agent<KMS, KH, C>,
+    type_: MessageType,
+    thread: Thread,
+    connection_id: String,
+    code: ProblemReportCode,
+    comment: &str,
+) -> Result<ProblemReport>
+where
+    KMS: Kms<KH> + Clone,
+    KH: KeyHandle,
+    C: ConnectionService + Clone,
+{
+    let problem_report = ProblemReport::create()
+        .set_message_type(&type_)
+        .set_code(code)
+        .set_comment(comment.to_owned())
+        .set_thread(thread);
+
+    agent
+        .send_message(
+            &mut problem_report.to_owned().try_into().context(ParseSnafu)?,
+            &connection_id,
+        )
+        .await
+        .context(AgentSnafu)?;
+
+    Ok(problem_report)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -255,17 +284,78 @@ mod tests {
 
     use crate::did::universal::UniversalResolver;
     use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::present_proof::Error;
     use crate::didcomm::protocol::aries::present_proof::holder::state_machine::HolderSM;
+    use crate::didcomm::protocol::aries::present_proof::holder::states::FinishedState;
     use crate::didcomm::protocol::aries::present_proof::holder::states::{
         PresentationHolderState, RequestReceivedState,
     };
     use crate::didcomm::protocol::aries::present_proof::message::HolderMessages;
     use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
-    use crate::didcomm::protocol::aries::present_proof::message::proof_request::ProofRequest;
+    use crate::didcomm::protocol::aries::present_proof::message::proof_request::{
+        ProofOptions, ProofRequest,
+    };
+    use crate::didcomm::protocol::aries::problem_report::message::{
+        ProblemReport, ProblemReportCode,
+    };
     use crate::inmem::vault::InMemVault;
     use crate::reqwest::builder::ReqwestClientBuilder;
     use crate::vc::core::{HolderMetadata, HolderService, KeyMetadata};
+
+    #[rstest::rstest]
+    #[case::stored_without_verifier_did(None, None)]
+    #[case::domain_of_another_verifier(
+        Some("did:example:verifier"),
+        Some("did:example:another-verifier")
+    )]
+    #[tokio::test]
+    async fn prepare_presentation_reports_a_request_it_cannot_answer(
+        #[case] verifier_did: Option<&str>,
+        #[case] request_domain: Option<&str>,
+    ) {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let definition =
+            serde_json::from_value(json!({"id": "pd", "input_descriptors": []})).unwrap();
+        let mut proof_request = ProofRequest::new(definition);
+        if let Some(domain) = request_domain {
+            proof_request = proof_request.set_options(ProofOptions {
+                challenge: Some("challenge".to_owned()),
+                domain: Some(domain.to_owned()),
+            });
+        }
+        let request = PresentationRequest::new().add_attachment(proof_request.try_into().unwrap());
+        let mut state = RequestReceivedState::new(request, connection.id.to_owned())
+            .set_thread_id("thread".to_owned());
+        state.verifier_did = verifier_did.map(str::to_owned);
+        let holder_service = holder_service(&agent);
+
+        let holder_sm = HolderSM::new(
+            PresentationHolderState::RequestReceived(state),
+            key_metadata(),
+            agent,
+            Arc::new(holder_service),
+        )
+        .handle_message(HolderMessages::PreparePresentation)
+        .await
+        .unwrap();
+
+        let PresentationHolderState::Finished(FinishedState {
+            status: Status::Failed(report),
+            ..
+        }) = holder_sm.state()
+        else {
+            panic!("request was not finished: {:?}", holder_sm.state());
+        };
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidPresentationRequest.code()
+        );
+        let sent: ProblemReport = transport.next_message().await;
+        assert_eq!(&sent, report);
+    }
 
     #[tokio::test]
     async fn prepare_presentation_failed_without_input_descriptors() {
@@ -302,5 +392,30 @@ mod tests {
             result,
             Err(Error::InvalidCredentialRequest { .. })
         ));
+    }
+    fn holder_service(
+        agent: &crate::didcomm::agent::Agent<
+            crate::inmem::kms::LocalKms,
+            crate::inmem::kms::KeyHandle,
+            crate::didcomm::connection::in_mem::InMemConnectionService,
+        >,
+    ) -> impl crate::vc::core::Holder + 'static {
+        HolderService::new(
+            agent.kms().to_owned(),
+            InMemVault::new(),
+            HolderMetadata {
+                pop: Default::default(),
+                client_id: String::new(),
+            },
+            UniversalResolver::default(),
+            Arc::new(ReqwestClientBuilder::new().build().unwrap()),
+        )
+    }
+
+    fn key_metadata() -> KeyMetadata {
+        KeyMetadata {
+            kid: "kid".to_owned(),
+            did_url: "did:example:holder#key-1".to_owned(),
+        }
     }
 }

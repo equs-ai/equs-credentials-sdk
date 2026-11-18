@@ -38,7 +38,8 @@ observe_state()        → (Subscription, EventObservable<PresentationHolderStat
 ### State machine (`HolderSM`)
 ```
 RequestReceived
-  + PreparePresentation        → PresentationPrepared  (auto-creates a VP for the first input descriptor, bound to the request; fails without a descriptor or `verifier_did`)
+  + PreparePresentation        → PresentationPrepared  (auto-creates a VP for the first input descriptor, bound to the request's proof options; fails without a descriptor)
+                               → Finished (Failed)     (request cannot be bound: no `verifier_did`, or `options.domain` is a DID other than the one the request came from; sends an `invalid-request` problem report)
   + SetPresentation            → PresentationPrepared  (caller supplies a VP bound with `holder_binder()`)
   + RejectPresentationRequest  → Finished
 

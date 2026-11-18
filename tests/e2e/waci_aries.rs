@@ -435,8 +435,17 @@ async fn test_presentation_built_with_holder_binder_is_accepted() {
     .await
     .unwrap();
 
+    let request = verifier
+        .get_presentation_request(thread_id.to_owned())
+        .await
+        .unwrap();
+    let options = ProofRequest::try_from(request.attachments.first().unwrap())
+        .unwrap()
+        .options
+        .unwrap();
+    assert_eq!(options.domain.as_deref(), Some(verifier_did.as_str()));
     let binder = holder.holder_binder().await.unwrap();
-    assert_eq!(binder.nonce.secret(), thread_id);
+    assert_eq!(Some(binder.nonce.secret()), options.challenge.as_deref());
     assert_eq!(binder.verifier_id, verifier_did);
 
     let holder_service = HolderService::new(

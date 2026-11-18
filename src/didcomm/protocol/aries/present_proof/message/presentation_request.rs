@@ -2,14 +2,17 @@ use crate::didcomm::core::envelope::Attachment;
 use crate::didcomm::core::message_id::MessageId;
 use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
+use crate::didcomm::protocol::aries::present_proof::message::proof_request::{
+    ProofOptions, ProofRequest,
+};
 use crate::didcomm::protocol::aries::present_proof::{
-    Error, InvalidAttachmentEncodingSnafu, PROTOCOL_NAME, PROTOCOL_VERSION, ParseSnafu,
-    REQUEST_PRESENTATION, Result,
+    Error, InvalidAttachmentEncodingSnafu, InvalidAttachmentSnafu, PROTOCOL_NAME, PROTOCOL_VERSION,
+    ParseSnafu, REQUEST_PRESENTATION, Result,
 };
 use crate::impl_didcomm_message_conversion;
 use crate::utils::http::MimeType;
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct PresentationRequest {
@@ -56,6 +59,25 @@ impl PresentationRequest {
     pub fn set_thread_id(mut self, id: &str) -> Self {
         self.thread = Some(Thread::new().set_thid(id.to_string()));
         self
+    }
+
+    /// Adds proof options (challenge and domain) to the request.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::InvalidAttachment] - the request has no attachment.
+    /// * Any error from reading or writing the [ProofRequest].
+    pub(crate) fn with_proof_options(mut self, options: ProofOptions) -> Result<Self> {
+        let attachment = self.attachments.first().context(InvalidAttachmentSnafu {
+            details: "presentation request has no attachment",
+        })?;
+        let id = attachment
+            .id
+            .to_owned()
+            .unwrap_or_else(|| MessageId::new().to_string());
+        let proof_request = ProofRequest::try_from(attachment)?.set_options(options);
+        self.attachments[0] = proof_request.to_attachment(id)?;
+        Ok(self)
     }
 }
 
