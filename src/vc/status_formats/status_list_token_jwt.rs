@@ -25,7 +25,7 @@ use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
 use crate::vc::formats::VerifyOptions;
-use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
+use crate::vc::formats::sd_jwt_vc::{Credential, SdJwtAPI};
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::status_formats::StatusListCreatingSnafu;
@@ -418,32 +418,14 @@ impl StatusListJwt {
     ) -> Result<BitString> {
         let claims = StatusListJwt::decode_status_list_token(&status_list_sdjwt_vc)?;
 
-        let opts = VerifyOptions {
-            trusted_certs: trusted_certs.cloned(),
-            anchor_policy,
-            ..Default::default()
-        };
-        let signer = Box::pin(SdJwtAPI::verify_vc_signer(
+        Box::pin(StatusListJwt::verify_status_list_signer(
             &status_list_sdjwt_vc,
-            opts,
+            issuer,
             did_resolver,
-        )) // TODO: consider using sd_jwt API directly
-        .await
-        .map_err(|err| {
-            VCStatusSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        if let Some(signer) = signer
-            && issuer != Some(signer.as_did())
-        {
-            return VCStatusSnafu {
-                details: "status list is not signed by the credential issuer",
-            }
-            .fail();
-        }
+            trusted_certs,
+            anchor_policy,
+        ))
+        .await?;
 
         let Some(sub) = claims.get(SUB_CLAIM) else {
             return MalformedStatusListSnafu {
@@ -506,6 +488,46 @@ impl StatusListJwt {
             )?;
 
         Ok(bit_string)
+    }
+
+    /// Verifies the status list token's signature. A token signed through a DID must be signed
+    /// by `issuer`; a token signed by an `x5c` chain is checked against `trusted_certs` instead.
+    #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err())]
+    async fn verify_status_list_signer(
+        status_list_token: &Credential,
+        issuer: Option<&SpruceDID>,
+        did_resolver: UniversalResolver,
+        trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<()> {
+        let opts = VerifyOptions {
+            trusted_certs: trusted_certs.cloned(),
+            anchor_policy,
+            ..Default::default()
+        };
+        let signer = Box::pin(SdJwtAPI::verify_vc_signer(
+            status_list_token,
+            opts,
+            did_resolver,
+        )) // TODO: consider using sd_jwt API directly
+        .await
+        .map_err(|err| {
+            VCStatusSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        if let Some(signer) = signer
+            && issuer != Some(signer.as_did())
+        {
+            return VCStatusSnafu {
+                details: "status list is not signed by the credential issuer",
+            }
+            .fail();
+        }
+
+        Ok(())
     }
 
     /// The DID in `vc_claims`' `iss`, if it is one.
