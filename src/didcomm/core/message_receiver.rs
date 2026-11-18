@@ -37,6 +37,13 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Message of {size} bytes exceeds the {max} byte limit"))]
+    MessageTooLarge {
+        size: usize,
+        max: usize,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// Configuration options for the `DefaultMessageReceiver`
@@ -86,6 +93,11 @@ impl MessageReceiver {
             config,
         }
     }
+
+    /// The largest packed message, in bytes, that [MessageReceiver::receive_message] accepts.
+    pub fn max_message_size(&self) -> usize {
+        self.config.max_message_size
+    }
 }
 
 impl MessageReceiver {
@@ -99,12 +111,21 @@ impl MessageReceiver {
     ///
     /// # Errors
     ///
+    /// * [Error::MessageTooLarge] - `packed_msg` is larger than `max_message_size`.
     /// * [Error::Envelope] - fails to pack/unpack the message.
     /// * [Error::UnauthenticatedSender] - `from` is set but neither authcrypt nor a signature
     ///   authenticated it.
     /// * [Error::Dispatch] - fails to dispatch the message.
     #[instrument(skip(self, packed_msg), fields(message_size = packed_msg.len()))]
     pub async fn receive_message(&self, packed_msg: &[u8]) -> Result<()> {
+        ensure!(
+            packed_msg.len() <= self.config.max_message_size,
+            MessageTooLargeSnafu {
+                size: packed_msg.len(),
+                max: self.config.max_message_size,
+            }
+        );
+
         //TODO: Replace and fix issue while trying with below method call
         // let packed_msg = serde_json::from_slice(packed_msg).context(ParseSnafu)?;
         let message_str = String::from_utf8_lossy(packed_msg);
@@ -141,7 +162,7 @@ mod test {
     use crate::did::{DID, VerificationMethodKey, VerificationRelationshipType};
     use crate::didcomm::core::dispatcher::{self, Dispatcher};
     use crate::didcomm::core::envelope::{EnvelopeService, Message, PackEncryptedOptions};
-    use crate::didcomm::core::message_receiver::{Error, MessageReceiver};
+    use crate::didcomm::core::message_receiver::{Error, MessageReceiver, MessageReceiverConfig};
     use crate::inmem::kms::LocalKms;
     use crate::kms::{KeyType, Kms};
 
@@ -213,6 +234,33 @@ mod test {
             .unwrap_err();
 
         assert!(matches!(err, Error::UnauthenticatedSender { .. }));
+        assert!(dispatcher.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn receive_message_failed_with_message_too_large() {
+        let envelope_service = EnvelopeService::new(LocalKms::new(), UniversalResolver::default());
+        let dispatcher = RecordingDispatcher::default();
+        let receiver = MessageReceiver::new(
+            envelope_service.clone(),
+            dispatcher.clone(),
+            MessageReceiverConfig {
+                max_message_size: 16,
+                ..Default::default()
+            },
+        );
+
+        let packed_msg = envelope_service
+            .pack_plaintext(&example_message(None))
+            .await
+            .unwrap();
+
+        let err = receiver
+            .receive_message(packed_msg.as_bytes())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::MessageTooLarge { max: 16, .. }));
         assert!(dispatcher.0.lock().unwrap().is_empty());
     }
 

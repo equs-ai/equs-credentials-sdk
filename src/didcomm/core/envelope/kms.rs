@@ -56,7 +56,13 @@ where
     async fn resolve_key(&self, x: KidOrJwk) -> didcomm::error::Result<(KeyType, KeyPair)> {
         match x {
             KidOrJwk::Kid(kid) => {
-                let jwk = self.resolver.fetch_public_jwk(Some(&kid)).await.unwrap();
+                let jwk = self
+                    .resolver
+                    .fetch_public_jwk(Some(&kid))
+                    .await
+                    .map_err(|err| {
+                        didcomm::error::Error::new(didcomm::error::ErrorKind::DIDNotResolved, err)
+                    })?;
 
                 let public_key = jwk.pub_key().map_err(|err| {
                     didcomm::error::Error::new(didcomm::error::ErrorKind::Malformed, err)
@@ -115,7 +121,12 @@ where
             .resolver
             .fetch_public_jwk(Some(secret_id))
             .await
-            .unwrap();
+            .map_err(|_| {
+                didcomm::error::err_msg(
+                    didcomm::error::ErrorKind::SecretNotFound,
+                    format!("Key not found for ID: {secret_id}"),
+                )
+            })?;
 
         let public_key = jwk
             .pub_key()
@@ -274,5 +285,45 @@ impl From<Alg> for KnownKeyAlg {
             Alg::ES256K => KnownKeyAlg::K256,
             Alg::BBS => KnownKeyAlg::Unsupported,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use didcomm::error::ErrorKind;
+    use didcomm::secrets::{KeyManagementService, KidOrJwk};
+
+    use crate::did::universal::UniversalResolver;
+    use crate::didcomm::core::envelope::kms::KmsWrapper;
+    use crate::inmem::kms::{KeyHandle, LocalKms};
+
+    const UNRESOLVABLE_KID: &str = "did:example:unresolvable#key-1";
+
+    fn kms() -> KmsWrapper<LocalKms, KeyHandle> {
+        KmsWrapper::new(LocalKms::new(), UniversalResolver::default())
+    }
+
+    #[tokio::test]
+    async fn find_secrets_skips_unresolvable_kid() {
+        let found = kms().find_secrets(&[UNRESOLVABLE_KID]).await.unwrap();
+
+        assert!(found.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_key_alg_failed_with_unresolvable_kid() {
+        let err = kms().get_key_alg(UNRESOLVABLE_KID).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::SecretNotFound);
+    }
+
+    #[tokio::test]
+    async fn resolve_key_failed_with_unresolvable_kid() {
+        let err = kms()
+            .resolve_key(KidOrJwk::Kid(UNRESOLVABLE_KID.to_owned()))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::DIDNotResolved);
     }
 }

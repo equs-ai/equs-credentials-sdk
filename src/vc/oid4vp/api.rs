@@ -274,6 +274,8 @@ pub enum Error {
     Internal { source: InternalError },
     #[snafu(transparent)]
     Protocol { source: ProtocolError },
+    #[snafu(display("transaction data expired at {exp}"))]
+    TransactionDataExpired { exp: i64 },
 }
 
 /// The `OID4VP` `Holder` API.

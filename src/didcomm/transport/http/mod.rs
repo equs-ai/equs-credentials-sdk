@@ -8,6 +8,7 @@ use crate::http::HttpClient;
 use async_lock::{Mutex, RwLock};
 use async_trait::async_trait;
 use futures::channel::oneshot;
+use hyper::body::HttpBody;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use snafu::ensure;
@@ -86,19 +87,15 @@ impl HttpTransport {
             return Ok(response);
         }
 
-        // Check content type
-        let content_type = req
-            .headers()
-            .get(hyper::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("application/octet-stream");
-
-        let body_bytes = hyper::body::to_bytes(req.into_body()).await.map_err(|e| {
-            DecodingSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        })?;
+        let Some(body_bytes) =
+            read_body(req.into_body(), message_receiver.max_message_size()).await?
+        else {
+            let response = Response::builder()
+                .status(StatusCode::PAYLOAD_TOO_LARGE)
+                .body(Body::empty())
+                .unwrap();
+            return Ok(response);
+        };
 
         let message_receiver = message_receiver.clone();
         tokio::task::spawn(async move {
@@ -116,6 +113,29 @@ impl HttpTransport {
             .unwrap();
         Ok(response)
     }
+}
+
+async fn read_body(mut body: Body, max_size: usize) -> Result<Option<Vec<u8>>> {
+    if body.size_hint().lower() > max_size as u64 {
+        return Ok(None);
+    }
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = body.data().await {
+        let chunk = chunk.map_err(|e| {
+            DecodingSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        if bytes.len() + chunk.len() > max_size {
+            return Ok(None);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+
+    Ok(Some(bytes))
 }
 
 #[async_trait]
@@ -317,5 +337,75 @@ impl OutboundTransport for HttpTransport {
     async fn stop(&self) -> Result<()> {
         // No special cleanup needed for outbound transport
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hyper::{Body, Method, Request, StatusCode};
+    use url::Url;
+
+    use crate::did::universal::UniversalResolver;
+    use crate::didcomm::core::dispatcher::DispatcherService;
+    use crate::didcomm::core::envelope::EnvelopeService;
+    use crate::didcomm::core::message_receiver::{MessageReceiver, MessageReceiverConfig};
+    use crate::didcomm::core::protocol_registry::ProtocolRegistry;
+    use crate::didcomm::transport::http::HttpTransport;
+    use crate::inmem::kms::LocalKms;
+    use crate::reqwest::builder::ReqwestClientBuilder;
+
+    const MAX_MESSAGE_SIZE: usize = 16;
+
+    #[tokio::test]
+    async fn handle_request_accepts_body_within_limit() {
+        let status = post(Body::from(vec![b'a'; MAX_MESSAGE_SIZE])).await;
+
+        assert_eq!(status, StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn handle_request_rejects_body_over_limit() {
+        let status = post(Body::from(vec![b'a'; MAX_MESSAGE_SIZE + 1])).await;
+
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn handle_request_rejects_streamed_body_over_limit() {
+        let (mut sender, body) = Body::channel();
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                sender
+                    .send_data(vec![b'a'; MAX_MESSAGE_SIZE].into())
+                    .await
+                    .unwrap();
+            }
+        });
+
+        let status = post(body).await;
+
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    async fn post(body: Body) -> StatusCode {
+        let transport = HttpTransport::new(
+            Url::parse("http://127.0.0.1:0").unwrap(),
+            ReqwestClientBuilder::new().build().unwrap(),
+        );
+        let receiver = MessageReceiver::new(
+            EnvelopeService::new(LocalKms::new(), UniversalResolver::default()),
+            DispatcherService::new(ProtocolRegistry::new()),
+            MessageReceiverConfig {
+                max_message_size: MAX_MESSAGE_SIZE,
+                ..Default::default()
+            },
+        );
+        let request = Request::builder().method(Method::POST).body(body).unwrap();
+
+        transport
+            .handle_request(request, &receiver)
+            .await
+            .unwrap()
+            .status()
     }
 }
