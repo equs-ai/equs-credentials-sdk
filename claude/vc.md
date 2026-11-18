@@ -20,7 +20,7 @@ Implements the full Verifiable Credentials stack: credential issuance, presentat
 
 ## Cross-domain relationships
 - Depends on: `crate::crypto`, `crate::kms`, `crate::http` (`HttpClient`), `crate::did` (`UniversalResolver`), `crate::storage`, `crate::vault`, `one-core-portable` (JWE/SD-JWT crypto), `test_fixtures` (tests only: runtime-generated tokens and keys)
-- Used by: `didcomm` (WACI/Aries issuance and present-proof protocols embed VC core), all three wrappers (Node.js, WASM, UniFFI expose OID4VCI + OID4VP), `tests/e2e/`
+- Used by: `didcomm` (WACI/Aries issuance and present-proof protocols embed VC core; the present-proof verifier checks a presentation against its request with `presentation_exchange::validate_presented_credential`), all three wrappers (Node.js, WASM, UniFFI expose OID4VCI + OID4VP), `tests/e2e/`
 
 ## Key decisions / constraints
 - **X.509 issuer trust:** SD-JWT VC `x5c` and mdoc `x5chain` are both validated by one-core's `validate_chain_against_trust_anchors` — a signature path from the leaf to a held anchor PEM, never an Authority Key Identifier match alone; a self-signed leaf is rejected (HAIP 1.0 §6.1.1), for both formats also by the integrity-only check that issuer-trust verification runs before evaluating anchors, so it fails in `report` mode too. Reason: a key identifier match alone would trust any chain whose topmost certificate *claims* a trusted root's key identifier. No anchors: under issuer-trust mode `enforce` (default) both SD-JWT VC and mdoc fail with `IssuerNotTrusted` (`no_anchors_configured`). `iss` ↔ SAN binding is opt-in and off, per SD-JWT VC draft-19 §2.5. See `src/utils/CLAUDE.md`.
