@@ -1,5 +1,5 @@
-use snafu::ResultExt;
-use ssi::dids::DIDURLBuf;
+use snafu::{ResultExt, ensure};
+use ssi::dids::{DIDURL, DIDURLBuf};
 use std::str::FromStr;
 use tracing::{debug, trace, warn};
 
@@ -16,8 +16,9 @@ use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
 use crate::didcomm::protocol::aries::issuance::{
-    AgentSnafu, DidUrlResolutionSnafu, InvalidCredentialOfferSnafu, InvalidStateSnafu,
-    MessageIsOutOfThreadSnafu, ParseSnafu, Result, VCMetadataSnafu, VaultSnafu,
+    AgentSnafu, DidUrlResolutionSnafu, InvalidCredentialOfferSnafu, InvalidCredentialSnafu,
+    InvalidStateSnafu, MessageIsOutOfThreadSnafu, ParseSnafu, Result, VCMetadataSnafu, VCSnafu,
+    VaultSnafu,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{
     ProblemReport, ProblemReportCode, Reason,
@@ -26,7 +27,9 @@ use crate::kms::{KeyHandle, Kms};
 use crate::utils::serde::Helpers;
 use crate::vc::claims::Claim;
 use crate::vc::core::KeyMetadata;
+use crate::vc::formats::API;
 use crate::vc::formats::json_ld_vc;
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use crate::{vault, vc};
 
@@ -243,7 +246,7 @@ impl RequestSentState {
             .ok_or_else(|| MessageIsOutOfThreadSnafu.build())?;
 
         match self
-            .store_credential(&credential, vault, key_metadata)
+            .store_credential(&credential, vault, agent, key_metadata)
             .await
         {
             Ok(cred_id) => {
@@ -325,12 +328,18 @@ impl RequestSentState {
         ))
     }
 
-    async fn store_credential(
+    async fn store_credential<KMS, KH, C>(
         &self,
         credential: &Credential,
         vault: &impl vault::Vault,
+        agent: &Agent<KMS, KH, C>,
         key_metadata: &KeyMetadata,
-    ) -> Result<String> {
+    ) -> Result<String>
+    where
+        KMS: Kms<KH> + Clone,
+        KH: KeyHandle,
+        C: ConnectionService + Clone,
+    {
         trace!("Holder::_store_credential >>>");
         debug!("holder storing received credential");
 
@@ -341,7 +350,35 @@ impl RequestSentState {
             .build(),
         )?;
 
-        let credential = vc::Credential::LdpVc(credential.get_ldp_vc_credential()?);
+        let holder_did_url =
+            DIDURLBuf::from_str(&key_metadata.did_url).context(DidUrlResolutionSnafu)?;
+        let requested = requested_credential(credential_offer, holder_did_url.did())?;
+        let credential = credential.get_ldp_vc_credential()?;
+
+        ensure!(
+            serde_json::to_value(&credential.claims).context(ParseSnafu)?
+                == serde_json::to_value(&requested).context(ParseSnafu)?,
+            InvalidCredentialSnafu {
+                details: "credential differs from the requested one",
+            }
+        );
+
+        ensure!(
+            signed_by_issuer(&credential),
+            InvalidCredentialSnafu {
+                details: "credential is not signed by its issuer",
+            }
+        );
+
+        JsonLdAPI::verify_vc(
+            &credential,
+            Default::default(),
+            agent.did_resolver().clone(),
+        )
+        .await
+        .context(VCSnafu)?;
+
+        let credential = vc::Credential::LdpVc(credential);
 
         let metadata =
             DefaultMetadataProcessor::resolve_metadata(&credential, key_metadata.clone())
@@ -449,36 +486,58 @@ impl OfferReceivedState {
             self.offer
         );
         debug!("holder preparing credential request");
-        let mut credential = self.offer.get_ldp_vc_credential()?;
-
-        let cred_subjects = match &mut credential {
-            json_ld_vc::Credential::V1(crd) => &mut crd.credential_subjects,
-            json_ld_vc::Credential::V2(crd) => &mut crd.credential_subjects,
-        };
-
-        let cred_subject = cred_subjects.get_mut(0).ok_or_else(|| {
-            InvalidCredentialOfferSnafu {
-                details: "Credential subject not found",
-            }
-            .build()
-        })?;
-
-        match cred_subject.get("id") {
-            None => cred_subject.put_str("id", holder_did.to_string()),
-            Some(Claim::String(id)) if id == holder_did => {}
-            Some(_) => {
-                return InvalidCredentialOfferSnafu {
-                    details: "Credential offer is bound to another subject",
-                }
-                .fail();
-            }
-        }
+        let credential = requested_credential(&self.offer, holder_did)?;
 
         let cred_req = CredentialRequest::create().set_ldp_vc_credential(&credential);
 
         trace!("Holder::make_credential_request <<<");
         cred_req
     }
+}
+
+fn requested_credential(
+    offer: &CredentialOffer,
+    holder_did: &str,
+) -> Result<json_ld_vc::Credential> {
+    let mut credential = offer.get_ldp_vc_credential()?;
+
+    let cred_subjects = match &mut credential {
+        json_ld_vc::Credential::V1(crd) => &mut crd.credential_subjects,
+        json_ld_vc::Credential::V2(crd) => &mut crd.credential_subjects,
+    };
+
+    let cred_subject = cred_subjects.get_mut(0).ok_or_else(|| {
+        InvalidCredentialOfferSnafu {
+            details: "Credential subject not found",
+        }
+        .build()
+    })?;
+
+    match cred_subject.get("id") {
+        None => cred_subject.put_str("id", holder_did.to_string()),
+        Some(Claim::String(id)) if id == holder_did => {}
+        Some(_) => {
+            return InvalidCredentialOfferSnafu {
+                details: "Credential offer is bound to another subject",
+            }
+            .fail();
+        }
+    }
+
+    Ok(credential)
+}
+
+fn signed_by_issuer(credential: &json_ld_vc::VC) -> bool {
+    let issuer = match &credential.claims {
+        json_ld_vc::Credential::V1(crd) => crd.issuer.id(),
+        json_ld_vc::Credential::V2(crd) => crd.issuer.id(),
+    };
+
+    !credential.proofs.is_empty()
+        && credential.proofs.iter().all(|proof| {
+            DIDURL::new(proof.verification_method.id().as_str())
+                .is_ok_and(|did_url| did_url.did().as_str() == issuer.as_str())
+        })
 }
 
 impl FinishedHolderState {
@@ -491,15 +550,20 @@ impl FinishedHolderState {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use ssi::dids::DIDURLBuf;
+    use std::str::FromStr;
 
+    use crate::didcomm::agent::Agent;
     use crate::didcomm::agent::test_utils::test_agent;
+    use crate::didcomm::connection::in_mem::InMemConnectionService;
     use crate::didcomm::connection::test_utils::create_test_connection;
+    use crate::didcomm::protocol::aries::common::message::status::Status;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
     use crate::didcomm::protocol::aries::issuance::holder::HolderMessages;
     use crate::didcomm::protocol::aries::issuance::holder::holder_fsm::HolderSM;
     use crate::didcomm::protocol::aries::issuance::holder::states::{
-        IssuanceHolderState, OfferReceivedState, RequestSentState,
+        FinishedHolderState, IssuanceHolderState, OfferReceivedState, RequestSentState,
     };
     use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
     use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
@@ -507,11 +571,113 @@ mod tests {
     use crate::didcomm::protocol::aries::problem_report::message::{
         ProblemReport, ProblemReportCode,
     };
+    use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::vault::InMemVault;
+    use crate::kms::{KeyType, Kms};
+    use crate::utils::test_utils::create_did_and_key_metadata_by_key_type;
+    use crate::vault::Vault;
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::json_ld_vc;
+    use crate::vc::formats::json_ld_vc::JsonLdAPI;
 
     const HOLDER_DID: &str = "did:example:holder";
+
+    type TestAgent = Agent<LocalKms, KeyHandle, InMemConnectionService>;
+
+    enum Received {
+        Unsigned,
+        ProofOverOtherClaims,
+        OtherClaims,
+        OtherIssuer,
+        SignedByAnotherKey,
+    }
+
+    #[tokio::test]
+    async fn requested_credential_signed_by_its_issuer_is_stored() {
+        let (agent, _transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let (issuer_did, issuer_key) = issuer(&agent).await;
+        let offer = offer(&issuer_did);
+        let credential = sign(&agent, &issuer_key, requested(&offer)).await;
+        let vault = InMemVault::new();
+
+        let holder = HolderSM::step(
+            request_sent(offer, connection.id),
+            key_metadata(),
+            agent,
+            vault.clone(),
+        )
+        .handle_message(HolderMessages::Credential(credential_message(&credential)))
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            holder.state(),
+            IssuanceHolderState::Finished(FinishedHolderState {
+                status: Status::Success,
+                ..
+            })
+        ));
+        assert_eq!(vault.get_credentials(None).await.unwrap().len(), 1);
+    }
+
+    #[rstest]
+    #[case::unsigned(Received::Unsigned)]
+    #[case::proof_over_other_claims(Received::ProofOverOtherClaims)]
+    #[case::other_claims(Received::OtherClaims)]
+    #[case::other_issuer(Received::OtherIssuer)]
+    #[case::signed_by_another_key(Received::SignedByAnotherKey)]
+    #[tokio::test]
+    async fn credential_other_than_the_requested_one_is_not_stored(#[case] received: Received) {
+        let (agent, transport) = test_agent();
+        let connection = create_test_connection(&agent).await;
+        let (issuer_did, issuer_key) = issuer(&agent).await;
+        let (other_did, other_key) = issuer(&agent).await;
+        let offer = offer(&issuer_did);
+        let requested = requested(&offer);
+        let mut other_claims = requested.clone();
+        other_claims["credentialSubject"]["givenName"] = json!("MALLORY");
+
+        let credential = match received {
+            Received::Unsigned => json_ld_vc::VC::new(
+                serde_json::from_value(requested).unwrap(),
+                Default::default(),
+            ),
+            Received::ProofOverOtherClaims => json_ld_vc::VC::new(
+                serde_json::from_value(requested).unwrap(),
+                sign(&agent, &issuer_key, other_claims).await.proofs,
+            ),
+            Received::OtherClaims => sign(&agent, &issuer_key, other_claims).await,
+            Received::OtherIssuer => {
+                let mut other_issuer = requested;
+                other_issuer["issuer"] = json!(other_did);
+                sign(&agent, &other_key, other_issuer).await
+            }
+            Received::SignedByAnotherKey => sign(&agent, &other_key, requested).await,
+        };
+        let vault = InMemVault::new();
+
+        let result = HolderSM::step(
+            request_sent(offer, connection.id),
+            key_metadata(),
+            agent,
+            vault.clone(),
+        )
+        .handle_message(HolderMessages::Credential(credential_message(&credential)))
+        .await;
+
+        assert!(result.is_err());
+        let report: ProblemReport = transport.next_message().await;
+        assert_eq!(
+            report.body.code,
+            ProblemReportCode::InvalidCredential.code()
+        );
+        assert_eq!(
+            report.body.comment.as_deref(),
+            Some("credential could not be processed")
+        );
+        assert!(vault.get_credentials(None).await.unwrap().is_empty());
+    }
 
     #[rstest]
     #[case::unbound_offer(None)]
@@ -621,6 +787,66 @@ mod tests {
             offer: CredentialOffer::create()
                 .set_ldp_vc_credential(&credential)
                 .unwrap(),
+            connection_id,
+            thread: thread(),
+        })
+    }
+
+    async fn issuer(agent: &TestAgent) -> (String, KeyMetadata) {
+        create_did_and_key_metadata_by_key_type(agent.kms(), KeyType::Ed25519).await
+    }
+
+    fn offer(issuer_did: &str) -> CredentialOffer {
+        let credential: json_ld_vc::Credential = serde_json::from_value(json!({
+            "@context": [
+                "https://www.w3.org/2018/credentials/v1",
+                "https://w3id.org/citizenship/v1"
+            ],
+            "type": ["VerifiableCredential", "PermanentResidentCard"],
+            "issuer": issuer_did,
+            "issuanceDate": "2026-01-01T00:00:00Z",
+            "credentialSubject": {
+                "type": ["PermanentResident", "Person"],
+                "givenName": "JANE"
+            }
+        }))
+        .unwrap();
+
+        CredentialOffer::create()
+            .set_ldp_vc_credential(&credential)
+            .unwrap()
+    }
+
+    fn requested(offer: &CredentialOffer) -> Value {
+        let mut credential = serde_json::to_value(offer.get_ldp_vc_credential().unwrap()).unwrap();
+        credential["credentialSubject"]["id"] = json!(HOLDER_DID);
+        credential
+    }
+
+    async fn sign(agent: &TestAgent, key: &KeyMetadata, credential: Value) -> json_ld_vc::VC {
+        JsonLdAPI::sign_credential(
+            serde_json::from_value(credential).unwrap(),
+            (
+                &DIDURLBuf::from_str(&key.did_url).unwrap(),
+                agent.kms().get(&key.kid).await.unwrap(),
+            ),
+            None,
+            agent.did_resolver().clone(),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn credential_message(credential: &json_ld_vc::VC) -> Credential {
+        Credential::create()
+            .set_ldp_vc_credential(credential)
+            .unwrap()
+            .set_thread(thread())
+    }
+
+    fn request_sent(offer: CredentialOffer, connection_id: String) -> IssuanceHolderState {
+        IssuanceHolderState::RequestSent(RequestSentState {
+            offer: Some(offer),
             connection_id,
             thread: thread(),
         })
