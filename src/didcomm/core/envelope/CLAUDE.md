@@ -21,7 +21,7 @@ pack_signed(message, sign_by) → Result<(String, PackSignedMetadata)>
 pack_encrypted(message, to, from, sign_by, options) → Result<(String, PackEncryptedMetadata)>
 unpack(msg, options) → Result<(Message, UnpackMetadata)>
 ```
-`unpack` inherits the `didcomm` crate's (`equs-didcomm` ≥ 0.1.1) DIDComm v2.1 §Message Layer Addressing Consistency check: a set `message.from` must be the DID of `encrypted_from_kid` (authcrypt `skid`) and of `sign_from` (signer `kid`) whenever those are present; a mismatch is a `Malformed` error. A `from` with neither (plaintext, anoncrypt only) passes with `authenticated: false`.
+`unpack` inherits the `didcomm` crate's (`equs-didcomm` ≥ 0.1.2) DIDComm v2.1 §Message Layer Addressing Consistency checks: `message.from` and each `message.to` element must be a DID or a DID URL without a fragment; a set `from` must have the DID of `encrypted_from_kid` (authcrypt `skid`) and of `sign_from` (signer `kid`) whenever those are present; a set `to` must contain the DID of every `encrypted_to_kids` entry. A violation is a `Malformed` error. A `from` with neither (plaintext, anoncrypt only) passes with `authenticated: false`.
 
 ### Type aliases (all from `didcomm::*`, re-exported publicly)
 `Message`, `MessageBuilder`, `Attachment`, `AttachmentBuilder`, `AttachmentData`,
