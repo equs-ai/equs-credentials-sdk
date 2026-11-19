@@ -983,6 +983,7 @@ mod tests {
         use crate::vc::core::{VerificationParams, Verifier, VerifierService};
         use crate::vc::formats::mso_mdoc;
         use crate::vc::formats::mso_mdoc::tests::{sample_binder, sample_mso_mdoc_vp_with_status};
+        use crate::vc::status_formats::status_list_token_cwt::tests::x5c_status_list_cwt;
         use crate::vc::status_formats::status_list_token_jwt;
         use crate::vc::status_formats::status_list_token_jwt::tests::{
             status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
@@ -1205,15 +1206,14 @@ mod tests {
             assert_fails_with(result, "Could not fetch status list");
         }
 
-        #[tokio::test]
-        async fn status_list_served_only_as_cwt_is_not_supported() {
+        fn serving_status_list_cwt() -> MockHttpClient {
             let mut http_client = MockHttpClient::new();
             mock_http_fn(
                 &mut http_client,
                 Method::GET,
                 Url::from_str(STATUS_LIST_URI).unwrap(),
                 |_| {
-                    let mut response = HttpResponse::new(vec![0xd2, 0x84]);
+                    let mut response = HttpResponse::new(x5c_status_list_cwt(STATUS_LIST_URI));
                     response
                         .headers_mut()
                         .insert(CONTENT_TYPE, "application/statuslist+cwt".parse().unwrap());
@@ -1221,19 +1221,70 @@ mod tests {
                 },
                 1.into(),
             );
+            http_client
+        }
 
-            let result = verify(
+        #[tokio::test]
+        async fn status_list_served_as_cwt_is_checked() {
+            let verified = verify(
                 status_list(VALID),
                 IssuerTrustMode::Enforce,
                 true,
-                http_client,
+                serving_status_list_cwt(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[tokio::test]
+        async fn revoked_entry_of_a_cwt_status_list_is_rejected() {
+            let result = verify(
+                status_list(INVALID),
+                IssuerTrustMode::Enforce,
+                true,
+                serving_status_list_cwt(),
             )
             .await;
 
             assert_fails_with(
                 result,
-                "status list format not supported: application/statuslist+cwt",
+                "The status of the verifiable credential is 'Invalid'",
             );
+        }
+
+        #[tokio::test]
+        async fn status_list_is_not_fetched_for_an_mdoc_that_fails_verification() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            // No mock is set up, so fetching the status list would panic.
+            let result = verifier(&unrelated_iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await;
+
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn cwt_status_list_under_no_anchor_fails_under_enforce() {
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                false,
+                serving_status_list_cwt(),
+            )
+            .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
         }
 
         #[tokio::test]

@@ -29,6 +29,8 @@ use crate::vc::formats::sd_jwt_vc::{Credential, SdJwtAPI};
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::status_formats::StatusListCreatingSnafu;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vc::status_formats::status_list_token_cwt::StatusListCwt;
 use base64::Engine;
 use base64::alphabet::URL_SAFE;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
@@ -56,10 +58,46 @@ const STATUS_LIST_TYPE: &str = "statuslist+jwt";
 const CONTENT_TYPE_HEADER: &str = "application/statuslist+jwt";
 const CWT_CONTENT_TYPE: &str = "application/statuslist+cwt";
 
+#[cfg(not(target_arch = "wasm32"))]
+const ACCEPT_HEADER: &str = "application/statuslist+jwt, application/statuslist+cwt";
+#[cfg(target_arch = "wasm32")]
+const ACCEPT_HEADER: &str = CONTENT_TYPE_HEADER;
+
+const CWT_CACHE_PREFIX: &str = "cwt:";
+
 const LST_ENGINE: GeneralPurpose = GeneralPurpose::new(
     &URL_SAFE,
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
+
+/// A status list token, in the format the server returned.
+enum StatusListToken {
+    Jwt(String),
+    Cwt(Vec<u8>),
+}
+
+impl StatusListToken {
+    /// Reads a token from the cache. A JWT is stored as is, a CWT as base64url after
+    /// [CWT_CACHE_PREFIX].
+    fn from_cache(cached: String) -> Result<Self> {
+        let Some(encoded) = cached.strip_prefix(CWT_CACHE_PREFIX) else {
+            return Ok(Self::Jwt(cached));
+        };
+        LST_ENGINE.decode(encoded).map(Self::Cwt).map_err(|err| {
+            MalformedStatusListSnafu {
+                details: format!("cached status list CWT is not base64url: {err}"),
+            }
+            .build()
+        })
+    }
+
+    fn into_cache(self) -> String {
+        match self {
+            Self::Jwt(jwt) => jwt,
+            Self::Cwt(cwt) => format!("{CWT_CACHE_PREFIX}{}", LST_ENGINE.encode(cwt)),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct EncodedStatusList {
@@ -274,23 +312,31 @@ impl StatusListJwt {
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
     ) -> Result<VCStatus> {
-        let status_list_jwt = match cached_urls_per_status_jwts
+        let token = match cached_urls_per_status_jwts
             .as_ref()
             .and_then(|m| m.get(uri).cloned())
         {
-            Some(bitstring) => bitstring,
-            _ => StatusListJwt::fetch_bitstring_status_list_jwt(http_client, uri).await?,
+            Some(cached) => StatusListToken::from_cache(cached)?,
+            _ => StatusListJwt::fetch_status_list_token(http_client, uri).await?,
         };
 
-        let status_list = StatusListJwt::extract_bitstring_status_list(
-            uri,
-            issuer,
-            did_resolver,
-            status_list_jwt.clone(),
-            trusted_certs,
-            anchor_policy,
-        )
-        .await?;
+        let status_list = match &token {
+            StatusListToken::Jwt(jwt) => {
+                StatusListJwt::extract_bitstring_status_list(
+                    uri,
+                    issuer,
+                    did_resolver,
+                    jwt.clone(),
+                    trusted_certs,
+                    anchor_policy,
+                )
+                .await?
+            }
+            StatusListToken::Cwt(cwt) => {
+                StatusListJwt::extract_cwt_status_list(uri, cwt, trusted_certs, anchor_policy)
+                    .await?
+            }
+        };
         let cred_status = status_list.get(idx).ok_or_else(|| {
             VCStatusSnafu {
                 details: format!("failed to get index {idx}"),
@@ -300,7 +346,7 @@ impl StatusListJwt {
 
         cached_urls_per_status_jwts
             .as_mut()
-            .map(|m| m.insert(uri.to_string(), status_list_jwt));
+            .map(|m| m.insert(uri.to_string(), token.into_cache()));
 
         Ok(cred_status.into())
     }
@@ -363,15 +409,46 @@ impl StatusListJwt {
         headers
     }
 
-    #[instrument(level = Level::TRACE, skip(http_client), err(), ret())]
-    async fn fetch_bitstring_status_list_jwt(
+    /// Reads the status list from a CWT. Not available on wasm, which has no X.509 validation.
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn extract_cwt_status_list(
+        uri: &str,
+        cwt: &[u8],
+        trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<BitString> {
+        Box::pin(StatusListCwt::extract_status_list(
+            uri,
+            cwt,
+            trusted_certs,
+            anchor_policy,
+        ))
+        .await
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn extract_cwt_status_list(
+        _uri: &str,
+        _cwt: &[u8],
+        _trusted_certs: Option<&HashMap<String, String>>,
+        _anchor_policy: AnchorPolicy,
+    ) -> Result<BitString> {
+        VCStatusSnafu {
+            details: format!("status list format not supported: {CWT_CONTENT_TYPE}"),
+        }
+        .fail()
+    }
+
+    /// Fetches the token at `url`: a CWT if served as `application/statuslist+cwt`, else a JWT.
+    #[instrument(level = Level::TRACE, skip(http_client), err())]
+    async fn fetch_status_list_token(
         http_client: &dyn HttpClient,
         url: &str,
-    ) -> Result<String> {
+    ) -> Result<StatusListToken> {
         let http_req = http::request::Builder::new()
             .uri(url)
             .method(Method::GET)
-            .header(oauth2::http::header::ACCEPT, CONTENT_TYPE_HEADER)
+            .header(oauth2::http::header::ACCEPT, ACCEPT_HEADER)
             .body(vec![])
             .map_err(|err| {
                 StatusListFetchingSnafu {
@@ -379,32 +456,30 @@ impl StatusListJwt {
                 }
                 .build()
             })?;
-        let status_list_sdjwt_vc = http_client.async_call(http_req).await.map_err(|err| {
+        let response = http_client.async_call(http_req).await.map_err(|err| {
             StatusListFetchingSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
-        if let Some(content_type) = status_list_sdjwt_vc
+        let is_cwt = response
             .headers()
             .get(oauth2::http::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .filter(|value| value.to_ascii_lowercase().starts_with(CWT_CONTENT_TYPE))
-        {
-            return VCStatusSnafu {
-                details: format!("status list format not supported: {content_type}"),
-            }
-            .fail();
+            .is_some_and(|value| value.to_ascii_lowercase().starts_with(CWT_CONTENT_TYPE));
+        let body = response.into_body();
+        if is_cwt {
+            return Ok(StatusListToken::Cwt(body));
         }
-        let status_list_sdjwt_vc =
-            String::from_utf8(status_list_sdjwt_vc.body().clone()).map_err(|err| {
+
+        String::from_utf8(body)
+            .map(StatusListToken::Jwt)
+            .map_err(|err| {
                 StatusListFetchingSnafu {
                     details: err.to_string(),
                 }
                 .build()
-            })?;
-
-        Ok(status_list_sdjwt_vc)
+            })
     }
 
     #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
@@ -948,6 +1023,66 @@ pub(crate) mod tests {
             error.contains("status list is not signed by the credential issuer"),
             "unexpected error: {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn cwt_status_list_is_fetched_verified_and_cached() {
+        use crate::http::HttpResponse;
+        use crate::utils::http::test::mock_http_fn;
+        use crate::vc::formats::AnchorPolicy;
+        use crate::vc::status_formats::status_list_token_cwt::tests::x5c_status_list_cwt;
+        use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::GET,
+            Url::from_str(X5C_STATUS_LIST_URL).unwrap(),
+            |request| {
+                assert_eq!(
+                    request.headers()[ACCEPT],
+                    "application/statuslist+jwt, application/statuslist+cwt"
+                );
+                let mut response = HttpResponse::new(x5c_status_list_cwt(X5C_STATUS_LIST_URL));
+                response
+                    .headers_mut()
+                    .insert(CONTENT_TYPE, "application/statuslist+cwt".parse().unwrap());
+                Ok(response)
+            },
+            1.into(),
+        );
+        let trusted_certs = anchors(&[pki().root_ca.as_str()]);
+        let mut cache = HashMap::new();
+
+        let status = StatusListJwt::get_status_list_entry(
+            X5C_STATUS_LIST_URL,
+            2,
+            None,
+            &http_client,
+            UniversalResolver::default(),
+            Some(&mut cache),
+            Some(&trusted_certs),
+            AnchorPolicy::Require,
+        )
+        .await
+        .unwrap();
+        assert_eq!(status, VCStatus::Invalid);
+        assert!(cache[X5C_STATUS_LIST_URL].starts_with("cwt:"));
+
+        // The mock allows one call, so a second fetch would panic.
+        let status = StatusListJwt::get_status_list_entry(
+            X5C_STATUS_LIST_URL,
+            3,
+            None,
+            &MockHttpClient::new(),
+            UniversalResolver::default(),
+            Some(&mut cache),
+            Some(&trusted_certs),
+            AnchorPolicy::Require,
+        )
+        .await
+        .unwrap();
+        assert_eq!(status, VCStatus::Suspended);
     }
 
     fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> String {
