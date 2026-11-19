@@ -1,7 +1,7 @@
 //! Token Status List Spec implementations.
 
 use crate::crypto::Signer;
-use crate::did::{DIDBuf, DIDURL, SpruceDID};
+use crate::did::DIDURL;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::formats::AnchorPolicy;
 use async_trait::async_trait;
@@ -24,8 +24,9 @@ use tracing::{Level, instrument, trace};
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
+use crate::vc::formats::API as VCFormatsAPI;
 use crate::vc::formats::VerifyOptions;
-use crate::vc::formats::sd_jwt_vc::{Credential, SdJwtAPI};
+use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::status_formats::StatusListCreatingSnafu;
@@ -48,7 +49,6 @@ use url::Url;
 // to share them between SdJwtVc format as well
 const EXP_CLAIM: &str = "exp";
 const IAT_CLAIM: &str = "iat";
-const ISS_CLAIM: &str = "iss";
 const SUB_CLAIM: &str = "sub";
 const TYP_CLAIM: &str = "typ";
 const KID_CLAIM: &str = "kid";
@@ -246,7 +246,6 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
     ) -> Result<Option<VCStatus>> {
         StatusListJwt::get_vc_status_with_trusted_certs(
             vc_claims,
-            StatusListJwt::issuer_did(vc_claims).as_deref(),
             http_client,
             did_resolver,
             cached_urls_per_status_jwts,
@@ -258,8 +257,8 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
 }
 
 impl StatusListJwt {
-    /// [API::get_vc_status] for a credential issued by `issuer`, additionally trusting a status
-    /// list token signed by an `x5c` chain checked against `trusted_certs` under `anchor_policy`.
+    /// [API::get_vc_status], additionally trusting a status list token signed by an `x5c` chain
+    /// checked against `trusted_certs` under `anchor_policy`.
     #[instrument(
         level = Level::TRACE,
         skip(vc_claims, http_client, did_resolver, trusted_certs),
@@ -268,7 +267,6 @@ impl StatusListJwt {
     )]
     pub async fn get_vc_status_with_trusted_certs(
         vc_claims: &Claims,
-        issuer: Option<&SpruceDID>,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
         cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
@@ -285,7 +283,6 @@ impl StatusListJwt {
         Self::get_status_list_entry(
             status.status_list.uri.as_str(),
             status.status_list.idx,
-            issuer,
             http_client,
             did_resolver,
             cached_urls_per_status_jwts,
@@ -296,16 +293,12 @@ impl StatusListJwt {
         .map(Some)
     }
 
-    /// The status at `idx` of the status list token served at `uri` for a credential issued by
-    /// `issuer`. A token signed through a DID must be signed by `issuer`, so it is rejected for a
-    /// credential without a DID issuer; a token signed by an `x5c` chain is checked against
-    /// `trusted_certs` under `anchor_policy`.
-    #[allow(clippy::too_many_arguments)]
+    /// The status at `idx` of the status list token served at `uri`, its `x5c` chain checked under
+    /// `anchor_policy`.
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     pub async fn get_status_list_entry(
         uri: &str,
         idx: usize,
-        issuer: Option<&SpruceDID>,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
         mut cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
@@ -324,7 +317,6 @@ impl StatusListJwt {
             StatusListToken::Jwt(jwt) => {
                 StatusListJwt::extract_bitstring_status_list(
                     uri,
-                    issuer,
                     did_resolver,
                     jwt.clone(),
                     trusted_certs,
@@ -485,7 +477,6 @@ impl StatusListJwt {
     #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
     async fn extract_bitstring_status_list(
         url: &str,
-        issuer: Option<&SpruceDID>,
         did_resolver: UniversalResolver,
         status_list_sdjwt_vc: String,
         trusted_certs: Option<&HashMap<String, String>>,
@@ -493,14 +484,20 @@ impl StatusListJwt {
     ) -> Result<BitString> {
         let claims = StatusListJwt::decode_status_list_token(&status_list_sdjwt_vc)?;
 
-        Box::pin(StatusListJwt::verify_status_list_signer(
-            &status_list_sdjwt_vc,
-            issuer,
-            did_resolver,
-            trusted_certs,
+        let opts = VerifyOptions {
+            trusted_certs: trusted_certs.cloned(),
             anchor_policy,
-        ))
-        .await?;
+            ..Default::default()
+        };
+        // TODO: check that a DID signer is the credential issuer or a Status Issuer it authorized.
+        SdJwtAPI::verify_vc(&status_list_sdjwt_vc, opts, did_resolver) // TODO: consider using sd_jwt API directly
+            .await
+            .map_err(|err| {
+                VCStatusSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
         let Some(sub) = claims.get(SUB_CLAIM) else {
             return MalformedStatusListSnafu {
@@ -563,56 +560,6 @@ impl StatusListJwt {
             )?;
 
         Ok(bit_string)
-    }
-
-    /// Verifies the status list token's signature. A token signed through a DID must be signed
-    /// by `issuer`; a token signed by an `x5c` chain is checked against `trusted_certs` instead.
-    #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err())]
-    async fn verify_status_list_signer(
-        status_list_token: &Credential,
-        issuer: Option<&SpruceDID>,
-        did_resolver: UniversalResolver,
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
-    ) -> Result<()> {
-        let opts = VerifyOptions {
-            trusted_certs: trusted_certs.cloned(),
-            anchor_policy,
-            ..Default::default()
-        };
-        let signer = Box::pin(SdJwtAPI::verify_vc_signer(
-            status_list_token,
-            opts,
-            did_resolver,
-        )) // TODO: consider using sd_jwt API directly
-        .await
-        .map_err(|err| {
-            VCStatusSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        if let Some(signer) = signer
-            && issuer != Some(signer.as_did())
-        {
-            return VCStatusSnafu {
-                details: "status list is not signed by the credential issuer",
-            }
-            .fail();
-        }
-
-        Ok(())
-    }
-
-    /// The DID in `vc_claims`' `iss`, if it is one.
-    fn issuer_did(vc_claims: &Claims) -> Option<DIDBuf> {
-        match vc_claims.get(ISS_CLAIM) {
-            Some(Claim::String(iss)) => DIDURL::new(iss)
-                .ok()
-                .map(|did_url| did_url.did().to_owned()),
-            _ => None,
-        }
     }
 
     /// Decodes the claims of a status list token without verifying it.
@@ -754,7 +701,6 @@ pub(crate) mod tests {
         );
 
         let claims = json!({
-            "iss": test_fixtures::did_key(&test_fixtures::keys().issuer),
             "status": {
                 "status_list": {
                     "idx": vc_index,
@@ -788,7 +734,6 @@ pub(crate) mod tests {
         );
 
         let claims = json!({
-            "iss": test_fixtures::did_key(&test_fixtures::keys().issuer),
             "status": {
                 "status_list": {
                     "idx": 1,
@@ -849,7 +794,6 @@ pub(crate) mod tests {
 
         StatusListJwt::get_vc_status_with_trusted_certs(
             &claims,
-            None,
             &http_client,
             UniversalResolver::default(),
             None,
@@ -938,93 +882,6 @@ pub(crate) mod tests {
         );
     }
 
-    async fn status_for_issuer(
-        token: String,
-        idx: usize,
-        iss: Option<String>,
-    ) -> crate::vc::status_formats::Result<Option<VCStatus>> {
-        let mut http_client = MockHttpClient::new();
-        mock_http_fn_with_plain_text_resp(
-            &mut http_client,
-            Method::GET,
-            Url::from_str(X5C_STATUS_LIST_URL).unwrap(),
-            token,
-            1.into(),
-        );
-        let mut claims =
-            json!({ "status": { "status_list": { "idx": idx, "uri": X5C_STATUS_LIST_URL } } });
-        if let Some(iss) = iss {
-            claims["iss"] = json!(iss);
-        }
-
-        StatusListJwt::get_vc_status(
-            &claims.try_into().unwrap(),
-            &http_client,
-            UniversalResolver::default(),
-            None,
-        )
-        .await
-    }
-
-    fn fixture_issuer_did() -> String {
-        test_fixtures::did_key(&test_fixtures::keys().issuer)
-    }
-
-    #[tokio::test]
-    async fn status_list_signed_by_the_credential_issuer_did_is_accepted() {
-        let token =
-            did_status_list_token(X5C_STATUS_LIST_URL, &test_fixtures::keys().issuer, false);
-
-        let vc_status = status_for_issuer(token, 2, Some(fixture_issuer_did()))
-            .await
-            .unwrap();
-
-        assert_eq!(vc_status, Some(VCStatus::Invalid));
-    }
-
-    #[rstest]
-    #[case::kid(false)]
-    #[case::kid_beside_x5c(true)]
-    #[tokio::test]
-    async fn status_list_signed_by_another_did_is_rejected(#[case] with_x5c: bool) {
-        let token = did_status_list_token(
-            X5C_STATUS_LIST_URL,
-            &test_fixtures::JWK::generate_p256(),
-            with_x5c,
-        );
-
-        let error = status_for_issuer(token, 2, Some(fixture_issuer_did()))
-            .await
-            .unwrap_err()
-            .to_string();
-
-        assert!(
-            error.contains("status list is not signed by the credential issuer"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[rstest]
-    #[case::url_issuer(Some("https://issuer.example".to_string()))]
-    #[case::no_issuer(None)]
-    #[tokio::test]
-    async fn did_signed_status_list_is_rejected_for_a_credential_without_a_did_issuer(
-        #[case] iss: Option<String>,
-    ) {
-        let token =
-            did_status_list_token(X5C_STATUS_LIST_URL, &test_fixtures::keys().issuer, false);
-
-        let error = status_for_issuer(token, 2, iss)
-            .await
-            .unwrap_err()
-            .to_string();
-
-        assert!(
-            error.contains("status list is not signed by the credential issuer"),
-            "unexpected error: {error}"
-        );
-    }
-
     #[tokio::test]
     async fn cwt_status_list_is_fetched_verified_and_cached() {
         use crate::http::HttpResponse;
@@ -1057,7 +914,6 @@ pub(crate) mod tests {
         let status = StatusListJwt::get_status_list_entry(
             X5C_STATUS_LIST_URL,
             2,
-            None,
             &http_client,
             UniversalResolver::default(),
             Some(&mut cache),
@@ -1073,7 +929,6 @@ pub(crate) mod tests {
         let status = StatusListJwt::get_status_list_entry(
             X5C_STATUS_LIST_URL,
             3,
-            None,
             &MockHttpClient::new(),
             UniversalResolver::default(),
             Some(&mut cache),
@@ -1105,33 +960,6 @@ pub(crate) mod tests {
                 "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
             }),
             &test_fixtures::keys().issuer,
-        )
-    }
-
-    /// Status list token served at `sub`, signed by `key` under its `did:key` URL, with the
-    /// fixture `x5c` chain beside it if `with_x5c`: index 0 and 1 valid, 2 invalid, 3 suspended.
-    pub(crate) fn did_status_list_token(
-        sub: &str,
-        key: &test_fixtures::JWK,
-        with_x5c: bool,
-    ) -> String {
-        let mut header = json!({
-            "typ": "statuslist+jwt",
-            "alg": "ES256",
-            "kid": test_fixtures::did_key_url(key)
-        });
-        if with_x5c {
-            header["x5c"] =
-                json!(one_core::mapper::x509::pem_chain_into_x5c(&pki().signer_cert).unwrap());
-        }
-        test_fixtures::jws(
-            &header,
-            &json!({
-                "sub": sub,
-                "iat": 1790000000,
-                "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
-            }),
-            key,
         )
     }
 

@@ -130,8 +130,6 @@ pub trait API<CS, ST, SL, MD> {
 
     /// Retrieves the status of a Verifiable Credential (VC) with caching support.
     ///
-    /// A status list token signed through a DID must be signed by the DID in `vc_claims`' `iss`.
-    ///
     /// # Arguments
     ///
     /// * `vc_claims` - Reference to the claims of the Verifiable Credential
