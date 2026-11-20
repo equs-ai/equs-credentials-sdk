@@ -11,9 +11,9 @@ Resolves `CredentialMetadata` (type string, format, key-id, claim-field paths) f
 
 ## Key types / traits
 - `CredentialMetadataProcessor` — trait with `resolve_metadata(credential, key_metadata) -> Result<CredentialMetadata>`.
-- `DefaultMetadataProcessor` — default implementation; extracts `vct` (SD-JWT) or last `type` (JSON-LD) and validates DID match.
+- `DefaultMetadataProcessor` — default implementation; extracts `vct` (SD-JWT) or last `type` (JSON-LD) and validates DID match: the `sub` (SD-JWT) or `credentialSubject.id` (JSON-LD) must equal the DID of the key metadata's `did_url` (without path, query or fragment) or the whole `did_url`; a `did_url` that is not a DID URL fails with `Resolving`.
 - `Error` — `FormatNotSupported`, `Resolving`.
 
 ## Dependencies
 - Depends on: `crate::vc::formats::HasClaims`, `crate::vc::core::KeyMetadata`, `crate::vc::claims::Claim`, `crate::utils::json`, `test_fixtures` (tests only: EdDSA SD-JWT fixtures under module-local Ed25519 keys)
-- Used by: `core::HolderService` (after credential acceptance)
+- Used by: the Aries issuance holder (before storing a received credential), the wrappers' `resolve_metadata`, `InMemVault` test helpers

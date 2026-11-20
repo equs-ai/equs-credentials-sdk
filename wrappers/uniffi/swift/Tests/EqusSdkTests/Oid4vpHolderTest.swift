@@ -51,6 +51,42 @@ import Testing
                 ])
     	}
 
+	@Test func verifierInfoRoundTrip() async throws {
+		self.http["/auth_request_verifier_info"] = { _ in
+			MockHttpRouter.ok(
+				Oid4vpHolderTestConstants.verifierInfoAuthRequestJwt, contentType: "application/oauth-authz-req+jwt")
+		}
+		var request = try await self.holder.getAuthorizationRequest(
+			requestUri: Oid4vpHolderTestConstants.requestUriForVerifierInfo)
+		let entry = VerifierInfoEntry(
+			format: "jwt", data: .text(Oid4vpHolderTestConstants.verifierInfoJwt), credentialIds: ["Identity-1"])
+		#expect(request.verifierInfo == [entry])
+
+		request.responseMode = "dc_api"
+		request.responseUri = nil
+		let metadata = AuthorizationResponseMetadata(
+			claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: "https://example.verifier.org")
+		request.verifierInfo = [
+			entry,
+			VerifierInfoEntry(format: "registration_cert", data: .object(#"{"name":"Example Shop"}"#), credentialIds: nil),
+		]
+		let result = try await self.holder.presentCredentialsAuto(authRequest: request, authResponseMetadata: metadata)
+		guard case .authResponse = result else {
+			Issue.record("expected an authorization response")
+			return
+		}
+
+		request.verifierInfo = [
+			VerifierInfoEntry(format: "jwt", data: .text(Oid4vpHolderTestConstants.verifierInfoJwt), credentialIds: [])
+		]
+		do {
+			_ = try await self.holder.presentCredentialsAuto(authRequest: request, authResponseMetadata: metadata)
+			Issue.record("expected empty credential_ids to be rejected")
+		} catch EqusSdk.Error.Oid4vpHolder(let message) {
+			#expect(message.contains("credential_ids"), "\(message)")
+		}
+	}
+
 	@Test func delegateTransactionDataYieldsDelegationGrant() async throws {
 		let (holder, credentials) = try await Oid4vpHolderTests.delegatingWallet(
 			http: http, issue: [Oid4vpHolderTestConstants.delegationSdJwt])
@@ -1095,6 +1131,18 @@ static let presentationDefinitionWithFakeConstraints = """
 	static let delegationAuthRequestJwt: String = try! fixtureJws(
 		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
 		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","transaction_data":["\#(delegateTransactionData)","\#(paymentTransactionData)"],"response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":\#(clientMetadata),"client_id":"\#(verifierClientId)","dcql_query":\#(identityDcqlQuery),"response_uri":"http://localhost:9001/response"}"#,
+		role: .verifier
+	)
+	static let requestUriForVerifierInfo =
+		"openid4vp://?client_id=\(encodedVerifierClientId)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request_verifier_info"
+	static let verifierInfoJwt: String = try! fixtureJws(
+		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))"}"#,
+		payloadJson: #"{"iss":"\#(verifierClientId)","name":"Example Shop"}"#,
+		role: .verifier
+	)
+	static let verifierInfoAuthRequestJwt: String = try! fixtureJws(
+		headerJson: #"{"alg":"ES256","kid":"\#(Fixtures.didKeyUrl(.verifier))","typ":"application/oauth-authz-req+jwt"}"#,
+		payloadJson: #"{"response_type":"vp_token","state":"1d8b0d93-86e8-4135-87d4-524bb0500bf3","response_mode":"direct_post","nonce":"F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M","client_metadata":\#(clientMetadata),"client_id":"\#(verifierClientId)","dcql_query":\#(identityDcqlQuery),"response_uri":"http://localhost:9001/response","verifier_info":[{"format":"jwt","data":"\#(verifierInfoJwt)","credential_ids":["Identity-1"]}]}"#,
 		role: .verifier
 	)
 	static let authRequestJwt: String = try! fixtureJws(

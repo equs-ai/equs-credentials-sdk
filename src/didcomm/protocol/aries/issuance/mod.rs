@@ -38,6 +38,8 @@ pub enum Error {
     InvalidCredentialOffer { details: String },
     #[snafu(display("Invalid Credential Request: {details}"))]
     InvalidCredentialRequest { details: String },
+    #[snafu(display("Invalid Credential: {details}"))]
+    InvalidCredential { details: String },
     #[snafu(display("Message is out of thread"))]
     MessageIsOutOfThread,
     #[snafu(display("Agent error"))]

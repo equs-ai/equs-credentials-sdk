@@ -1,20 +1,24 @@
 use crate::didcomm::agent::Agent;
 use crate::didcomm::connection::{ConnectionRecord, ConnectionService};
+use crate::didcomm::core::envelope::Attachment;
 use crate::didcomm::protocol::aries::common::message::status::Status;
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
 use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
 use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
 use crate::didcomm::protocol::aries::present_proof::{
-    AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidCredentialRequestSnafu,
-    ParseSnafu, ReqwestClientBuilderSnafu, Result, VerificationFailedSnafu, holder_binder,
+    AgentSnafu, DecodeSnafu, InvalidAttachmentEncodingSnafu, InvalidAttachmentSnafu,
+    InvalidCredentialRequestSnafu, ParseSnafu, PresentationDefinitionNotSatisfiedSnafu, Result,
+    VerificationFailedSnafu, holder_binder,
 };
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, ProblemReportCode};
 use crate::kms::{KeyHandle, Kms};
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::{Verifier, VerifierService};
+use crate::vc::presentation_exchange::{PresentationDefinition, validate_presented_credential};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use didcomm::AttachmentData;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::{debug, trace, warn};
@@ -149,43 +153,54 @@ impl PresentationRequestSentState {
         let holder_binder =
             holder_binder(&self.presentation_request, self.verifier_did.as_deref())?;
 
-        let attachment = presentation
-            .attachments
-            .first()
-            .ok_or_else(|| {
-                InvalidCredentialRequestSnafu {
-                    details: "attachment not found",
-                }
-                .build()
-            })?
-            .to_owned();
+        let presentation_definition: PresentationDefinition = decode_attachment(
+            self.presentation_request
+                .attachments
+                .first()
+                .ok_or_else(|| {
+                    InvalidCredentialRequestSnafu {
+                        details: "attachment not found",
+                    }
+                    .build()
+                })?,
+        )?;
 
-        let presentation = match attachment.data {
-            AttachmentData::Json { value } => {
-                serde_json::from_value(value.json).context(ParseSnafu)?
+        let [attachment] = presentation.attachments.as_slice() else {
+            return InvalidAttachmentSnafu {
+                details: "presentation must carry exactly one attachment",
             }
-            AttachmentData::Base64 { value } => {
-                let base64 = BASE64_STANDARD.decode(value.base64).context(DecodeSnafu)?;
-                serde_json::from_slice(base64.as_slice()).context(ParseSnafu)?
-            }
-            AttachmentData::Links { .. } => {
-                InvalidAttachmentEncodingSnafu { details: "Links" }.fail()?
-            }
+            .fail();
         };
 
-        verifier_service
+        let presentation = decode_attachment(attachment)?;
+
+        let verified = verifier_service
             .verify_presentation(
                 Some(holder_binder),
                 &presentation,
-                &ReqwestClientBuilder::new()
-                    .build()
-                    .context(ReqwestClientBuilderSnafu)?,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
             .await
             .context(VerificationFailedSnafu)?;
 
+        validate_presented_credential(&presentation, &verified.claims, &presentation_definition)
+            .context(PresentationDefinitionNotSatisfiedSnafu)?;
+
         trace!("PresentationRequestSentState::verify_presentation <<<");
         Ok(())
+    }
+}
+
+fn decode_attachment<T: DeserializeOwned>(attachment: &Attachment) -> Result<T> {
+    match &attachment.data {
+        AttachmentData::Json { value } => {
+            serde_json::from_value(value.json.to_owned()).context(ParseSnafu)
+        }
+        AttachmentData::Base64 { value } => {
+            let base64 = BASE64_STANDARD.decode(&value.base64).context(DecodeSnafu)?;
+            serde_json::from_slice(base64.as_slice()).context(ParseSnafu)
+        }
+        AttachmentData::Links { .. } => InvalidAttachmentEncodingSnafu { details: "Links" }.fail(),
     }
 }
 
@@ -252,14 +267,126 @@ impl From<(PresentationRequest, Status, Thread)> for FinishedState {
 #[cfg(test)]
 mod tests {
     use crate::did::universal::UniversalResolver;
+    use crate::didcomm::core::envelope::Attachment;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
     use crate::didcomm::protocol::aries::present_proof::Error;
     use crate::didcomm::protocol::aries::present_proof::message::presentation::Presentation;
     use crate::didcomm::protocol::aries::present_proof::message::presentation_request::PresentationRequest;
+    use crate::didcomm::protocol::aries::present_proof::message::proof_request::ProofRequest;
     use crate::didcomm::protocol::aries::present_proof::verifier::states::{
         PresentationRequestSentState, VerifierState,
     };
+    use crate::inmem::kms::LocalKms;
+    use crate::nonce::Nonce;
     use crate::vc::core::VerifierService;
+    use crate::vc::core::tests::fixtures::{CRED_TYPE, VERIFIER_ID};
+    use crate::vc::core::tests::utils::CredTestCase;
+    use rstest::rstest;
+    use serde_json::{Value, json};
+
+    fn definition(format: &str, path: &str, filter: Value) -> Value {
+        json!({
+            "id": "definition",
+            "input_descriptors": [{
+                "id": "credential",
+                "format": { format: {} },
+                "constraints": { "fields": [{ "path": [path], "filter": filter }] }
+            }]
+        })
+    }
+
+    fn request_sent_state(definition: Value) -> PresentationRequestSentState {
+        let proof_request = ProofRequest::new(serde_json::from_value(definition).unwrap());
+        PresentationRequestSentState {
+            presentation_request: PresentationRequest::new()
+                .add_attachment(proof_request.try_into().unwrap()),
+            thread: Thread::new().set_thid("thread".to_owned()),
+            connection_id: "connection".to_owned(),
+            verifier_did: Some(VERIFIER_ID.to_owned()),
+        }
+    }
+
+    async fn bound_presentation(state: &PresentationRequestSentState) -> Attachment {
+        let case = CredTestCase::ldp_vc();
+        let kms = LocalKms::new();
+        let (entry, _) = case.generate_vc(&kms, None).await;
+        let nonce = Nonce::from_secret(state.presentation_request.id.to_string());
+        let vp = case.generate_vp(&kms, &entry, Some(nonce)).await;
+        Attachment::json(serde_json::to_value(vp).unwrap()).finalize()
+    }
+
+    fn requested_type(type_: &str) -> Value {
+        definition(
+            "ldp_vc",
+            "$.type",
+            json!({"type": "array", "contains": {"const": type_}}),
+        )
+    }
+
+    #[tokio::test]
+    async fn verify_presentation_accepts_credential_matching_the_request() {
+        let state = request_sent_state(requested_type(CRED_TYPE));
+        let presentation = Presentation::create().add_attachment(bound_presentation(&state).await);
+        let verifier_service = VerifierService::new(VERIFIER_ID, UniversalResolver::default());
+
+        let result = state
+            .verify_presentation(&presentation, &verifier_service)
+            .await;
+
+        assert!(result.is_ok(), "unexpected result: {result:?}");
+    }
+
+    #[rstest]
+    #[case::of_another_type(requested_type("DrivingLicence"))]
+    #[case::without_requested_claim(definition(
+        "ldp_vc",
+        "$.credentialSubject.address",
+        json!({"type": "string"})
+    ))]
+    #[case::in_another_format(definition(
+        "dc+sd-jwt",
+        "$.type",
+        json!({"type": "array", "contains": {"const": CRED_TYPE}})
+    ))]
+    #[tokio::test]
+    async fn verify_presentation_failed_for_credential_not_matching_the_request(
+        #[case] definition: Value,
+    ) {
+        let state = request_sent_state(definition);
+        let presentation = Presentation::create().add_attachment(bound_presentation(&state).await);
+        let verifier_service = VerifierService::new(VERIFIER_ID, UniversalResolver::default());
+
+        let result = state
+            .verify_presentation(&presentation, &verifier_service)
+            .await;
+
+        assert!(
+            matches!(
+                result,
+                Err(Error::PresentationDefinitionNotSatisfied { .. })
+            ),
+            "unexpected result: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_presentation_failed_for_presentation_with_two_attachments() {
+        let state = request_sent_state(requested_type(CRED_TYPE));
+        let presentation = Presentation::create().add_attachments(vec![
+            bound_presentation(&state).await,
+            Attachment::json(json!({"unverified": true})).finalize(),
+        ]);
+        let verifier_service = VerifierService::new(VERIFIER_ID, UniversalResolver::default());
+
+        let result = state
+            .verify_presentation(&presentation, &verifier_service)
+            .await;
+
+        assert!(
+            matches!(result, Err(Error::InvalidAttachment { .. })),
+            "unexpected result: {result:?}"
+        );
+    }
 
     #[tokio::test]
     async fn verify_presentation_failed_for_state_stored_without_verifier_did() {

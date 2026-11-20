@@ -25,7 +25,7 @@ use crate::didcomm::protocol::aries::problem_report::protocol::ProblemReportProt
 use crate::didcomm::protocol::outofband::{InvitationConfig, OutOfBandV2Protocol};
 use crate::kms::{KeyHandle, KeyType, Kms};
 use crate::storage::Storage;
-use crate::vc::core::VerifierService;
+use crate::vc::core::{VerificationParams, VerifierService};
 use async_trait::async_trait;
 use snafu::{IntoError, ResultExt};
 use tracing::debug;
@@ -64,10 +64,12 @@ where
         storage: S,
         connection_key_type: KeyType,
         verifier_id: String,
+        verification_params: VerificationParams,
     ) -> Result<Verifier<KMS, KH, C, S>> {
         debug!("Creating credential Verifier");
 
-        let verifier_service = VerifierService::new(&verifier_id, UniversalResolver::default());
+        let verifier_service = VerifierService::new(&verifier_id, UniversalResolver::default())
+            .with_verification_params(verification_params);
 
         let verifier = Verifier {
             agent: agent.to_owned(),

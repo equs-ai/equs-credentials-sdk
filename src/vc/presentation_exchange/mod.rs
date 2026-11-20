@@ -11,8 +11,8 @@ use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::oid4vp::ClaimPath;
 use crate::vc::{
-    ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
-    RequestedPresentation, formats,
+    ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, HasVPFormat, JsonPath,
+    Presentation, RequestedPresentation, formats,
 };
 use common_macros::DebugError;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
@@ -167,6 +167,61 @@ pub(crate) fn validate_against_presentation_definition(
     }
 
     Ok(())
+}
+
+pub(crate) fn validate_presented_credential(
+    presentation: &Presentation,
+    claims: &Claims,
+    presentation_definition: &PresentationDefinition,
+) -> Result<()> {
+    let (format, path) = match presentation {
+        Presentation::SdJwtVp(_) => (ClaimFormatDesignation::SdJwtVc, "$"),
+        Presentation::LdpVp(_) => (ClaimFormatDesignation::LdpVc, "$.verifiableCredential"),
+        _ => {
+            return FormatNotSupportedSnafu {
+                format: presentation.format().to_string(),
+            }
+            .fail();
+        }
+    };
+    let path = JsonPath::parse(path).map_err(|err| {
+        ParseSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })?;
+    let descriptor_map = presentation_definition
+        .input_descriptors()
+        .iter()
+        .filter(|input_descriptor| {
+            let accepted = if input_descriptor.format.is_empty() {
+                presentation_definition.format()
+            } else {
+                &input_descriptor.format
+            };
+            accepted.is_empty() || accepted.contains_key(&format)
+        })
+        .map(|input_descriptor| {
+            DescriptorMap::new(&input_descriptor.id, format.to_owned(), path.to_owned())
+        })
+        .collect();
+    let presentation_submission = PresentationSubmission::new(
+        Uuid::new_v4(),
+        presentation_definition.id().to_owned(),
+        descriptor_map,
+    );
+    let claims = serde_json::to_value(claims).map_err(|err| {
+        ParseSnafu {
+            details: format!("Claims parse error: {err}"),
+        }
+        .build()
+    })?;
+
+    validate_against_presentation_definition(
+        &claims,
+        presentation_definition,
+        &presentation_submission,
+    )
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -786,6 +841,116 @@ mod tests {
     use rstest::rstest;
     use serde_json::{Value, json};
     use std::str::FromStr;
+
+    const IDENTITY_VCT: &str = "https://credentials.example.com/identity_credential";
+    const DEGREE_VCT: &str = "https://credentials.example.com/degree_credential";
+
+    fn sdjwt_claims(vct: &str) -> Claims {
+        Claims::try_from(json!({ "vct": vct })).unwrap()
+    }
+
+    fn sdjwt_input_descriptor(id: &str, vct: &str) -> InputDescriptor {
+        let constraints = Constraints::new().add_constraint(create_constraints_field(
+            "$.vct",
+            json!({"type": "string", "const": vct}),
+        ));
+        create_input_descriptor(id, constraints, sample_input_descriptor_format_sdjwtvc())
+    }
+
+    fn mixed_format_definition(requirement: Value) -> PresentationDefinition {
+        serde_json::from_value(json!({
+            "id": "presentation_definition_id",
+            "submission_requirements": [requirement],
+            "input_descriptors": [
+                {
+                    "id": "identity",
+                    "group": ["A"],
+                    "format": { "dc+sd-jwt": {} },
+                    "constraints": { "fields": [{
+                        "path": ["$.vct"],
+                        "filter": { "type": "string", "const": IDENTITY_VCT }
+                    }] }
+                },
+                {
+                    "id": "degree",
+                    "group": ["A"],
+                    "format": { "ldp_vc": { "proof_type": ["Ed25519Signature2018"] } },
+                    "constraints": { "fields": [{ "path": ["$.type"] }] }
+                }
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[rstest]
+    #[case::matching_every_descriptor(create_multiple_presentation_definition())]
+    #[case::picked_from_descriptors_in_other_formats(mixed_format_definition(
+        json!({ "rule": "pick", "count": 1, "from": "A" })
+    ))]
+    fn validate_presented_credential_accepts_claims_satisfying_the_definition(
+        #[case] presentation_definition: PresentationDefinition,
+    ) {
+        let result = validate_presented_credential(
+            &Presentation::SdJwtVp(String::new()),
+            &sdjwt_claims(IDENTITY_VCT),
+            &presentation_definition,
+        );
+
+        assert!(result.is_ok(), "unexpected result: {result:?}");
+    }
+
+    #[rstest]
+    #[case::of_another_type(sdjwt_claims(DEGREE_VCT), create_single_presentation_definition())]
+    #[case::not_matching_every_descriptor(
+        sdjwt_claims(IDENTITY_VCT),
+        create_single_presentation_definition()
+            .add_input_descriptor(sdjwt_input_descriptor("degree", DEGREE_VCT))
+    )]
+    #[case::in_another_format(
+        sdjwt_claims(IDENTITY_VCT),
+        PresentationDefinition::new(
+            "presentation_definition_id".to_string(),
+            create_input_descriptor(
+                "descriptor_id",
+                sample_input_descriptor_constraints(),
+                serde_json::from_value(json!({"ldp_vc": {"proof_type": ["Ed25519Signature2018"]}}))
+                    .unwrap(),
+            ),
+        )
+    )]
+    #[case::leaving_required_descriptor_in_another_format_unanswered(
+        sdjwt_claims(IDENTITY_VCT),
+        mixed_format_definition(json!({ "rule": "all", "from": "A" }))
+    )]
+    fn validate_presented_credential_rejects_claims_not_satisfying_the_definition(
+        #[case] claims: Claims,
+        #[case] presentation_definition: PresentationDefinition,
+    ) {
+        let result = validate_presented_credential(
+            &Presentation::SdJwtVp(String::new()),
+            &claims,
+            &presentation_definition,
+        );
+
+        assert!(
+            matches!(result, Err(Error::VPValidation { .. })),
+            "unexpected result: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presented_credential_rejects_unsupported_presentation_format() {
+        let result = validate_presented_credential(
+            &Presentation::JwtVp(String::new()),
+            &sdjwt_claims(IDENTITY_VCT),
+            &create_single_presentation_definition(),
+        );
+
+        assert!(
+            matches!(result, Err(Error::FormatNotSupported { .. })),
+            "unexpected result: {result:?}"
+        );
+    }
 
     #[tokio::test]
     async fn prepare_presentation_response_succeeds_handling_single_case() {

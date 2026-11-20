@@ -33,9 +33,12 @@ use equs_sdk::inmem::storage::InMemStorage;
 use equs_sdk::inmem::vault::InMemVault;
 use equs_sdk::kms;
 use equs_sdk::kms::{KeyType, Kms};
+use equs_sdk::nonce::Nonce;
 use equs_sdk::reqwest::builder::ReqwestClientBuilder;
 use equs_sdk::vault::Vault;
-use equs_sdk::vc::core::{Holder as _, HolderMetadata, HolderService, KeyMetadata};
+use equs_sdk::vc::core::{
+    Holder as _, HolderBinder, HolderMetadata, HolderService, KeyMetadata, VerificationParams,
+};
 use equs_sdk::vc::presentation_exchange::split_to_inputs_for_pd;
 use equs_sdk::vc::{Credential, CredentialMetadata};
 use serde_json::json;
@@ -193,6 +196,7 @@ async fn test_presentation() {
         InMemStorage::<String, VerifierState>::new(),
         KeyType::P256,
         verifier_url,
+        VerificationParams::default(),
     )
     .await
     .unwrap();
@@ -476,6 +480,101 @@ async fn test_presentation_built_with_holder_binder_is_accepted() {
     holder_agent.stop().await.unwrap();
 }
 
+#[tokio::test]
+async fn test_presentation_not_matching_the_request_is_rejected() {
+    let test_case = single_jsonld_presentation_case();
+    let presented_definition = test_case.presentation_definition.to_owned();
+    let kms = LocalKms::new();
+    let (credential, metadata) = create_credential(test_case, &kms).await;
+    let vault = InMemVault::new();
+    vault.store_credential(credential, &metadata).await.unwrap();
+
+    let requested_definition = json!({
+        "id": "driving-licence",
+        "input_descriptors": [{
+            "id": "drivingLicence",
+            "format": {"ldp_vc": {"proof_type": ["Ed25519Signature2018"]}},
+            "constraints": {
+                "fields": [{
+                    "path": ["$.type"],
+                    "filter": {"type": "array", "contains": {"const": "DrivingLicence"}}
+                }]
+            }
+        }]
+    });
+    let (verifier_agent, verifier, thread_id, invitation) =
+        verifier_with_invitation("http://127.0.0.1:8015", &requested_definition).await;
+
+    let holder_agent = started_agent("http://127.0.0.1:8025", Some(kms)).await;
+    let (reports_tx, mut reports) = tokio::sync::mpsc::unbounded_channel();
+    holder_agent
+        .register_protocol(PresentProofReports(ReportSink(reports_tx)))
+        .await
+        .unwrap();
+    let oob = OutOfBandV2Protocol::new(&holder_agent);
+    let invitation = oob.parse_invitation(invitation.as_str()).unwrap();
+    let verifier_did = invitation.from.to_owned();
+    let connection = oob
+        .accept_invitation(invitation, KeyType::P256)
+        .await
+        .unwrap();
+
+    let holder_service = HolderService::new(
+        holder_agent.kms().to_owned(),
+        vault,
+        HolderMetadata {
+            pop: Default::default(),
+            client_id: String::new(),
+        },
+        UniversalResolver::default(),
+        Arc::new(ReqwestClientBuilder::new().insecure().build().unwrap()),
+    );
+    let input = split_to_inputs_for_pd(&presented_definition, None)
+        .unwrap()
+        .remove(0);
+    let binder = HolderBinder {
+        nonce: Nonce::from_secret(thread_id.to_owned()),
+        verifier_id: verifier_did,
+        response_uri: None,
+    };
+    let vp = holder_service
+        .create_presentation_auto(Some(binder), &input)
+        .await
+        .unwrap();
+    let mut presentation: Message = Presentation::create()
+        .add_attachment(Attachment::json(serde_json::to_value(vp).unwrap()).finalize())
+        .set_thread_id(&thread_id)
+        .try_into()
+        .unwrap();
+    holder_agent
+        .send_message(&mut presentation, &connection.id)
+        .await
+        .unwrap();
+
+    let report = tokio::time::timeout(Duration::from_secs(10), reports.recv()).await;
+    let verifier_state = verifier.get_state(&thread_id).await.unwrap();
+    assert!(
+        matches!(verifier_state, VerifierState::PresentationRequestSent(_)),
+        "verifier accepted a presentation the request did not ask for: {verifier_state:?}"
+    );
+    let report: ProblemReport = report
+        .expect("verifier sent no problem report")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    assert_eq!(
+        report.body.code,
+        ProblemReportCode::InvalidPresentation.code()
+    );
+    assert_eq!(
+        report.body.comment.as_deref(),
+        Some("presentation verification failed")
+    );
+
+    verifier_agent.stop().await.unwrap();
+    holder_agent.stop().await.unwrap();
+}
+
 /// Receives the `present-proof` problem reports a verifier sends back.
 struct PresentProofReports(ReportSink);
 
@@ -522,6 +621,7 @@ async fn verifier_with_invitation(
         InMemStorage::<String, VerifierState>::new(),
         KeyType::P256,
         endpoint.to_owned(),
+        VerificationParams::default(),
     )
     .await
     .unwrap();

@@ -125,6 +125,13 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Presentation does not satisfy the Presentation Definition"))]
+    PresentationDefinitionNotSatisfied {
+        source: crate::vc::presentation_exchange::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Could not build Reqwest Client"))]
     ReqwestClientBuilder {
         source: crate::http::HttpError,

@@ -1,6 +1,7 @@
 //! Credential metadata and metadata processors.
 
 use snafu::{Location, Snafu, ensure};
+use ssi::dids::DIDURL;
 use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;
 use tracing::{Level, instrument};
@@ -199,8 +200,20 @@ fn validate_did_match(
         .fail()?,
     };
 
+    let key_did = DIDURL::new(key_metadata.did_url.as_str())
+        .map_err(|_| {
+            ResolvingSnafu {
+                details: format!(
+                    "Key metadata DID url is not a DID URL: {}",
+                    key_metadata.did_url
+                ),
+            }
+            .build()
+        })?
+        .did();
+
     ensure!(
-        key_metadata.did_url.starts_with(cred_did.as_str()),
+        cred_did == key_did.as_str() || cred_did == &key_metadata.did_url,
         ResolvingSnafu {
             details: format!(
                 "Credential and key-metadata DIDs does not match: credential DID = {}, key metadata DID url = {}",
@@ -251,6 +264,63 @@ mod tests {
         assert_eq!(metadata.kid, key_metadata.kid);
         assert_eq!(metadata.format, case.format);
         assert_eq!(metadata.type_, case.type_);
+    }
+
+    #[rstest]
+    #[case::did("did:web:host:alice")]
+    #[case::did_url("did:web:host:alice#key-1")]
+    #[test]
+    fn subject_matching_the_key_did_is_accepted(#[case] subject: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for(subject),
+            alice_key_metadata(),
+        );
+
+        assert!(res.is_ok());
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::scheme("did:")]
+    #[case::did_prefix("did:web:host")]
+    #[case::did_url_prefix("did:web:host:alice#key")]
+    #[test]
+    fn subject_prefixing_the_key_did_is_rejected(#[case] subject: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for(subject),
+            alice_key_metadata(),
+        );
+
+        assert!(matches!(res.err(), Some(Error::Resolving { .. })));
+    }
+
+    #[rstest]
+    #[case::path("did:web:host:alice/keys#key-1")]
+    #[case::query("did:web:host:alice?versionId=1#key-1")]
+    #[test]
+    fn subject_matching_the_did_of_a_key_url_with_path_or_query_is_accepted(#[case] did_url: &str) {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for("did:web:host:alice"),
+            KeyMetadata {
+                did_url: did_url.to_owned(),
+                kid: "12345".to_string(),
+            },
+        );
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn key_metadata_that_is_not_a_did_url_is_rejected() {
+        let res = DefaultMetadataProcessor::resolve_metadata(
+            &ldp_vc_cred_for("alice"),
+            KeyMetadata {
+                did_url: "alice".to_owned(),
+                kid: "12345".to_string(),
+            },
+        );
+
+        assert!(matches!(res.err(), Some(Error::Resolving { .. })));
     }
 
     #[test]
@@ -369,6 +439,19 @@ mod tests {
                 did_url: "did:example:d23dd687a7dc6787646f2eb98d0".to_owned(),
                 kid: "12345".to_string(),
             },
+        }
+    }
+
+    fn ldp_vc_cred_for(subject: &str) -> Credential {
+        let mut credential: serde_json::Value = serde_json::from_str(LDP_VC_CRED).unwrap();
+        credential["credentialSubject"]["id"] = serde_json::json!(subject);
+        Credential::LdpVc(serde_json::from_value(credential).unwrap())
+    }
+
+    fn alice_key_metadata() -> KeyMetadata {
+        KeyMetadata {
+            did_url: "did:web:host:alice#key-1".to_owned(),
+            kid: "12345".to_string(),
         }
     }
 

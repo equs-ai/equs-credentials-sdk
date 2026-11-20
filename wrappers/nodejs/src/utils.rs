@@ -51,7 +51,8 @@ pub async fn resolve_metadata(
 ) -> Result<JsCredentialMetadata, napi::Error> {
     let credential = credential.try_into()?;
     let metadata = metadata.into();
-    let result = DefaultMetadataProcessor::resolve_metadata(&credential, metadata).unwrap();
+    let result = DefaultMetadataProcessor::resolve_metadata(&credential, metadata)
+        .map_err(|err| napi::Error::from_reason(err.to_string()))?;
     result.try_into()
 }
 
