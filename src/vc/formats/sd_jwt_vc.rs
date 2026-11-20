@@ -1,12 +1,11 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::certificate_validator::SharedCertificateValidator;
-use crate::vc::claims::Claim;
+use crate::vc::claims::{Claim, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::resolver::KeyResolver;
 #[cfg(feature = "delegate-sd-jwt")]
 use sd_jwt_rs::utils::decode_dsd_jwt;
-#[cfg(not(feature = "delegate-sd-jwt"))]
 use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
@@ -195,18 +194,24 @@ pub struct VPMetadata {
     pub holder_binder: Option<HolderBinder>,
 }
 
-/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// Decode the issuer-signed claims to a JSON `Value`, without delegate payloads.
 /// **Does not** perform credential validation.
-///
-/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
-#[cfg(not(feature = "delegate-sd-jwt"))]
-fn decode_credential_claims(compact: &str) -> Result<Value> {
+fn decode_issuer_claims(compact: &str) -> Result<Value> {
     decode_sd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact).map_err(|err| {
         ParsingSnafu {
             details: err.to_string(),
         }
         .build()
     })
+}
+
+/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// **Does not** perform credential validation.
+///
+/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    decode_issuer_claims(compact)
 }
 
 /// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
@@ -249,17 +254,54 @@ fn decode_credential_claims(compact: &str) -> Result<Value> {
     Ok(base)
 }
 
+/// A verified SD-JWT VC presentation.
+#[derive(Debug)]
+pub(crate) struct VerifiedPresentation {
+    pub(crate) issued: Claims,
+    /// Per-hop Delegate Payloads; empty without a delegation chain.
+    pub(crate) delegations: Vec<Vec<Map<String, Value>>>,
+}
+
+impl VerifiedPresentation {
+    pub(crate) fn into_claims(self) -> Claims {
+        if self.delegations.is_empty() {
+            self.issued
+        } else {
+            delegated_claims(self.issued, self.delegations)
+        }
+    }
+}
+
+/// Issuer-signed claims under [ISSUED_VC_CLAIM], payloads under [DELEGATIONS_CLAIM]: a holder
+/// can delegate to its own key, so a payload never passes for an issuer-signed claim.
+pub(crate) fn delegated_claims(
+    issued: Claims,
+    delegations: Vec<Vec<Map<String, Value>>>,
+) -> Claims {
+    let delegations = Value::Array(
+        delegations
+            .into_iter()
+            .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
+            .collect(),
+    );
+    let mut claims = Claims::new();
+    claims.insert(ISSUED_VC_CLAIM.to_string(), issued.into());
+    claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
+    claims
+}
+
+fn claims_without_cnf(mut value: Value) -> Result<Claims> {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove(CNF_CLAIM);
+    }
+
+    value.try_into().context(ClaimsSnafu)
+}
+
 impl HasClaims<Claims> for Credential {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        let mut value = decode_credential_claims(&self.to_string())?;
-
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove(CNF_CLAIM);
-        }
-
-        let claims = value.try_into().context(ClaimsSnafu)?;
-        Ok(claims)
+        claims_without_cnf(decode_credential_claims(self)?)
     }
 
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
@@ -474,6 +516,75 @@ impl SdJwtAPI {
                 }
                 .build()
             })
+    }
+
+    /// [HasClaims::parse_claims] without delegate payloads. **Does not** validate.
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    pub(crate) fn issuer_signed_claims(credential: &Credential) -> Result<Claims> {
+        claims_without_cnf(decode_issuer_claims(credential)?)
+    }
+
+    /// Verify an SD-JWT VC presentation, including any delegation chain.
+    #[instrument(level = Level::TRACE, skip(did_resolver), err())]
+    pub(crate) async fn verify_presentation(
+        presentation: &Presentation,
+        holder_binder: Option<HolderBinder>,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<VerifiedPresentation> {
+        let key_resolver;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            key_resolver = DelegatingKeyResolver::new(
+                DidKeyResolver::new(did_resolver),
+                Truststore::new(
+                    SharedCertificateValidator::get(),
+                    opts.trusted_certs.unwrap_or_default(),
+                )
+                .anchor_policy(opts.anchor_policy),
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            key_resolver = DidKeyResolver::new(did_resolver);
+        }
+
+        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+
+        let (nonce, aud) = if let Some(hb) = holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
+        verifier
+            .verify_presentation(
+                presentation.to_owned(),
+                aud,
+                nonce,
+                SDJWTSerializationFormat::Compact,
+            )
+            .await
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // `sd_jwt_rs` layers hop payloads into its claims when any crate enables its
+        // `delegate` feature, so decode the issuer-signed claims ourselves.
+        let issued = decode_issuer_claims(presentation)?
+            .try_into()
+            .context(ClaimsSnafu)?;
+        #[cfg(feature = "delegate-sd-jwt")]
+        let delegations = verifier.verified_delegate_payloads;
+        #[cfg(not(feature = "delegate-sd-jwt"))]
+        let delegations = Vec::new();
+
+        Ok(VerifiedPresentation {
+            issued,
+            delegations,
+        })
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
@@ -847,46 +958,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<Claims> {
-        let key_resolver;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            key_resolver = DelegatingKeyResolver::new(
-                DidKeyResolver::new(did_resolver),
-                Truststore::new(
-                    SharedCertificateValidator::get(),
-                    opts.trusted_certs.unwrap_or_default(),
-                )
-                .anchor_policy(opts.anchor_policy),
-            );
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            key_resolver = DidKeyResolver::new(did_resolver);
-        }
-
-        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
-
-        let (nonce, aud) = if let Some(hb) = holder_binder {
-            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
-        } else {
-            (None, None)
-        };
-        let claims_json = verifier
-            .verify_presentation(
-                presentation.to_owned(),
-                aud,
-                nonce,
-                SDJWTSerializationFormat::Compact,
-            )
+        Self::verify_presentation(presentation, holder_binder, opts, did_resolver)
             .await
-            .map_err(|e| {
-                VerifyingSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
-
-        claims_json.try_into().context(ClaimsSnafu)
+            .map(VerifiedPresentation::into_claims)
     }
 }
 

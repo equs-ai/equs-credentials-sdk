@@ -2,7 +2,7 @@
 //! (Verifier) and the Agent (Delegate Holder) so they agree on the request shape.
 
 use equs_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// The voucher credential type (vct) the Bank issues.
@@ -17,8 +17,9 @@ pub fn generate_purchase_id() -> String {
     format!("P-{}", Uuid::new_v4())
 }
 
-/// The Merchant's voucher query: a `dc+sd-jwt` voucher whose `purchase_id`
-/// claim equals `purchase_id`, also disclosing `amount` and `currency`.
+/// The Merchant's voucher query: a `dc+sd-jwt` voucher disclosing `amount` and
+/// `currency`. `purchase_id` is only in the preferred claim set: the Holder adds it
+/// in the delegate payload, so the Merchant checks it with [delegated_purchase_id].
 ///
 /// Field names (`meta.vct_values`, claim `values`, `claim_sets`) match the
 /// `DCQLCredential` shape in `equs_sdk::vc::dcql` (see `src/vc/dcql/mod.rs`).
@@ -32,7 +33,7 @@ pub fn voucher_dcql(purchase_id: &str) -> DCQL {
             { "id": "amt", "path": ["amount"] },
             { "id": "cur", "path": ["currency"] }
         ],
-        "claim_sets": [["pid", "amt", "cur"]]
+        "claim_sets": [["pid", "amt", "cur"], ["amt", "cur"]]
     }))
     .expect("voucher DCQL credential is valid");
 
@@ -50,10 +51,20 @@ pub fn purchase_id_from_dcql(dcql: &DCQL) -> Option<String> {
     pid["values"][0].as_str().map(ToOwned::to_owned)
 }
 
+/// The `purchase_id` in the voucher's last delegation hop, if any.
+pub fn delegated_purchase_id(verified_claims: &Value) -> Option<String> {
+    verified_claims["vp_token"][VOUCHER_DCQL_ID][0]["delegations"]
+        .as_array()?
+        .last()?
+        .as_array()?
+        .first()?["purchase_id"]
+        .as_str()
+        .map(ToOwned::to_owned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
 
     #[test]
     fn voucher_dcql_constrains_vct_and_purchase_id() {

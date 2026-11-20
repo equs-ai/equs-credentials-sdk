@@ -703,6 +703,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Verify a `Presentation` and evaluate its issuer against the trust anchors.
     ///
+    /// For a delegation chain, the claims are `issued_vc` and per-hop `delegations`.
+    ///
     /// # Arguments
     ///
     /// * `holder_binder` - if given: a nonce and verifier_id used to generate `Presentation` with binding the holder.
