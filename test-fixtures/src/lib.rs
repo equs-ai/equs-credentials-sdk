@@ -518,12 +518,15 @@ struct MdocSpec {
     status: Option<Value>,
 }
 
-/// Builds a CWT Status List Token: a COSE_Sign1 signed by `key` with ES256.
+/// Builds a CWT Status List Token or Identifier List: a COSE_Sign1 signed by `key` with ES256.
 ///
 /// `spec` fields:
-/// - `sub`: the status list URI;
+/// - `sub`: the list URI;
 /// - `iat`, `exp`, `ttl` (optional): numbers; `iat` may be fractional;
-/// - `bits`, `lst`: the `status_list` claim, with `lst` as base64url zlib data;
+/// - `bits`, `lst` (optional): the `status_list` claim, with `lst` as base64url zlib data;
+/// - `identifiers` (optional): base64url identifiers, the identifier list claim (65530);
+/// - `identifier_list` (optional): the 65530 claim as given, for malformed lists;
+/// - `payload_suffix` (optional): base64url bytes appended to the signed claims;
 /// - `alg` (optional): the `alg` header, default -7 (ES256); the signature is ES256 either way;
 /// - `typ` (optional): the `typ` header, a string or a number;
 /// - `crit` (optional): the `crit` header labels;
@@ -540,8 +543,10 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
         iat: Option<serde_json::Number>,
         exp: Option<i64>,
         ttl: Option<i64>,
-        bits: u8,
-        lst: String,
+        bits: Option<u8>,
+        lst: Option<String>,
+        identifiers: Option<Vec<String>>,
+        identifier_list: Option<Value>,
         alg: Option<i64>,
         typ: Option<Value>,
         crit: Option<Vec<i64>>,
@@ -550,15 +555,13 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
         x5chain_unprotected: bool,
         #[serde(default = "tagged_by_default")]
         tagged: bool,
+        payload_suffix: Option<String>,
     }
     fn tagged_by_default() -> bool {
         true
     }
 
     let spec: Spec = parse("status list CWT spec", spec);
-    let lst = BASE64_URL_SAFE_NO_PAD
-        .decode(spec.lst.trim_end_matches('='))
-        .expect("`lst` as base64url");
     let mut claims = vec![(2.into(), spec.sub.as_str().into())];
     if let Some(iat) = spec.iat {
         let iat = match iat.as_i64() {
@@ -573,10 +576,25 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
     if let Some(ttl) = spec.ttl {
         claims.push((65534.into(), ttl.into()));
     }
-    claims.push((
-        65533.into(),
-        cbor_map([("bits", spec.bits.into()), ("lst", lst.into())]),
-    ));
+    if let (Some(bits), Some(lst)) = (spec.bits, &spec.lst) {
+        claims.push((
+            65533.into(),
+            cbor_map([("bits", bits.into()), ("lst", base64url_bytes(lst).into())]),
+        ));
+    }
+    if let Some(identifiers) = &spec.identifiers {
+        let identifiers = identifiers
+            .iter()
+            .map(|id| (base64url_bytes(id).into(), Cbor::Map(Vec::new())))
+            .collect();
+        claims.push((
+            65530.into(),
+            cbor_map([("identifiers", Cbor::Map(identifiers))]),
+        ));
+    }
+    if let Some(identifier_list) = &spec.identifier_list {
+        claims.push((65530.into(), json_cbor(identifier_list)));
+    }
 
     let mut protected = vec![(1.into(), spec.alg.unwrap_or(-7).into())];
     let mut unprotected = Vec::new();
@@ -604,7 +622,10 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
     }
 
     let protected = cbor(&Cbor::Map(protected));
-    let payload = cbor(&Cbor::Map(claims));
+    let mut payload = cbor(&Cbor::Map(claims));
+    if let Some(suffix) = &spec.payload_suffix {
+        payload.extend(base64url_bytes(suffix));
+    }
     let sig_structure = Cbor::Array(vec![
         "Signature1".into(),
         protected.clone().into(),
@@ -799,10 +820,14 @@ fn element_value(value: &Value) -> Cbor {
     }
 }
 
-/// A JSON object, null, string or integer as CBOR.
+/// A JSON object, null, string or integer as CBOR. `{"$bytes": "<base64url>"}` is a byte string.
 fn json_cbor(value: &Value) -> Cbor {
     match value {
         Value::Null => Cbor::Null,
+        Value::Object(map) if let Some(Value::String(bytes)) = map.get("$bytes") => {
+            assert_eq!(map.len(), 1, "`$bytes` stands alone");
+            Cbor::Bytes(base64url_bytes(bytes))
+        }
         Value::Object(map) => Cbor::Map(
             map.iter()
                 .map(|(key, value)| (key.as_str().into(), json_cbor(value)))
@@ -810,6 +835,12 @@ fn json_cbor(value: &Value) -> Cbor {
         ),
         _ => element_value(value),
     }
+}
+
+fn base64url_bytes(text: &str) -> Vec<u8> {
+    BASE64_URL_SAFE_NO_PAD
+        .decode(text.trim_end_matches('='))
+        .expect("base64url")
 }
 
 /// `#6.24(bstr(value))`, CBOR embedded as a byte string.
