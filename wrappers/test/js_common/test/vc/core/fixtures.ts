@@ -24,7 +24,6 @@ export class Utils {
   readonly scope = "SD_JWT_cred_sample";
   readonly kms = new InMemKms();
   readonly vault = new InMemVault();
-  private issuerKeyMetadata?: Promise<KeyMetadata>;
   readonly credStatusInfo = {
     format: CredentialStatusInfoFormat.TokenStatusList,
     payload: {
@@ -71,11 +70,6 @@ export class Utils {
     return { didUrl: vm.id, kid: keyId };
   }
 
-  getIssuerKeyMetadata(): Promise<KeyMetadata> {
-    this.issuerKeyMetadata ??= this.getKeyMetadata();
-    return this.issuerKeyMetadata;
-  }
-
   async getStatusIssuerMetadata(): Promise<StatusIssuerMetadata> {
     return {
       issuerId: "test",
@@ -90,7 +84,7 @@ export class Utils {
               status_size: 2,
             },
           },
-          keyMetadata: await this.getIssuerKeyMetadata(),
+          keyMetadata: await this.getKeyMetadata(),
         },
       ],
     };
@@ -115,7 +109,7 @@ export class Utils {
               lifetime: 10 * 60 * 1000,
             },
           },
-          keyMetadata: await this.getIssuerKeyMetadata(),
+          keyMetadata: await this.getKeyMetadata(),
         },
       ],
       protocolData: undefined,

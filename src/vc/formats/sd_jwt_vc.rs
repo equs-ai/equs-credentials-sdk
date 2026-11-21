@@ -22,7 +22,7 @@ use url::Url;
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDBuf, DIDResolver, DIDURL};
+use crate::did::{DIDResolver, DIDURL};
 use crate::http::HttpClient;
 use crate::utils;
 use crate::utils::b64;
@@ -497,36 +497,15 @@ impl SdJwtAPI {
         Ok(())
     }
 
-    /// [API::verify_vc], returning the DID whose key `credential` is verified with, or `None` when
-    /// that key comes from its `x5c` chain.
-    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
-    pub(crate) async fn verify_vc_signer(
-        credential: &Credential,
-        opts: VerifyOptions,
-        did_resolver: UniversalResolver,
-    ) -> Result<Option<DIDBuf>> {
-        let plain_jwt = Self::strip_disclosures(credential)?;
-        let (jwk, signer) = Self::get_jwk_from_jwt(
-            plain_jwt,
-            did_resolver,
-            opts.trusted_certs.as_ref(),
-            opts.anchor_policy,
-        )
-        .await?;
-
-        Self::verify_signature(credential, &jwk)?;
-        Ok(signer)
-    }
-
-    /// Resolves the key that signed `jwt`, with the DID it belongs to: a DID URL `kid`, else an
-    /// `x5c` chain that validates up to one of `trusted_certs` (no DID), else a `kid` or `iss` DID.
+    /// Resolves the key that signed `jwt`: a DID URL `kid`, else an `x5c` chain that validates up
+    /// to one of `trusted_certs`, else a `kid` or `iss` DID.
     #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
     async fn get_jwk_from_jwt(
         jwt: &str,
         did_resolver: UniversalResolver,
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
-    ) -> Result<(JWK, Option<DIDBuf>)> {
+    ) -> Result<JWK> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -536,33 +515,19 @@ impl SdJwtAPI {
                 .as_ref()
                 .is_none_or(|kid| DIDURL::new(kid).is_err())
         {
-            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs, anchor_policy)
-                .await
-                .map(|jwk| (jwk, None));
+            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs, anchor_policy).await;
         }
 
-        let (vm, signer) = match header.key_id {
-            Some(did_url) => {
-                let vm = did_resolver
-                    .fetch_public_jwk(Some(&did_url))
-                    .await
-                    .map_err(|e| {
-                        ParsingSnafu {
-                            details: format!("could not resolve verification method: {e}"),
-                        }
-                        .build()
-                    })?;
-                let did = DIDURL::new(&did_url)
-                    .map_err(|e| {
-                        DIDSnafu {
-                            details: e.to_string(),
-                        }
-                        .build()
-                    })?
-                    .did()
-                    .to_owned();
-                (vm, did)
-            }
+        let vm = match header.key_id {
+            Some(did_url) => did_resolver
+                .fetch_public_jwk(Some(&did_url))
+                .await
+                .map_err(|e| {
+                    ParsingSnafu {
+                        details: format!("could not resolve verification method: {e}"),
+                    }
+                    .build()
+                })?,
             _ => {
                 let claims: Claims = serde_json::from_slice(&payload).map_err(|err| {
                     ParsingSnafu {
@@ -584,14 +549,15 @@ impl SdJwtAPI {
                     .build()
                 })?;
 
-                let did = ssi::dids::DID::new(&iss_did).map_err(|e| {
-                    DIDSnafu {
-                        details: e.to_string(),
-                    }
-                    .build()
-                })?;
                 let vm = did_resolver
-                    .resolve_into_any_verification_method(did)
+                    .resolve_into_any_verification_method(ssi::dids::DID::new(&iss_did).map_err(
+                        |e| {
+                            DIDSnafu {
+                                details: e.to_string(),
+                            }
+                            .build()
+                        },
+                    )?)
                     .await
                     .map_err(|e| {
                         CredentialCreationSnafu {
@@ -605,15 +571,14 @@ impl SdJwtAPI {
                         }
                         .build()
                     })?;
-                let vm = did_resolver
+                did_resolver
                     .fetch_public_jwk(Some(vm.id.as_str()))
                     .await
-                    .context(ProofValidationSnafu)?;
-                (vm, did.to_owned())
+                    .context(ProofValidationSnafu)?
             }
         };
 
-        Ok((vm.into_owned(), Some(signer)))
+        Ok(vm.into_owned())
     }
 
     /// Resolves the key of the leaf of `x5c` once the chain validates up to one of `trusted_certs`.
@@ -863,9 +828,16 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<()> {
-        Box::pin(Self::verify_vc_signer(credential, opts, did_resolver))
-            .await
-            .map(|_| ())
+        let plain_jwt = Self::strip_disclosures(credential)?;
+        let jwk = Self::get_jwk_from_jwt(
+            plain_jwt,
+            did_resolver,
+            opts.trusted_certs.as_ref(),
+            opts.anchor_policy,
+        )
+        .await?;
+
+        Self::verify_signature(credential, &jwk)
     }
 
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
