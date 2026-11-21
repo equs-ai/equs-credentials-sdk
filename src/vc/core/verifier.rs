@@ -15,7 +15,9 @@ use crate::vc::core::{
 use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{API, AnchorPolicy, HasCredential, IsExpired, VerifyOptions};
+use crate::vc::formats::{
+    API, AnchorPolicy, HasCredential, IsExpired, KbJwtIatWindow, VerifyOptions,
+};
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::trust::issuer::{
@@ -38,6 +40,8 @@ pub struct VerificationParams {
     /// Issuer-trust anchors and mode for [Verifier::verify_presentation]. When
     /// unset, `trusted_certs` are used as anchors in [IssuerTrustMode::Enforce].
     pub issuer_trust: Option<IssuerTrustConfig>,
+    /// How far an SD-JWT Key Binding JWT's `iat` may be from now; `None` uses the default.
+    pub kb_iat_window: Option<KbJwtIatWindow>,
 }
 
 #[derive(Clone)]
@@ -186,6 +190,7 @@ impl VerifierService {
                         trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
                         anchor_policy: AnchorPolicy::Require,
+                        kb_iat_window: self.verification_params.kb_iat_window,
                     },
                     self.did_resolver.clone(),
                 )
@@ -234,6 +239,7 @@ impl VerifierService {
                         trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
                         anchor_policy: AnchorPolicy::Require,
+                        kb_iat_window: None,
                     },
                     self.did_resolver.clone(),
                 )
@@ -325,6 +331,7 @@ impl VerifierService {
             trusted_certs: anchors_by_ski,
             selective_claims: None,
             anchor_policy: AnchorPolicy::IntegrityOnly,
+            kb_iat_window: self.verification_params.kb_iat_window,
         };
 
         match presentation {
@@ -572,14 +579,16 @@ mod tests {
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::kms::Kms;
     use crate::reqwest::builder::ReqwestClientBuilder;
+    use crate::utils::test_utils::with_kb_jwt_iat;
     use crate::vc::VCStatusesData;
     use crate::vc::core::status_issuer::StatusIssuerService;
     use crate::vc::core::tests::fixtures::VERIFIER_ID;
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
         Error, HolderBinder, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
-        Verifier, VerifierService,
+        VerificationParams, Verifier, VerifierService,
     };
+    use crate::vc::formats::KbJwtIatWindow;
     use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::StatusListFormat;
     use crate::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
@@ -800,6 +809,49 @@ mod tests {
         assert!(matches!(res.err(), Some(Error::VC { .. })));
     }
 
+    #[tokio::test]
+    async fn verifier_applies_the_kb_iat_window_from_its_params() {
+        let case = CredTestCase::sd_jwt();
+        let kms = LocalKms::new();
+        let nonce = random_nonce().await;
+        let (vc, _) = case.generate_vc(&kms, None).await;
+        let vc::Presentation::SdJwtVp(vp) = case.generate_vp(&kms, &vc, Some(nonce.clone())).await
+        else {
+            panic!("expected an SD-JWT presentation");
+        };
+        let holder = kms.get(&vc.kid).await.unwrap();
+        let vp = vc::Presentation::SdJwtVp(with_kb_jwt_iat(&vp, -2 * 3600, &holder).await);
+        let binder = || {
+            Some(HolderBinder {
+                nonce: nonce.clone(),
+                verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
+            })
+        };
+        let http_client = ReqwestClientBuilder::new().insecure().build().unwrap();
+
+        let err = verifier_service()
+            .verify_presentation(binder(), &vp, &http_client)
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("KB-JWT is too old"),
+            "unexpected error: {err:?}"
+        );
+
+        VerifierService::new(VERIFIER_ID, UniversalResolver::default())
+            .with_verification_params(VerificationParams {
+                kb_iat_window: Some(KbJwtIatWindow::new(
+                    std::time::Duration::from_secs(3 * 3600),
+                    std::time::Duration::from_secs(60),
+                )),
+                ..Default::default()
+            })
+            .verify_presentation(binder(), &vp, &http_client)
+            .await
+            .unwrap();
+    }
+
     fn verifier_service() -> impl Verifier {
         VerifierService::new(VERIFIER_ID, UniversalResolver::default())
     }
@@ -945,6 +997,7 @@ mod tests {
             VerifierService::new(mso_mdoc::tests::VERIFIER, UniversalResolver::default())
                 .with_verification_params(VerificationParams {
                     trusted_certs: Some(anchors(&trusted)),
+                    kb_iat_window: None,
                     issuer_trust: Some(IssuerTrustConfig {
                         mode,
                         anchors: vec![TrustAnchor {
