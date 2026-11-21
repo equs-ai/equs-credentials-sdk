@@ -447,7 +447,8 @@ impl VerifierService {
         )
     }
 
-    /// The status of an mdoc's MSO `status_list` entry; any other declared mechanism fails.
+    /// The status of an mdoc's MSO `status_list` or `identifier_list`; any other mechanism fails.
+    /// A credential in its Identifier List is `Invalid`.
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, skip(self, status, http_client), err(), ret())]
     async fn obtain_mdoc_status(
@@ -457,6 +458,7 @@ impl VerifierService {
         anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
         use crate::vc::formats::mso_mdoc::MdocStatus;
+        use crate::vc::status_formats::identifier_list_token_cwt::IdentifierListCwt;
 
         match status {
             MdocStatus::None => Ok(None),
@@ -476,6 +478,27 @@ impl VerifierService {
             )
             .await
             .map(|status| Some(VCStatus::StatusListToken(status)))
+            .map_err(|e| {
+                VCStatusSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            }),
+            MdocStatus::IdentifierList { uri, id } => IdentifierListCwt::is_revoked(
+                http_client,
+                uri,
+                &id.0,
+                self.verification_params.trusted_certs.as_ref(),
+                anchor_policy,
+            )
+            .await
+            .map(|revoked| {
+                Some(VCStatus::StatusListToken(if revoked {
+                    status_list_token_jwt::VCStatus::Invalid
+                } else {
+                    status_list_token_jwt::VCStatus::Valid
+                }))
+            })
             .map_err(|e| {
                 VCStatusSnafu {
                     details: e.to_string(),
@@ -983,6 +1006,9 @@ mod tests {
         use crate::vc::core::{VerificationParams, Verifier, VerifierService};
         use crate::vc::formats::mso_mdoc;
         use crate::vc::formats::mso_mdoc::tests::{sample_binder, sample_mso_mdoc_vp_with_status};
+        use crate::vc::status_formats::identifier_list_token_cwt::tests::{
+            LISTED_ID, identifier_list_cwt,
+        };
         use crate::vc::status_formats::status_list_token_cwt::tests::x5c_status_list_cwt;
         use crate::vc::status_formats::status_list_token_jwt;
         use crate::vc::status_formats::status_list_token_jwt::tests::{
@@ -1010,7 +1036,32 @@ mod tests {
         }
 
         fn identifier_list() -> Value {
-            json!({ "id": "6482", "uri": IDENTIFIER_LIST_URI })
+            identifier_list_naming(LISTED_ID)
+        }
+
+        /// An MSO `identifier_list` naming the base64url `id`.
+        fn identifier_list_naming(id: &str) -> Value {
+            json!({ "id": { "$bytes": id }, "uri": IDENTIFIER_LIST_URI })
+        }
+
+        /// Serves the fixture Identifier List, which lists [LISTED_ID], once.
+        fn serving_identifier_list() -> MockHttpClient {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(IDENTIFIER_LIST_URI).unwrap(),
+                |_| {
+                    let mut response = HttpResponse::new(identifier_list_cwt(IDENTIFIER_LIST_URI));
+                    response.headers_mut().insert(
+                        CONTENT_TYPE,
+                        "application/identifierlist+cwt".parse().unwrap(),
+                    );
+                    Ok(response)
+                },
+                1.into(),
+            );
+            http_client
         }
 
         /// Serves the fixture status list token once at [STATUS_LIST_URI].
@@ -1309,16 +1360,127 @@ mod tests {
         #[case::enforce(IssuerTrustMode::Enforce)]
         #[case::report(IssuerTrustMode::Report)]
         #[tokio::test]
-        async fn identifier_list_only_is_rejected(#[case] mode: IssuerTrustMode) {
+        async fn mdoc_in_its_identifier_list_is_rejected(#[case] mode: IssuerTrustMode) {
             let result = verify(
                 json!({ "identifier_list": identifier_list() }),
                 mode,
+                true,
+                serving_identifier_list(),
+            )
+            .await;
+
+            assert_fails_with(
+                result,
+                "The status of the verifiable credential is 'Invalid'",
+            );
+        }
+
+        #[tokio::test]
+        async fn mdoc_not_in_its_identifier_list_is_trusted() {
+            let verified = verify(
+                json!({ "identifier_list": identifier_list_naming("AQID") }),
+                IssuerTrustMode::Enforce,
+                true,
+                serving_identifier_list(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[tokio::test]
+        async fn identifier_list_under_no_anchor_fails_under_enforce() {
+            let result = verify(
+                json!({ "identifier_list": identifier_list() }),
+                IssuerTrustMode::Enforce,
+                false,
+                serving_identifier_list(),
+            )
+            .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn identifier_list_under_no_anchor_passes_for_an_untrusted_issuer_under_report() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(json!({
+                "identifier_list": identifier_list_naming("AQID")
+            }));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_identifier_list(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
+        }
+
+        #[tokio::test]
+        async fn rejected_issuer_under_enforce_fetches_no_identifier_list() {
+            let (vp, _) =
+                sample_mso_mdoc_vp_with_status(json!({ "identifier_list": identifier_list() }));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            // no identifier list is served: a fetch would panic
+            let error = verifier(&unrelated_iaca, IssuerTrustMode::Enforce, true)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await
+                .unwrap_err();
+
+            assert!(
+                matches!(error, crate::vc::core::Error::IssuerNotTrusted { .. }),
+                "expected IssuerNotTrusted, got {error}"
+            );
+        }
+
+        #[tokio::test]
+        async fn identifier_list_with_a_text_id_is_rejected_as_malformed() {
+            let result = verify(
+                json!({ "identifier_list": { "id": "6482", "uri": IDENTIFIER_LIST_URI } }),
+                IssuerTrustMode::Enforce,
                 true,
                 MockHttpClient::new(),
             )
             .await;
 
-            assert_fails_with(result, "status mechanism not supported: identifier_list");
+            let error = format!("{:?}", result.unwrap_err());
+            assert!(
+                error.contains("Malformed mso_mdoc identifier_list"),
+                "unexpected error: {error}"
+            );
+        }
+
+        #[tokio::test]
+        async fn identifier_list_error_does_not_name_the_identifier() {
+            let error = verify(
+                json!({ "identifier_list": identifier_list() }),
+                IssuerTrustMode::Enforce,
+                false,
+                serving_identifier_list(),
+            )
+            .await
+            .unwrap_err();
+
+            for text in [error.to_string(), format!("{error:?}")] {
+                assert!(!text.contains(LISTED_ID), "{text}");
+                assert!(!text.contains("6482"), "{text}");
+            }
         }
 
         #[tokio::test]
@@ -1370,21 +1532,40 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn obtain_credential_status_rejects_identifier_list_only() {
+        async fn obtain_credential_status_reads_the_identifier_list() {
             let (vp, iaca) =
                 sample_mso_mdoc_vp_with_status(json!({ "identifier_list": identifier_list() }));
 
-            let result = verifier(&iaca, IssuerTrustMode::Enforce, true)
+            let status = verifier(&iaca, IssuerTrustMode::Enforce, true)
                 .obtain_credential_status(
                     &Presentation::MsoMdoc(mso_mdoc::Presentation {
                         value: vp,
                         enc_pub_key: None,
                     }),
-                    &MockHttpClient::new(),
+                    &serving_identifier_list(),
                 )
-                .await;
+                .await
+                .unwrap();
 
-            assert_fails_with(result, "status mechanism not supported: identifier_list");
+            assert_eq!(
+                status,
+                Some(VCStatus::StatusListToken(
+                    status_list_token_jwt::VCStatus::Invalid
+                ))
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_status_mechanism_is_rejected() {
+            let result = verify(
+                json!({ "future_list": { "uri": IDENTIFIER_LIST_URI } }),
+                IssuerTrustMode::Enforce,
+                true,
+                MockHttpClient::new(),
+            )
+            .await;
+
+            assert_fails_with(result, "status mechanism not supported: future_list");
         }
 
         #[tokio::test]
