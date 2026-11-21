@@ -214,6 +214,28 @@ pub(crate) mod tests {
         assert_contains(&error, "missed the `iat` claim");
     }
 
+    fn iat_from_now(offset_secs: i64) -> Value {
+        json!(time::OffsetDateTime::now_utc().unix_timestamp() + offset_secs)
+    }
+
+    #[tokio::test]
+    async fn cwt_issued_in_the_future_is_rejected() {
+        let token = cwt_with(|spec| spec["iat"] = iat_from_now(3600));
+
+        let error = error_of(token, trusted()).await;
+
+        assert_contains(&error, "status list CWT `iat` is in the future");
+    }
+
+    #[tokio::test]
+    async fn cwt_issued_slightly_ahead_of_this_clock_is_accepted() {
+        let token = cwt_with(|spec| spec["iat"] = iat_from_now(10));
+
+        let status = entry(&token, 2, trusted()).await.unwrap();
+
+        assert_eq!(status, Some(1));
+    }
+
     #[rstest]
     #[case::other_typ(cwt_with(|spec| spec["typ"] = json!("application/cwt")), "expected protected `typ`")]
     #[case::no_typ(cwt_with(|spec| { spec.as_object_mut().unwrap().remove("typ"); }), "expected protected `typ`")]

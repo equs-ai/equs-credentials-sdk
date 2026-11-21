@@ -8,7 +8,8 @@
 //! - its protected `typ` is the list's media type, or its CoAP ID where it has one;
 //! - its `alg` is ES256 with a P-256 key or EdDSA with an Ed25519 key;
 //! - its protected `crit` lists only `alg`, `typ` and `x5chain`;
-//! - its `sub` is the URI it was fetched from, it has an `iat`, and it has not expired.
+//! - its `sub` is the URI it was fetched from;
+//! - its `iat` is at most 60 seconds ahead, and it has not expired; `exp` is optional.
 //!
 //! `ttl` is ignored, since the cache lasts for one call only.
 
@@ -35,6 +36,9 @@ const X5CHAIN_HEADER: i64 = 33;
 const SUB_CLAIM: i64 = 2;
 const EXP_CLAIM: i64 = 4;
 const IAT_CLAIM: i64 = 6;
+
+/// How far `iat` may be ahead of this clock, for clock skew with the list's issuer.
+const MAX_IAT_SKEW_SECS: f64 = 60.0;
 
 /// The kind of list a CWT carries.
 pub(crate) struct CwtProfile {
@@ -275,15 +279,21 @@ fn numeric_date(value: &Value) -> Option<f64> {
 }
 
 fn check_times(profile: &CwtProfile, claims: &[(Value, Value)]) -> Result<()> {
-    claim(claims, IAT_CLAIM)
+    let iat = claim(claims, IAT_CLAIM)
         .ok_or_else(|| malformed("missed the `iat` claim"))
         .and_then(|iat| numeric_date(iat).ok_or_else(|| malformed("`iat` is not a NumericDate")))?;
+    let now = (time::OffsetDateTime::now_utc() - time::OffsetDateTime::UNIX_EPOCH).as_seconds_f64();
+    if iat > now + MAX_IAT_SKEW_SECS {
+        return VCStatusSnafu {
+            details: format!("{} CWT `iat` is in the future", profile.name),
+        }
+        .fail();
+    }
 
     let Some(exp) = claim(claims, EXP_CLAIM) else {
         return Ok(());
     };
     let exp = numeric_date(exp).ok_or_else(|| malformed("`exp` is not a NumericDate"))?;
-    let now = (time::OffsetDateTime::now_utc() - time::OffsetDateTime::UNIX_EPOCH).as_seconds_f64();
     if exp <= now {
         return VCStatusSnafu {
             details: format!("{} CWT has expired", profile.name),
