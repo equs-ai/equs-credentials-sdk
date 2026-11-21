@@ -2,7 +2,7 @@
 //! ISO/IEC 18013-5 2nd ed.).
 //!
 //! A token is accepted only when:
-//! - it is a COSE_Sign1, tagged or untagged;
+//! - it is a COSE_Sign1, tagged or untagged, with nothing after it;
 //! - its `x5chain` certificate chain is trusted under the caller's [AnchorPolicy];
 //! - its signature verifies with the key of the first certificate in that chain;
 //! - its protected `typ` is the list's media type, or its CoAP ID where it has one;

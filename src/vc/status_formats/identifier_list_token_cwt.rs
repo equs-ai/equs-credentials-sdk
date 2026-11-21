@@ -250,6 +250,10 @@ pub(crate) mod tests {
         test_fixtures::status_list_cwt(&spec(URI), &test_fixtures::keys().holder),
         "identifier list signature is invalid"
     )]
+    #[case::trailing_bytes(
+        [identifier_list_cwt(URI), vec![0x3f, 0xd5, 0x45, 0x09, 0x48, 0xbc]].concat(),
+        "not a COSE_Sign1"
+    )]
     #[tokio::test]
     async fn list_failing_a_token_check_is_rejected(
         #[case] token: Vec<u8>,
