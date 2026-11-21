@@ -2993,9 +2993,8 @@ dependencies = [
 
 [[package]]
 name = "equs-one-core"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8552b499922fec12e8fe00253f176e78a463f27ef823f615146b5f7aafea3920"
+version = "0.2.3"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3080,8 +3079,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-crypto"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d7a084e31e621c0cec0d13c93f780c7053aa9347fc8d34fc6250753b00b275a"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3117,8 +3115,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-dcql"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ccbe36b9904b8530f0dd3076f452af246e07ec5a1823bbf36852b19a9d0ea8c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3130,8 +3127,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-portable"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40eec5598def11171ad8dbb9cf737b970d8a4bd082134fdb591f1d903861128c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3166,8 +3162,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3179,8 +3174,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "regex",
  "serde",
@@ -3192,8 +3186,7 @@ dependencies = [
 [[package]]
 name = "equs-one-core-standardized-types"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e261b6a6b8aaf436cf1fcda31c12c0de3fd50f6ed41787d0724585c956e4a8c"
+source = "git+https://github.com/equs-ai/one-core.git?rev=4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28#4f6cb4d6b22f8244a337cb29adfd63a9d02bbf28"
 dependencies = [
  "anyhow",
  "ct-codecs",
