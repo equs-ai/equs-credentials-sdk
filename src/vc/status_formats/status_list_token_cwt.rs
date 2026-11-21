@@ -243,6 +243,7 @@ pub(crate) mod tests {
     #[case::three_bits(cwt_with(|spec| spec["bits"] = json!(3)), "Malformed status list")]
     #[case::not_cose(b"not a status list".to_vec(), "not a COSE_Sign1")]
     #[case::trailing_bytes([x5c_status_list_cwt(URI), vec![0x3f, 0xd5, 0x45]].concat(), "not a COSE_Sign1")]
+    #[case::signed_trailing_bytes(cwt_with(|spec| spec["payload_suffix"] = json!("P9VF")), "status list CWT claims are followed by extra bytes")]
     #[tokio::test]
     async fn malformed_cwt_is_rejected(#[case] token: Vec<u8>, #[case] expected: &str) {
         let error = error_of(token, trusted()).await;

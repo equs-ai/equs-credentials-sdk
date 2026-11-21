@@ -137,7 +137,9 @@ async fn fetch(http_client: &dyn HttpClient, uri: &str) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{IdentifierListCwt, MAX_BODY_BYTES};
+    use super::{
+        IDENTIFIER_LIST_CLAIM, IdentifierListCwt, MAX_BODY_BYTES, MAX_IDENTIFIERS, identifiers,
+    };
     use crate::http::{HttpResponse, MockHttpClient};
     use crate::utils::http::test::mock_http_fn;
     use crate::utils::test_utils::anchors;
@@ -145,6 +147,7 @@ pub(crate) mod tests {
     use crate::vc::status_formats::status_list_token_jwt::tests::{
         status_list_root_ca, status_list_signer_cert,
     };
+    use coset::cbor::value::Value as Cbor;
     use oauth2::http::Method;
     use oauth2::http::StatusCode;
     use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
@@ -254,6 +257,10 @@ pub(crate) mod tests {
         [identifier_list_cwt(URI), vec![0x3f, 0xd5, 0x45, 0x09, 0x48, 0xbc]].concat(),
         "not a COSE_Sign1"
     )]
+    #[case::signed_trailing_bytes(
+        cwt_with(|spec| spec["payload_suffix"] = json!("P9VF")),
+        "identifier list CWT claims are followed by extra bytes"
+    )]
     #[tokio::test]
     async fn list_failing_a_token_check_is_rejected(
         #[case] token: Vec<u8>,
@@ -278,6 +285,35 @@ pub(crate) mod tests {
         });
 
         assert_contains(&error_of(token).await, expected);
+    }
+
+    fn claims_with_identifiers(count: usize) -> Vec<(Cbor, Cbor)> {
+        let identifiers = (0..count as u32)
+            .map(|i| (Cbor::Bytes(i.to_be_bytes().to_vec()), Cbor::Map(Vec::new())))
+            .collect();
+        vec![(
+            Cbor::Integer(IDENTIFIER_LIST_CLAIM.into()),
+            Cbor::Map(vec![(
+                Cbor::Text("identifiers".to_string()),
+                Cbor::Map(identifiers),
+            )]),
+        )]
+    }
+
+    #[test]
+    fn list_at_the_identifier_cap_is_read() {
+        let claims = claims_with_identifiers(MAX_IDENTIFIERS);
+
+        assert_eq!(identifiers(&claims).unwrap().len(), MAX_IDENTIFIERS);
+    }
+
+    #[test]
+    fn list_over_the_identifier_cap_is_rejected() {
+        let claims = claims_with_identifiers(MAX_IDENTIFIERS + 1);
+
+        let error = identifiers(&claims).unwrap_err().to_string();
+
+        assert_contains(&error, "more than 1000000 identifiers");
     }
 
     #[tokio::test]

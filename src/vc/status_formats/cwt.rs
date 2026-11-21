@@ -8,6 +8,7 @@
 //! - its protected `typ` is the list's media type, or its CoAP ID where it has one;
 //! - its `alg` is ES256 with a P-256 key or EdDSA with an Ed25519 key;
 //! - its protected `crit` lists only `alg`, `typ` and `x5chain`;
+//! - its claims are one CBOR map, with nothing after it;
 //! - its `sub` is the URI it was fetched from;
 //! - its `iat` is at most 60 seconds ahead, and it has not expired; `exp` is optional.
 //!
@@ -244,8 +245,15 @@ fn decode_claims(profile: &CwtProfile, sign1: &CoseSign1) -> Result<Claims> {
         .payload
         .as_deref()
         .ok_or_else(|| malformed(format!("{} CWT has no payload", profile.name)))?;
-    let claims: Value = coset::cbor::de::from_reader(payload)
+    let mut reader = std::io::Cursor::new(payload);
+    let claims: Value = coset::cbor::de::from_reader(&mut reader)
         .map_err(|err| malformed(format!("{} CWT claims are not CBOR: {err}", profile.name)))?;
+    if reader.position() != payload.len() as u64 {
+        return Err(malformed(format!(
+            "{} CWT claims are followed by extra bytes",
+            profile.name
+        )));
+    }
     match claims {
         Value::Map(entries) => Ok(entries),
         _ => Err(malformed(format!(

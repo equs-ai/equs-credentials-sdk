@@ -526,6 +526,7 @@ struct MdocSpec {
 /// - `bits`, `lst` (optional): the `status_list` claim, with `lst` as base64url zlib data;
 /// - `identifiers` (optional): base64url identifiers, the identifier list claim (65530);
 /// - `identifier_list` (optional): the 65530 claim as given, for malformed lists;
+/// - `payload_suffix` (optional): base64url bytes appended to the signed claims;
 /// - `alg` (optional): the `alg` header, default -7 (ES256); the signature is ES256 either way;
 /// - `typ` (optional): the `typ` header, a string or a number;
 /// - `crit` (optional): the `crit` header labels;
@@ -554,6 +555,7 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
         x5chain_unprotected: bool,
         #[serde(default = "tagged_by_default")]
         tagged: bool,
+        payload_suffix: Option<String>,
     }
     fn tagged_by_default() -> bool {
         true
@@ -620,7 +622,10 @@ pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
     }
 
     let protected = cbor(&Cbor::Map(protected));
-    let payload = cbor(&Cbor::Map(claims));
+    let mut payload = cbor(&Cbor::Map(claims));
+    if let Some(suffix) = &spec.payload_suffix {
+        payload.extend(base64url_bytes(suffix));
+    }
     let sig_structure = Cbor::Array(vec![
         "Signature1".into(),
         protected.clone().into(),
