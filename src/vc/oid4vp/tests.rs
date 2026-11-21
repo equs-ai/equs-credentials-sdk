@@ -4143,6 +4143,7 @@ pub mod utils {
         let inner = vc::core::VerifierService::new(&did, UniversalResolver::default())
             .with_verification_params(vc::core::VerificationParams {
                 trusted_certs: Some(trusted_certs),
+                kb_iat_window: None,
                 issuer_trust: Some(config),
             });
         let client_metadata = generate_client_metadata(&kms).await;
