@@ -119,6 +119,7 @@ one-core = { package = "equs-one-core", version = "0.2.2" }
 shared-types = { package = "equs-one-core-shared-types", version = "0.1.0" }
 x509-parser = { version = "0.18", features = ["verify"] }
 x509-cert = { version = "0.2", features = ["pem"] }
+coset = { version = "0.4", features = ["std"] }
 
 [dev-dependencies]
 equs-test-fixtures = { path = "./test-fixtures" }

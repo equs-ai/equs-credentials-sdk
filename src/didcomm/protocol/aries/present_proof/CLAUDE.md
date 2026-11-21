@@ -33,7 +33,7 @@ A caller that builds its own VP takes the binding from `PresentationHolder::hold
 A state stored without `verifier_did` cannot bind: `holder_binder` fails with `InvalidState` on both roles (the verifier before it reads the presentation), and the exchange restarts with a new request. The verifier DID is not recovered from the connection, because completing an inviter's connection gives it a new `my_did`.
 
 ## Dependencies
-- Depends on: `vc::core::{HolderService, VerifierService}`, `vc::presentation_exchange`, `protocol::outofband`, `protocol::aries::{common, problem_report, empty}`, `crate::didcomm::agent`, `crate::kms`, `crate::vault`
+- Depends on: `vc::core::{HolderService, VerifierService}`, `vc::presentation_exchange`, `protocol::outofband`, `protocol::aries::{common, problem_report, empty}`, `crate::didcomm::agent`, `crate::kms`, `crate::vault`, `crate::reqwest` (both roles fetch status lists with the default HTTPS-only client)
 - Used by: application code that calls `Verifier::new` or `PresentationHolder::new`
 
 ## Constraints

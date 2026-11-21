@@ -1,14 +1,15 @@
 # status_formats — Context
 
 ## Purpose
-Provides the abstract `API` trait and concrete implementations for token-based VC revocation status lists, currently supporting the JWT Token Status List (draft-ietf-oauth-status-list) format.
+Provides the abstract `API` trait and concrete implementations for token-based VC revocation status lists, supporting Token Status List (draft-ietf-oauth-status-list) tokens in JWT form (issue and check) and CWT form (check only, native builds).
 
 ## Files
 
 | File | Role |
 |------|------|
 | mod.rs | `API` trait (create status list, get VC status), `StatusListFormat` enum, shared `Error` type. |
-| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Decodes `lst` with or without base64url padding, not through `JsonStatusList::decode`, which requires it. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. `get_status_list_entry(uri, idx, ..)` is the lookup itself, shared by the SD-JWT VC `status` claim and the mdoc MSO `status`; a response typed `application/statuslist+cwt` fails as "status list format not supported". |
+| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Decodes `lst` with or without base64url padding, not through `JsonStatusList::decode`, which requires it. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. `get_status_list_entry(uri, idx, ..)` is the lookup itself, shared by the SD-JWT VC `status` claim and the mdoc MSO `status`. It asks for `application/statuslist+jwt, application/statuslist+cwt` (JWT only on wasm), hands a response typed `application/statuslist+cwt` to `StatusListCwt` and reads anything else as a JWT. The per-call cache keeps a JWT as is and a CWT base64url-encoded behind a `cwt:` prefix, and re-verifies a cached token on every lookup. On wasm a CWT still fails as "status list format not supported". |
+| status_list_token_cwt.rs | `StatusListCwt` (native only) — checks a CWT Status List Token (§5.2): a COSE_Sign1, tagged 18 or not; protected `typ` (16) `application/statuslist+cwt` or its CoAP Content-Format ID 279; protected `alg` ES256 over a P-256 certificate key or EdDSA over an Ed25519 one, the only pairs one-core verifies (it picks the algorithm from the key, so a mismatched `alg` is rejected rather than ignored); a protected `crit` naming anything but `alg`, `typ` or `x5chain` rejects the token (RFC 9052 §3.1); key only from `x5chain` (33, protected or unprotected), validated by `Truststore` against the caller's trusted certs under its `AnchorPolicy`, then the COSE signature verified with the leaf key; `sub` must equal the fetched URI, `iat` required, an `exp` in the past rejects it; `status_list` (65533) `bits`/`lst` decoded with `BitString::from_compressed_bytes`, as the JWT path does. No DID key resolution. `ttl` is not read. |
 
 ## Key types / traits
 - `API<CS, ST, SL, MD>` — generic async trait for status list creation and VC status retrieval. `get_vc_status` trusts no X.509 anchors; `StatusListJwt::get_vc_status_with_trusted_certs` is the same call with trusted anchors and the `AnchorPolicy` their chain is checked under (used by `core::VerifierService`).
@@ -18,5 +19,5 @@ Provides the abstract `API` trait and concrete implementations for token-based V
 - `SLMetadata` — metadata for status list JWT creation (URL, size, count).
 
 ## Dependencies
-- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `base64`, `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
+- Depends on: `sd_jwt_rs`, `ssi::status::token_status_list`, `base64`, `coset` (CWT decoding, its re-exported `ciborium` for claims), `utils::x509_truststore::Truststore` and `one_core::mapper::x509` (CWT `x5chain`), `crate::vc::formats::sd_jwt_vc::SdJwtAPI`, `crate::http::HttpClient`, `test_fixtures` (tests only: status-list tokens generated at runtime)
 - Used by: `core::StatusIssuerService`, `formats::sd_jwt_vc` (status check), `mod.rs` (top-level `VCStatus` re-export)
