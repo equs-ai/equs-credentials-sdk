@@ -3262,7 +3262,7 @@ dependencies = [
 [[package]]
 name = "equs-sd-jwt-rs"
 version = "0.1.2"
-source = "git+https://github.com/equs-ai/sd-jwt-rust.git?rev=436cdd78dec41bfc0efcf3f04fce5dca288f6c57#436cdd78dec41bfc0efcf3f04fce5dca288f6c57"
+source = "git+https://github.com/equs-ai/sd-jwt-rust.git?rev=64f46f374a62ecb71ae2244f629c68cdaccd07fe#64f46f374a62ecb71ae2244f629c68cdaccd07fe"
 dependencies = [
  "async-trait",
  "base64 0.21.7",

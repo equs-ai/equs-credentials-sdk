@@ -1534,10 +1534,10 @@ mod tests {
     #[tokio::test]
     async fn verify_vp_applies_the_kb_iat_window_from_the_options() {
         let opts = || VerifyOptions {
-            kb_iat_window: Some(KbJwtIatWindow {
-                max_age: std::time::Duration::from_secs(3 * 3600),
-                max_future_skew: std::time::Duration::from_secs(60),
-            }),
+            kb_iat_window: Some(KbJwtIatWindow::new(
+                std::time::Duration::from_secs(3 * 3600),
+                std::time::Duration::from_secs(60),
+            )),
             ..Default::default()
         };
 
