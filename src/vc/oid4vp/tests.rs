@@ -5069,12 +5069,10 @@ mod delegation_e2e_tests {
         assert_delegated_scope(&claims, "delegated-purchase");
     }
 
-    /// Regression: `present_credentials_auto` must discover a stored delegation grant when the
-    /// Verifier's DCQL **value-matches a delegate-payload claim** (as the Merchant's voucher
-    /// query value-matches `purchase_id`). Before the delegate-aware `parse_claims`, auto
-    /// discovery saw only issuer claims, matched nothing, and posted an empty `vp_token`.
+    /// The wallet matches a DCQL on the claims the Verifier checks, the issuer-signed ones, so a
+    /// query that value-matches only a delegate-payload claim finds no stored grant.
     #[tokio::test]
-    async fn delegation_auto_discovery_value_matches_delegate_payload_claim() {
+    async fn delegation_auto_discovery_ignores_delegate_payload_claims() {
         let orig_holder_kms = LocalKms::new();
         let orig_holder_vault = InMemVault::new();
         let (orig_cred_entry, _) = create_sd_jwt_credential_entry(&orig_holder_kms).await;
@@ -5129,10 +5127,8 @@ mod delegation_e2e_tests {
             .expect("vp_token must contain dSD-JWT string")
             .to_string();
 
-        let (verifier, verifier_client_id) = utils::verifier_service().await;
+        let (_, verifier_client_id) = utils::verifier_service().await;
         let e2e_nonce = "value-match-nonce";
-        // DCQL value-matches the delegate-payload claim `scope`, with a claim_set (as the
-        // Merchant's voucher DCQL value-matches `purchase_id`).
         let delegate_auth_request_str = format!(
             r#"{{
               "client_id": "decentralized_identifier:{verifier_client_id}",
@@ -5189,47 +5185,17 @@ mod delegation_e2e_tests {
                     ..Default::default()
                 },
             )
-            .await
-            .expect("present_credentials_auto must succeed");
+            .await;
 
-        let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
-            panic!("expected AuthorizationResponse from present_credentials_auto (dc_api mode)");
-        };
-
-        // The core regression assertion: auto-discovery matched the value-constrained
-        // delegate-payload claim and placed the grant under its credential id.
-        if let AuthorizationResponse::Plain(obj) = &auth_resp {
-            assert!(
-                obj.vp_token.get(DELEGATE_CRED_ID).is_some(),
-                "auto-discovery must place the grant under '{DELEGATE_CRED_ID}', got: {:?}",
-                obj.vp_token
-            );
-        }
-
-        let session = PresentationSession {
-            nonce: Nonce::from_secret(e2e_nonce.to_string()),
-            resolved_presentation_query: ResolvedPresentationQuery::DCQL(build_delegate_dcql(
-                DELEGATE_CRED_ID,
-                "https://credentials.example.com/identity_credential",
-            )),
-            auth_request_jwt: None,
-        };
-
-        let claims = verifier
-            .verify_presentation(
-                &auth_resp,
-                &session,
-                &CredentialVerificationMetadata {
-                    transaction_data: None,
-                    audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
-                        dc_api_origin,
-                    )),
-                },
-            )
-            .await
-            .expect("Verifier must verify the auto-discovered delegated grant");
-
-        assert_delegated_scope(&claims, "delegated-purchase");
+        let grant_presented = matches!(
+            &present_result,
+            Ok(PresentationResult::AuthorizationResponse(AuthorizationResponse::Plain(obj)))
+                if obj.vp_token.get(DELEGATE_CRED_ID).is_some()
+        );
+        assert!(
+            !grant_presented,
+            "the wallet must not present the grant, got: {present_result:?}"
+        );
     }
 
     #[tokio::test]

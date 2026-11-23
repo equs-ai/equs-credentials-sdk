@@ -33,7 +33,9 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::RequestedPresentation;
-use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::claims::DELEGATIONS_CLAIM;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::{HolderBinder, KeyMetadata};
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::api::VerifiedPresentationResponse;
@@ -704,16 +706,6 @@ where
                 .all(|(key, value)| disclosed.get(key) == Some(value))
     }
 
-    /// When delegation is verified, claims are returns in the following way:
-    /// { "issued_vc": ..., "delegations": [...] }
-    /// For DCQL requested claims validation, issued_vc claims should be unwrapped.
-    fn get_issued_vc_claims(claim: &Claim) -> Claim {
-        match (claim.get(ISSUED_VC_CLAIM), claim.get(DELEGATIONS_CLAIM)) {
-            (Some(issued_vc), Some(_)) => issued_vc.clone(),
-            _ => claim.clone(),
-        }
-    }
-
     async fn resolve_did_and_jwk_from_id_token_header(
         &self,
         header: ssi::claims::jws::Header,
@@ -1169,7 +1161,7 @@ where
             validated
                 .entry(id.clone())
                 .or_default()
-                .push(Self::get_issued_vc_claims(&claim));
+                .push(claim.issued_vc().clone());
             result.entry(id.clone()).or_default().push(claim);
             presentations
                 .entry(id)

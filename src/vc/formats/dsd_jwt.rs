@@ -196,6 +196,12 @@ mod tests {
 
     use super::{DelegationParams, DsdJwtAPI, DsdJwtPurpose};
     use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
+    use crate::vc::core::{
+        PresentationInput, PresentationRestriction, PresentationRestrictionValue,
+    };
+    use crate::vc::formats::HasClaims;
+    use crate::vc::presentation_exchange::validate_credential;
+    use rstest::rstest;
 
     /// Issue a holder-bound SD-JWT using our own `SdJwtAPI::create_vc` path.
     /// Returns `(sd_jwt_credential, holder_key_handle)` so that tests can immediately
@@ -552,10 +558,9 @@ mod tests {
         );
     }
 
-    /// Under `delegate-sd-jwt`, `HasClaims::parse_claims` on a stored dSD-JWT grant must layer
-    /// the delegate payload on top of the issuer claims — so a delegate-injected claim (here
-    /// `purchase_id`, absent from the issued credential) is visible to credential discovery /
-    /// DCQL value-matching, while original issuer claims remain present.
+    /// Under `delegate-sd-jwt`, `HasClaims::parse_claims` on a stored dSD-JWT grant layers the
+    /// delegate payload on top of the issuer claims for display, so a delegate-injected claim
+    /// (here `purchase_id`, absent from the issued credential) shows next to the issuer claims.
     #[tokio::test]
     async fn parse_claims_surfaces_delegate_payload_claim() {
         use crate::vc::Credential as VcCredential;
@@ -592,6 +597,44 @@ mod tests {
             claims.get("iss").is_some(),
             "issuer claim 'iss' must remain present after layering"
         );
+    }
+
+    #[rstest]
+    #[case::issuer_vct("https://issuer.example/cred", true)]
+    #[case::payload_vct("https://payload.example/cred", false)]
+    #[tokio::test]
+    async fn has_type_reads_the_issuer_vct_of_a_grant(#[case] vct: &str, #[case] matches: bool) {
+        let grant = grant_with_payload(json!({ "vct": "https://payload.example/cred" })).await;
+
+        let has_type = grant
+            .has_type(PresentationRestrictionValue::Const(vct.to_string()))
+            .unwrap();
+
+        assert_eq!(has_type, matches);
+    }
+
+    #[rstest]
+    #[case::issuer_value("baseline", true)]
+    #[case::payload_value("delegated", false)]
+    #[tokio::test]
+    async fn validate_credential_matches_only_issuer_signed_claims_of_a_grant(
+        #[case] scope: &str,
+        #[case] matches: bool,
+    ) {
+        let grant = grant_with_payload(json!({ "scope": "delegated" })).await;
+        let input = PresentationInput {
+            id: "grant".to_string(),
+            format: None,
+            restrictions: vec![PresentationRestriction {
+                fields: vec!["$.scope".to_string()],
+                value: Some(PresentationRestrictionValue::Const(scope.to_string())),
+                optional: false,
+            }],
+        };
+
+        let unmatched = validate_credential(&grant, &input).unwrap();
+
+        assert_eq!(unmatched.is_none(), matches, "unmatched: {unmatched:?}");
     }
 
     /// Holder binding: when `aud`/`nonce` are set, `create_delegated_credential` writes
@@ -755,6 +798,24 @@ mod tests {
         )
         .await;
         assert!(wrong_aud.is_err(), "wrong aud must be rejected");
+    }
+
+    async fn grant_with_payload(payload: serde_json::Value) -> crate::vc::Credential {
+        let (vc, hld_kh) = issue_sd_jwt().await;
+        let dsd = DsdJwtAPI::create_delegated_credential(
+            &vc,
+            hld_kh,
+            DelegationParams {
+                delegate_payloads: vec![payload],
+                claims_to_disclose: json!({ "vct": true, "scope": true }).as_object().cloned(),
+                drop_disclosures: None,
+                binding: ChainBindingMode::SdHash,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        crate::vc::Credential::SdJwt(dsd)
     }
 
     fn last_hop(claims: &Claims) -> &Vec<Claim> {

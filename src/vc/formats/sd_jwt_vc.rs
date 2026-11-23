@@ -290,6 +290,16 @@ pub(crate) fn delegated_claims(
     claims
 }
 
+/// A dSD-JWT has a JWT between its first and last components, where an SD-JWT has disclosures.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn is_delegation_chain(compact: &str) -> bool {
+    let components: Vec<&str> = compact.split('~').collect();
+    components.len() > 2
+        && components[1..components.len() - 1]
+            .iter()
+            .any(|component| component.contains('.'))
+}
+
 fn claims_without_cnf(mut value: Value) -> Result<Claims> {
     if let Some(obj) = value.as_object_mut() {
         obj.remove(CNF_CLAIM);
@@ -306,7 +316,7 @@ impl HasClaims<Claims> for Credential {
 
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn has_type(&self, type_: PresentationRestrictionValue) -> Result<bool> {
-        let claims = self.parse_claims()?;
+        let claims = SdJwtAPI::issuer_signed_claims(self)?;
 
         if let Some(Claim::String(vct)) = claims.get("vct") {
             let vct_value = serde_json::to_value(vct).context(JsonSnafu)?;
@@ -532,6 +542,14 @@ impl SdJwtAPI {
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<VerifiedPresentation> {
+        #[cfg(not(feature = "delegate-sd-jwt"))]
+        snafu::ensure!(
+            !is_delegation_chain(presentation),
+            VerifyingSnafu {
+                details: "a delegation chain needs the `delegate-sd-jwt` feature",
+            }
+        );
+
         let key_resolver;
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -1524,6 +1542,40 @@ mod tests {
         .await;
 
         assert!(matches!(res.err(), Some(Error::Verifying { .. })));
+    }
+
+    #[cfg(not(feature = "delegate-sd-jwt"))]
+    #[tokio::test]
+    async fn sd_jwt_verify_vp_rejects_a_delegation_chain() {
+        let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
+        let nonce = random_nonce().await;
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+        let (sd_jwt, kb_jwt) = vp.rsplit_once('~').unwrap();
+        let chain = format!("{sd_jwt}~~{kb_jwt}~{kb_jwt}");
+
+        let res = SdJwtAPI::verify_vp(
+            &chain,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(
+            matches!(&res, Err(Error::Verifying { details, .. }) if details.contains("delegate-sd-jwt")),
+            "unexpected result: {res:?}"
+        );
     }
 
     #[tokio::test]

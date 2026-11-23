@@ -9,7 +9,7 @@ use crate::vault::{
 use crate::vc::claims::Claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction, PresentationRestrictionValue};
 use crate::vc::oid4vp::verifier::PresentationVerificationOptions;
-use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresentation, formats};
+use crate::vc::{ClaimFormatDesignation, Presentation, RequestedPresentation, formats};
 use crate::vc::{Credential, HasVCFormat};
 use common_macros::DebugError;
 use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathValue, ValueType};
@@ -231,7 +231,7 @@ fn check_cred_contains_all_paths(
 ) -> crate::vault::Result<()> {
     let raw_claims = credential
         .credential
-        .parse_claims()
+        .issuer_signed_claims()
         .context(ClaimsParsingSnafu)?;
     for field in set {
         let json_path_field =
@@ -479,7 +479,9 @@ pub fn validate_credential_for_dcql(
     credential: &Credential,
     dcql_credential: &DcqlCredential,
 ) -> crate::vault::Result<()> {
-    let raw_claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
+    let raw_claims = credential
+        .issuer_signed_claims()
+        .context(ClaimsParsingSnafu)?;
     if !credential
         .format()
         .to_string()

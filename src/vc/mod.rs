@@ -129,6 +129,15 @@ impl Credential {
             _ => Ok(true),
         }
     }
+
+    /// The claims a wallet matches a request on: what a Verifier checks, so a dSD-JWT's
+    /// issuer-signed claims without its delegate payloads.
+    pub(crate) fn issuer_signed_claims(&self) -> formats::Result<Claims> {
+        match self {
+            Credential::SdJwt(vc) => SdJwtAPI::issuer_signed_claims(vc),
+            _ => self.parse_claims(),
+        }
+    }
 }
 
 /// Enum to represent the different ways to encode VC Statuses data.

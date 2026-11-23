@@ -6,7 +6,7 @@ use crate::vault::{
     CannotCreateJSONPathSnafu, ClaimsParsingSnafu, ClaimsValidationSnafu,
     UnsupportedCredentialFormatSnafu,
 };
-use crate::vc::claims::Claims;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::oid4vp::ClaimPath;
@@ -210,7 +210,8 @@ pub(crate) fn validate_presented_credential(
         presentation_definition.id().to_owned(),
         descriptor_map,
     );
-    let claims = serde_json::to_value(claims).map_err(|err| {
+    let claims = Claim::from(claims.to_owned());
+    let claims = serde_json::to_value(claims.issued_vc()).map_err(|err| {
         ParseSnafu {
             details: format!("Claims parse error: {err}"),
         }
@@ -752,7 +753,9 @@ pub fn validate_credential(
     credential: &Credential,
     presentation_input: &PresentationInput,
 ) -> crate::vault::Result<Option<Vec<ClaimPath>>> {
-    let claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
+    let claims = credential
+        .issuer_signed_claims()
+        .context(ClaimsParsingSnafu)?;
 
     if let Some(format) = &presentation_input.format
         && credential.format().to_string().cmp(format).is_ne()
@@ -833,6 +836,7 @@ fn validate_restriction(
 mod tests {
     use super::*;
     use crate::inmem::kms::LocalKms;
+    use crate::vc::claims::{DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
     use crate::vc::core::tests::utils::CredTestCase;
     use openid4vp::core::{
         credential_format::ClaimFormatDesignation,
@@ -847,6 +851,14 @@ mod tests {
 
     fn sdjwt_claims(vct: &str) -> Claims {
         Claims::try_from(json!({ "vct": vct })).unwrap()
+    }
+
+    fn delegated_claims(issued_vct: &str, payload_vct: &str) -> Claims {
+        Claims::try_from(json!({
+            ISSUED_VC_CLAIM: { "vct": issued_vct },
+            DELEGATIONS_CLAIM: [[{ "vct": payload_vct }]],
+        }))
+        .unwrap()
     }
 
     fn sdjwt_input_descriptor(id: &str, vct: &str) -> InputDescriptor {
@@ -899,8 +911,23 @@ mod tests {
         assert!(result.is_ok(), "unexpected result: {result:?}");
     }
 
+    #[test]
+    fn validate_presented_credential_checks_the_issued_vc_of_a_delegated_presentation() {
+        let result = validate_presented_credential(
+            &Presentation::SdJwtVp(String::new()),
+            &delegated_claims(IDENTITY_VCT, DEGREE_VCT),
+            &create_single_presentation_definition(),
+        );
+
+        assert!(result.is_ok(), "unexpected result: {result:?}");
+    }
+
     #[rstest]
     #[case::of_another_type(sdjwt_claims(DEGREE_VCT), create_single_presentation_definition())]
+    #[case::only_in_a_delegate_payload(
+        delegated_claims(DEGREE_VCT, IDENTITY_VCT),
+        create_single_presentation_definition()
+    )]
     #[case::not_matching_every_descriptor(
         sdjwt_claims(IDENTITY_VCT),
         create_single_presentation_definition()
