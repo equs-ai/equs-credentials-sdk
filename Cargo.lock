@@ -3262,7 +3262,8 @@ dependencies = [
 [[package]]
 name = "equs-sd-jwt-rs"
 version = "0.1.2"
-source = "git+https://github.com/equs-ai/sd-jwt-rust.git?rev=64f46f374a62ecb71ae2244f629c68cdaccd07fe#64f46f374a62ecb71ae2244f629c68cdaccd07fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ee1da5c7ac32031ecfedc2733b7463e0ef4691a8429fd9617c544207197394e"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
