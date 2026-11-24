@@ -208,7 +208,7 @@ export const VP = fixtureSdJwtKb(
   JSON.stringify({
     nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
     aud: `decentralized_identifier:${fixtureDidKey(FixtureKey.Verifier)}`,
-    iat: 1765954739,
+    iat: Math.floor(Date.now() / 1000),
   }),
   FixtureKey.Holder,
 );
