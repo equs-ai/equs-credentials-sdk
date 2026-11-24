@@ -2878,6 +2878,7 @@ dependencies = [
  "bip32",
  "bs58 0.5.1",
  "chrono",
+ "coset 0.4.2",
  "ecdsa",
  "ed25519-compact",
  "ed25519-dalek",

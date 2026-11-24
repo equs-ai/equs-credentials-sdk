@@ -518,6 +518,115 @@ struct MdocSpec {
     status: Option<Value>,
 }
 
+/// Builds a CWT Status List Token: a COSE_Sign1 signed by `key` with ES256.
+///
+/// `spec` fields:
+/// - `sub`: the status list URI;
+/// - `iat`, `exp`, `ttl` (optional): numbers; `iat` may be fractional;
+/// - `bits`, `lst`: the `status_list` claim, with `lst` as base64url zlib data;
+/// - `alg` (optional): the `alg` header, default -7 (ES256); the signature is ES256 either way;
+/// - `typ` (optional): the `typ` header, a string or a number;
+/// - `crit` (optional): the `crit` header labels;
+/// - `x5chain` (optional): PEM of the signer certificate, then the rest of its chain;
+/// - `x5chain_unprotected` (default false): put `x5chain` in the unprotected header;
+/// - `tagged` (default true): add the COSE_Sign1 tag (18).
+///
+/// Panics on a malformed field.
+pub fn status_list_cwt(spec: &Value, key: &JWK) -> Vec<u8> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Spec {
+        sub: String,
+        iat: Option<serde_json::Number>,
+        exp: Option<i64>,
+        ttl: Option<i64>,
+        bits: u8,
+        lst: String,
+        alg: Option<i64>,
+        typ: Option<Value>,
+        crit: Option<Vec<i64>>,
+        x5chain: Option<String>,
+        #[serde(default)]
+        x5chain_unprotected: bool,
+        #[serde(default = "tagged_by_default")]
+        tagged: bool,
+    }
+    fn tagged_by_default() -> bool {
+        true
+    }
+
+    let spec: Spec = parse("status list CWT spec", spec);
+    let lst = BASE64_URL_SAFE_NO_PAD
+        .decode(spec.lst.trim_end_matches('='))
+        .expect("`lst` as base64url");
+    let mut claims = vec![(2.into(), spec.sub.as_str().into())];
+    if let Some(iat) = spec.iat {
+        let iat = match iat.as_i64() {
+            Some(seconds) => seconds.into(),
+            None => Cbor::Float(iat.as_f64().expect("`iat` as a number")),
+        };
+        claims.push((6.into(), iat));
+    }
+    if let Some(exp) = spec.exp {
+        claims.push((4.into(), exp.into()));
+    }
+    if let Some(ttl) = spec.ttl {
+        claims.push((65534.into(), ttl.into()));
+    }
+    claims.push((
+        65533.into(),
+        cbor_map([("bits", spec.bits.into()), ("lst", lst.into())]),
+    ));
+
+    let mut protected = vec![(1.into(), spec.alg.unwrap_or(-7).into())];
+    let mut unprotected = Vec::new();
+    if let Some(crit) = &spec.crit {
+        protected.push((
+            2.into(),
+            Cbor::Array(crit.iter().map(|label| (*label).into()).collect()),
+        ));
+    }
+    match &spec.typ {
+        None => {}
+        Some(Value::String(typ)) => protected.push((16.into(), typ.as_str().into())),
+        Some(Value::Number(id)) => {
+            protected.push((16.into(), id.as_i64().expect("`typ` ID").into()))
+        }
+        Some(_) => panic!("`typ` must be a string or an integer"),
+    }
+    if let Some(pem) = &spec.x5chain {
+        let entry = (33.into(), x5chain(pem));
+        if spec.x5chain_unprotected {
+            unprotected.push(entry);
+        } else {
+            protected.push(entry);
+        }
+    }
+
+    let protected = cbor(&Cbor::Map(protected));
+    let payload = cbor(&Cbor::Map(claims));
+    let sig_structure = Cbor::Array(vec![
+        "Signature1".into(),
+        protected.clone().into(),
+        Cbor::Bytes(Vec::new()),
+        payload.clone().into(),
+    ]);
+    let signature =
+        ssi::claims::jws::sign_bytes(ssi::jwk::Algorithm::ES256, &cbor(&sig_structure), key)
+            .expect("signing");
+    let sign1 = Cbor::Array(vec![
+        protected.into(),
+        Cbor::Map(unprotected),
+        payload.into(),
+        signature.into(),
+    ]);
+    cbor(&if spec.tagged {
+        Cbor::Tag(18, Box::new(sign1))
+    } else {
+        sign1
+    })
+}
+
 /// ETSI TS 119 602 List of Trusted Entities as a compact JWS (`ES256`), signed by `signer_key`
 /// with the `signer` certificate (PEM) in `x5c`. `spec`: `lote_type` (the `LoTEType` URI),
 /// optional `sequence_number` (default 1), `issued` / `next_update` (`YYYY-MM-DDThh:mm:ssZ`,
