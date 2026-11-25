@@ -1,5 +1,10 @@
 //! Reads CWT Status List Tokens (draft-ietf-oauth-status-list §5.2), the status list format
 //! used by mdoc credentials. The token checks are in [crate::vc::status_formats::cwt].
+//!
+//! An mdoc's MSO `status_list` is looked up only through [StatusListCwt::get_status], which asks
+//! for and accepts a CWT alone: ISO/IEC 18013-5 2nd ed. is the profile draft-ietf-oauth-status-list
+//! §13.9 leaves the format choice to, and a JWT list would be verified through DID key resolution,
+//! which never meets the X.509 anchors.
 
 use std::collections::HashMap;
 
@@ -7,10 +12,12 @@ use coset::cbor::value::Value;
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
+use crate::http::HttpClient;
 use crate::vc::formats::AnchorPolicy;
 use crate::vc::presentation_exchange::StatusSize;
-use crate::vc::status_formats::Result;
 use crate::vc::status_formats::cwt::{self, CwtProfile, claim, malformed};
+use crate::vc::status_formats::status_list_token_jwt::VCStatus;
+use crate::vc::status_formats::{Result, VCStatusSnafu};
 
 /// Media type and `typ` header of a CWT Status List Token.
 pub(crate) const STATUS_LIST_CWT_TYPE: &str = "application/statuslist+cwt";
@@ -26,6 +33,27 @@ const PROFILE: CwtProfile = CwtProfile {
 pub(crate) struct StatusListCwt;
 
 impl StatusListCwt {
+    /// Fetches the CWT status list at `uri`, verifies it and returns the status at `idx`.
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    pub(crate) async fn get_status(
+        http_client: &dyn HttpClient,
+        uri: &str,
+        idx: usize,
+        trusted_certs: Option<&HashMap<String, String>>,
+        anchor_policy: AnchorPolicy,
+    ) -> Result<VCStatus> {
+        let token = cwt::fetch(http_client, uri, &PROFILE).await?;
+        let status_list =
+            Self::extract_status_list(uri, &token, trusted_certs, anchor_policy).await?;
+        let status = status_list.get(idx).ok_or_else(|| {
+            VCStatusSnafu {
+                details: format!("failed to get index {idx}"),
+            }
+            .build()
+        })?;
+        Ok(status.into())
+    }
+
     /// Verifies the CWT `token` fetched from `uri` and returns its status list.
     #[instrument(level = Level::TRACE, skip(token, trusted_certs), err())]
     pub(crate) async fn extract_status_list(
@@ -65,14 +93,22 @@ fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::StatusListCwt;
+    use crate::http::{HttpResponse, MockHttpClient};
+    use crate::utils::http::test::mock_http_fn;
     use crate::utils::test_utils::anchors;
     use crate::vc::formats::AnchorPolicy;
+    use crate::vc::status_formats::cwt::MAX_BODY_BYTES;
+    use crate::vc::status_formats::status_list_token_jwt::VCStatus;
     use crate::vc::status_formats::status_list_token_jwt::tests::{
-        status_list_root_ca, status_list_signer_cert,
+        status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
     };
+    use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
+    use oauth2::http::{Method, StatusCode};
     use rstest::rstest;
     use serde_json::{Value, json};
     use std::collections::HashMap;
+    use std::str::FromStr;
+    use url::Url;
 
     const URI: &str = "https://status.example/mdoc/1";
 
@@ -326,5 +362,119 @@ pub(crate) mod tests {
             &test_fixtures::JWK::generate_p256(),
             None,
         )
+    }
+
+    /// Serves `body` once at [URI] with `content_type` and `status`, asking for a CWT only.
+    fn served(
+        body: Vec<u8>,
+        content_type: Option<&'static str>,
+        status: StatusCode,
+    ) -> MockHttpClient {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::GET,
+            Url::from_str(URI).unwrap(),
+            move |request| {
+                assert_eq!(request.headers()[ACCEPT], "application/statuslist+cwt");
+                let mut response = HttpResponse::new(body.clone());
+                *response.status_mut() = status;
+                if let Some(content_type) = content_type {
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, content_type.parse().unwrap());
+                }
+                Ok(response)
+            },
+            1.into(),
+        );
+        http_client
+    }
+
+    async fn status_at(
+        http_client: MockHttpClient,
+        idx: usize,
+    ) -> crate::vc::status_formats::Result<VCStatus> {
+        StatusListCwt::get_status(
+            &http_client,
+            URI,
+            idx,
+            trusted().as_ref(),
+            AnchorPolicy::Require,
+        )
+        .await
+    }
+
+    #[rstest]
+    #[case::exact("application/statuslist+cwt")]
+    #[case::with_parameters("Application/StatusList+CWT; charset=binary")]
+    #[tokio::test]
+    async fn get_status_reads_the_fetched_list(#[case] content_type: &'static str) {
+        let http_client = served(x5c_status_list_cwt(URI), Some(content_type), StatusCode::OK);
+
+        assert_eq!(status_at(http_client, 2).await.unwrap(), VCStatus::Invalid);
+    }
+
+    #[rstest]
+    #[case::jwt_type(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+jwt"),
+        StatusCode::OK,
+        "is not served as application/statuslist+cwt"
+    )]
+    #[case::no_content_type(x5c_status_list_cwt(URI), None, StatusCode::OK, "is not served as")]
+    #[case::longer_media_type(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+cwtx"),
+        StatusCode::OK,
+        "is not served as"
+    )]
+    #[case::jwt_body_labelled_cwt(
+        x5c_status_list_token(URI, "statuslist+jwt", true).into_bytes(),
+        Some("application/statuslist+cwt"),
+        StatusCode::OK,
+        "not a COSE_Sign1"
+    )]
+    #[case::not_found(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+cwt"),
+        StatusCode::NOT_FOUND,
+        "failed with 404"
+    )]
+    #[case::too_large(
+        vec![0; MAX_BODY_BYTES + 1],
+        Some("application/statuslist+cwt"),
+        StatusCode::OK,
+        "is larger than"
+    )]
+    #[tokio::test]
+    async fn get_status_rejects_a_list_it_cannot_use(
+        #[case] body: Vec<u8>,
+        #[case] content_type: Option<&'static str>,
+        #[case] status: StatusCode,
+        #[case] expected: &str,
+    ) {
+        let error = status_at(served(body, content_type, status), 0)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains(expected), "unexpected error: {error}");
+    }
+
+    #[tokio::test]
+    async fn get_status_rejects_an_index_beyond_the_list() {
+        let http_client = served(
+            x5c_status_list_cwt(URI),
+            Some("application/statuslist+cwt"),
+            StatusCode::OK,
+        );
+
+        let error = status_at(http_client, 100_000)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("failed to get index 100000"), "{error}");
     }
 }

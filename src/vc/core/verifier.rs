@@ -447,7 +447,8 @@ impl VerifierService {
     }
 
     /// The status of an mdoc's MSO `status_list` or `identifier_list`; any other mechanism fails.
-    /// A credential in its Identifier List is `Invalid`.
+    /// A `status_list` must be a CWT ([StatusListCwt::get_status]). A credential in its Identifier
+    /// List is `Invalid`.
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, skip(self, status, http_client), err(), ret())]
     async fn obtain_mdoc_status(
@@ -458,6 +459,7 @@ impl VerifierService {
     ) -> Result<Option<VCStatus>> {
         use crate::vc::formats::mso_mdoc::MdocStatus;
         use crate::vc::status_formats::identifier_list_token_cwt::IdentifierListCwt;
+        use crate::vc::status_formats::status_list_token_cwt::StatusListCwt;
 
         match status {
             MdocStatus::None => Ok(None),
@@ -465,12 +467,10 @@ impl VerifierService {
                 details: format!("status mechanism not supported: {}", mechanisms.join(", ")),
             }
             .fail(),
-            MdocStatus::StatusList { uri, idx } => StatusListJwt::get_status_list_entry(
+            MdocStatus::StatusList { uri, idx } => StatusListCwt::get_status(
+                http_client,
                 uri,
                 *idx,
-                http_client,
-                self.did_resolver.clone(),
-                None,
                 self.verification_params.trusted_certs.as_ref(),
                 anchor_policy,
             )
@@ -964,8 +964,8 @@ mod tests {
             http_client
         }
 
-        /// Serves the fixture status list token once at [STATUS_LIST_URI].
-        fn serving_status_list() -> MockHttpClient {
+        /// Serves the fixture `x5c` status list JWT once at [STATUS_LIST_URI].
+        fn serving_status_list_jwt() -> MockHttpClient {
             let mut http_client = MockHttpClient::new();
             mock_http_fn_with_plain_text_resp(
                 &mut http_client,
@@ -1157,7 +1157,7 @@ mod tests {
             assert_fails_with(result, "Could not fetch status list");
         }
 
-        fn serving_status_list_cwt() -> MockHttpClient {
+        fn serving_status_list() -> MockHttpClient {
             let mut http_client = MockHttpClient::new();
             mock_http_fn(
                 &mut http_client,
@@ -1181,7 +1181,7 @@ mod tests {
                 status_list(VALID),
                 IssuerTrustMode::Enforce,
                 true,
-                serving_status_list_cwt(),
+                serving_status_list(),
             )
             .await
             .unwrap();
@@ -1195,7 +1195,7 @@ mod tests {
                 status_list(INVALID),
                 IssuerTrustMode::Enforce,
                 true,
-                serving_status_list_cwt(),
+                serving_status_list(),
             )
             .await;
 
@@ -1231,11 +1231,202 @@ mod tests {
                 status_list(VALID),
                 IssuerTrustMode::Enforce,
                 false,
-                serving_status_list_cwt(),
+                serving_status_list(),
             )
             .await;
 
             assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        /// `lst` of a 2-bit status list whose entries are all valid.
+        fn all_valid_lst() -> String {
+            let bits = ssi::status::token_status_list::BitString::new_zeroed(
+                crate::vc::presentation_exchange::StatusSize::try_from(2).unwrap(),
+                16,
+            );
+            let list = ssi::status::token_status_list::json::JsonStatusList::encode(
+                &bits,
+                flate2::Compression::best(),
+            );
+            serde_json::to_value(list).unwrap()["lst"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+
+        /// Serves `body` once at [STATUS_LIST_URI] with `content_type` and `status`.
+        fn serving_at_status_list_uri(
+            body: Vec<u8>,
+            content_type: &'static str,
+            status: oauth2::http::StatusCode,
+        ) -> MockHttpClient {
+            let mut http_client = MockHttpClient::new();
+            let mut body = Some(body);
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                move |_| {
+                    let mut response = HttpResponse::new(body.take().unwrap());
+                    *response.status_mut() = status;
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, content_type.parse().unwrap());
+                    Ok(response)
+                },
+                1.into(),
+            );
+            http_client
+        }
+
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn revoked_mdoc_with_a_did_signed_status_list_jwt_is_rejected(
+            #[case] mode: IssuerTrustMode,
+        ) {
+            // whoever answers for the status URI serves a did:key JWT saying every entry is valid
+            let forged = crate::utils::test_utils::status_list_jwt(
+                STATUS_LIST_URI,
+                1790000000,
+                &all_valid_lst(),
+                2,
+            );
+            let http_client = serving_at_status_list_uri(
+                forged.into_bytes(),
+                "application/statuslist+jwt",
+                oauth2::http::StatusCode::OK,
+            );
+
+            let result = verify(status_list(INVALID), mode, true, http_client).await;
+
+            assert_fails_with(result, "not served as application/statuslist+cwt");
+        }
+
+        #[tokio::test]
+        async fn did_signed_status_list_jwt_labelled_as_cwt_is_rejected() {
+            // the attacker controls the header too
+            let forged = crate::utils::test_utils::status_list_jwt(
+                STATUS_LIST_URI,
+                1790000000,
+                &all_valid_lst(),
+                2,
+            );
+            let http_client = serving_at_status_list_uri(
+                forged.into_bytes(),
+                "application/statuslist+cwt",
+                oauth2::http::StatusCode::OK,
+            );
+
+            let result = verify(
+                status_list(INVALID),
+                IssuerTrustMode::Enforce,
+                true,
+                http_client,
+            )
+            .await;
+
+            assert_fails_with(result, "not a COSE_Sign1");
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_rejects_a_status_list_jwt_for_an_mdoc() {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+
+            let result = verifier(&iaca, IssuerTrustMode::Enforce, true)
+                .obtain_credential_status(
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list_jwt(),
+                )
+                .await;
+
+            assert_fails_with(result, "not served as application/statuslist+cwt");
+        }
+
+        #[tokio::test]
+        async fn status_list_jwt_under_an_anchor_is_rejected_for_an_mdoc() {
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                serving_status_list_jwt(),
+            )
+            .await;
+
+            assert_fails_with(result, "not served as application/statuslist+cwt");
+        }
+
+        #[tokio::test]
+        async fn mdoc_status_list_is_requested_as_cwt_only() {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                |request| {
+                    assert_eq!(
+                        request.headers()[oauth2::http::header::ACCEPT],
+                        "application/statuslist+cwt"
+                    );
+                    let mut response = HttpResponse::new(x5c_status_list_cwt(STATUS_LIST_URI));
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, "application/statuslist+cwt".parse().unwrap());
+                    Ok(response)
+                },
+                1.into(),
+            );
+
+            verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                http_client,
+            )
+            .await
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn status_list_error_response_is_rejected() {
+            let http_client = serving_at_status_list_uri(
+                x5c_status_list_cwt(STATUS_LIST_URI),
+                "application/statuslist+cwt",
+                oauth2::http::StatusCode::NOT_FOUND,
+            );
+
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                http_client,
+            )
+            .await;
+
+            assert_fails_with(result, "status list request failed with 404");
+        }
+
+        #[tokio::test]
+        async fn oversized_status_list_is_rejected() {
+            let http_client = serving_at_status_list_uri(
+                vec![0; 10 * 1024 * 1024 + 1],
+                "application/statuslist+cwt",
+                oauth2::http::StatusCode::OK,
+            );
+
+            let result = verify(
+                status_list(VALID),
+                IssuerTrustMode::Enforce,
+                true,
+                http_client,
+            )
+            .await;
+
+            assert_fails_with(result, "status list is larger than");
         }
 
         #[tokio::test]

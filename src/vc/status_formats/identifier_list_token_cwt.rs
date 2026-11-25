@@ -7,14 +7,12 @@
 use std::collections::HashMap;
 
 use coset::cbor::value::Value;
-use oauth2::http;
-use oauth2::http::Method;
 use tracing::{Level, instrument};
 
 use crate::http::HttpClient;
 use crate::vc::formats::AnchorPolicy;
+use crate::vc::status_formats::Result;
 use crate::vc::status_formats::cwt::{self, CwtProfile, claim, malformed};
-use crate::vc::status_formats::{Result, StatusListFetchingSnafu};
 
 /// Media type and `typ` header of an Identifier List.
 pub(crate) const IDENTIFIER_LIST_CWT_TYPE: &str = "application/identifierlist+cwt";
@@ -22,7 +20,6 @@ pub(crate) const IDENTIFIER_LIST_CWT_TYPE: &str = "application/identifierlist+cw
 const IDENTIFIER_LIST_CLAIM: i64 = 65530;
 const STATUS_LIST_CLAIM: i64 = 65533;
 
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 const MAX_IDENTIFIERS: usize = 1_000_000;
 
 const PROFILE: CwtProfile = CwtProfile {
@@ -43,7 +40,7 @@ impl IdentifierListCwt {
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
     ) -> Result<bool> {
-        let token = fetch(http_client, uri).await?;
+        let token = cwt::fetch(http_client, uri, &PROFILE).await?;
         Self::is_listed(uri, &token, id, trusted_certs, anchor_policy).await
     }
 
@@ -93,57 +90,14 @@ fn identifiers(claims: &[(Value, Value)]) -> Result<&[(Value, Value)]> {
     Ok(identifiers)
 }
 
-/// Fetches the Identifier List at `uri`.
-async fn fetch(http_client: &dyn HttpClient, uri: &str) -> Result<Vec<u8>> {
-    let fetching = |details: String| StatusListFetchingSnafu { details }.build();
-    let request = http::request::Builder::new()
-        .uri(uri)
-        .method(Method::GET)
-        .header(http::header::ACCEPT, IDENTIFIER_LIST_CWT_TYPE)
-        .body(vec![])
-        .map_err(|err| fetching(err.to_string()))?;
-    let response = http_client
-        .async_call(request)
-        .await
-        .map_err(|err| fetching(err.to_string()))?;
-    if !response.status().is_success() {
-        return Err(fetching(format!(
-            "identifier list request failed with {}",
-            response.status()
-        )));
-    }
-    let is_identifier_list = response
-        .headers()
-        .get(http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| {
-            value
-                .to_ascii_lowercase()
-                .starts_with(IDENTIFIER_LIST_CWT_TYPE)
-        });
-    if !is_identifier_list {
-        return Err(fetching(format!(
-            "identifier list is not served as {IDENTIFIER_LIST_CWT_TYPE}"
-        )));
-    }
-    let body = response.into_body();
-    if body.len() > MAX_BODY_BYTES {
-        return Err(fetching(format!(
-            "identifier list is larger than {MAX_BODY_BYTES} bytes"
-        )));
-    }
-    Ok(body)
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{
-        IDENTIFIER_LIST_CLAIM, IdentifierListCwt, MAX_BODY_BYTES, MAX_IDENTIFIERS, identifiers,
-    };
+    use super::{IDENTIFIER_LIST_CLAIM, IdentifierListCwt, MAX_IDENTIFIERS, identifiers};
     use crate::http::{HttpResponse, MockHttpClient};
     use crate::utils::http::test::mock_http_fn;
     use crate::utils::test_utils::anchors;
     use crate::vc::formats::AnchorPolicy;
+    use crate::vc::status_formats::cwt::MAX_BODY_BYTES;
     use crate::vc::status_formats::status_list_token_jwt::tests::{
         status_list_root_ca, status_list_signer_cert,
     };
@@ -398,6 +352,12 @@ pub(crate) mod tests {
         "is not served as application/identifierlist+cwt"
     )]
     #[case::no_content_type(identifier_list_cwt(URI), None, StatusCode::OK, "is not served as")]
+    #[case::longer_media_type(
+        identifier_list_cwt(URI),
+        Some("application/identifierlist+cwtx"),
+        StatusCode::OK,
+        "is not served as"
+    )]
     #[case::not_found(
         identifier_list_cwt(URI),
         Some("application/identifierlist+cwt"),

@@ -24,12 +24,17 @@ use coset::{
     Algorithm as CoseAlgorithm, CborSerializable, CoseSign1, Header, Label,
     RegisteredLabelWithPrivate, TaggedCborSerializable,
 };
+use oauth2::http;
+use oauth2::http::Method;
 use one_core_portable::standardized_types::jwk::PublicJwk;
 
+use crate::http::HttpClient;
 use crate::utils::certificate_validator::SharedCertificateValidator;
 use crate::utils::x509_truststore::Truststore;
 use crate::vc::formats::AnchorPolicy;
-use crate::vc::status_formats::{MalformedStatusListSnafu, Result, VCStatusSnafu};
+use crate::vc::status_formats::{
+    MalformedStatusListSnafu, Result, StatusListFetchingSnafu, VCStatusSnafu,
+};
 
 const ALG_HEADER: i64 = 1;
 const TYP_HEADER: i64 = 16;
@@ -40,6 +45,9 @@ const IAT_CLAIM: i64 = 6;
 
 /// How far `iat` may be ahead of this clock, for clock skew with the list's issuer.
 const MAX_IAT_SKEW_SECS: f64 = 60.0;
+
+/// Largest list body accepted from a server.
+pub(crate) const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 
 /// The kind of list a CWT carries.
 pub(crate) struct CwtProfile {
@@ -53,6 +61,55 @@ pub(crate) struct CwtProfile {
 
 /// CWT claims, keyed as in the token.
 pub(crate) type Claims = Vec<(Value, Value)>;
+
+/// Fetches the `profile` list at `uri`: asks for the profile's media type only, and requires a
+/// success status, a `Content-Type` whose media type (before any `;` parameters, any case) is the
+/// profile's, and a body of at most [MAX_BODY_BYTES]. The cap applies once the [HttpClient] has
+/// returned the whole body, so it bounds what is parsed, not what is downloaded.
+pub(crate) async fn fetch(
+    http_client: &dyn HttpClient,
+    uri: &str,
+    profile: &CwtProfile,
+) -> Result<Vec<u8>> {
+    let fetching = |details: String| StatusListFetchingSnafu { details }.build();
+    let request = http::request::Builder::new()
+        .uri(uri)
+        .method(Method::GET)
+        .header(http::header::ACCEPT, profile.media_type)
+        .body(vec![])
+        .map_err(|err| fetching(err.to_string()))?;
+    let response = http_client
+        .async_call(request)
+        .await
+        .map_err(|err| fetching(err.to_string()))?;
+    if !response.status().is_success() {
+        return Err(fetching(format!(
+            "{} request failed with {}",
+            profile.name,
+            response.status()
+        )));
+    }
+    let has_media_type = response
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|essence| essence.trim().eq_ignore_ascii_case(profile.media_type));
+    if !has_media_type {
+        return Err(fetching(format!(
+            "{} is not served as {}",
+            profile.name, profile.media_type
+        )));
+    }
+    let body = response.into_body();
+    if body.len() > MAX_BODY_BYTES {
+        return Err(fetching(format!(
+            "{} is larger than {MAX_BODY_BYTES} bytes",
+            profile.name
+        )));
+    }
+    Ok(body)
+}
 
 /// Verifies the CWT `token` fetched from `uri` and returns its claims.
 pub(crate) async fn verify(
