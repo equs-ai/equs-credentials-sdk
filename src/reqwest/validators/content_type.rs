@@ -1,6 +1,6 @@
 use super::{ContentTypeSnafu, Result};
 use crate::utils::http::{
-    MIME_DIDCOMM_ENCRYPTED_JSON, MIME_STATUSLIST_CWT, MIME_STATUSLIST_JWT,
+    MIME_DIDCOMM_ENCRYPTED_JSON, MIME_IDENTIFIERLIST_CWT, MIME_STATUSLIST_CWT, MIME_STATUSLIST_JWT,
     MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON, MIME_TYPE_OAUTH_REQ_JWT, MIME_TYPE_TEXT_PLAIN,
 };
 use mime::Mime;
@@ -11,13 +11,14 @@ use snafu::ensure;
 use std::str::FromStr;
 use tracing::{Level, instrument};
 
-const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 7] = [
+const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 8] = [
     MIME_TYPE_JSON,
     MIME_TYPE_TEXT_PLAIN,
     MIME_TYPE_FORM_URLENCODED,
     MIME_TYPE_OAUTH_REQ_JWT,
     MIME_STATUSLIST_JWT,
     MIME_STATUSLIST_CWT,
+    MIME_IDENTIFIERLIST_CWT,
     MIME_DIDCOMM_ENCRYPTED_JSON,
 ];
 
@@ -183,6 +184,32 @@ mod tests {
         let resolved = v.resolve_request_content_type(&headers).unwrap();
 
         assert_eq!(resolved, HeaderValue::from_static(MIME_TYPE_JSON));
+    }
+
+    #[test]
+    fn resolve_request_content_type_accepts_identifier_lists() {
+        let v = ContentTypeValidator;
+        let headers = accept_header("application/identifierlist+cwt");
+
+        let resolved = v.resolve_request_content_type(&headers).unwrap();
+
+        assert_eq!(
+            resolved,
+            HeaderValue::from_static("application/identifierlist+cwt")
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_response_content_type_accepts_an_identifier_list() {
+        let v = ContentTypeValidator;
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static("application/identifierlist+cwt"),
+            &content_type_header("application/identifierlist+cwt"),
+            b"\xd2",
+        )
+        .await
+        .unwrap();
     }
 
     #[test]
