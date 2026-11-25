@@ -42,6 +42,9 @@ use tracing::Level;
 use tracing::{info, instrument, warn};
 
 pub(crate) const DOCTYPE_CLAIM: &str = "doctype";
+/// How far the MSO validity window may be off this clock, as in the EUDI iOS library's
+/// `MsoValidation.validateValidityInfo`.
+const VALIDITY_LEEWAY: time::Duration = time::Duration::seconds(60);
 /// id-mdl-kp-mdlDS, the Extended Key Usage of an mdoc Document Signer (ISO/IEC 18013-5 Annex B.1.4).
 const MDL_DS_EKU: x509_parser::oid_registry::Oid<'static> =
     x509_parser::der_parser::oid!(1.0.18013.5.1.2);
@@ -245,20 +248,6 @@ impl MsoMdocAPI {
                     .build()
                 })?;
 
-        if Some(OffsetDateTime::now_utc()) < verified_claims.valid_from {
-            PresentationSnafu {
-                details: "Credential is not yet valid".to_string(),
-            }
-            .fail()?
-        }
-
-        if Some(OffsetDateTime::now_utc()) > verified_claims.valid_until {
-            PresentationSnafu {
-                details: "Credential has expired".to_string(),
-            }
-            .fail()?
-        }
-
         let issuer_chain = match &verified_claims.issuer {
             IdentifierDetails::Certificate(certificate) => Some(certificate.chain.clone()),
             _ => None,
@@ -279,9 +268,18 @@ impl MsoMdocAPI {
             })?;
         }
         // one-core 0.2.3 always identifies an mdoc issuer by its `x5chain`
-        if let Some(chain) = issuer_chain.as_deref() {
-            check_document_signer_profile(chain)?;
-        }
+        let document_signer_validity = match issuer_chain.as_deref() {
+            Some(chain) => {
+                check_document_signer_profile(chain)?;
+                Some(document_signer_validity(chain)?)
+            }
+            None => None,
+        };
+        check_validity_info(
+            &verified_claims,
+            document_signer_validity,
+            OffsetDateTime::now_utc(),
+        )?;
         let status = MdocStatus::from_credential_status(&verified_claims.status)?;
         Ok(VerifiedMdoc {
             claims: verified_claims.try_into()?,
@@ -377,6 +375,66 @@ fn check_document_signer_profile(chain_pem: &str) -> Result<()> {
         return Err(rejected(
             "has an extended key usage without the mdoc Document Signer purpose 1.0.18013.5.1.2",
         ));
+    }
+    Ok(())
+}
+
+/// The `notBefore` and `notAfter` of the Document Signer, the first certificate of `chain_pem`.
+fn document_signer_validity(chain_pem: &str) -> Result<(OffsetDateTime, OffsetDateTime)> {
+    let rejected = |details: &str| {
+        PresentationSnafu {
+            details: format!("Document Signer certificate {details}"),
+        }
+        .build()
+    };
+    let pem = x509_parser::pem::Pem::iter_from_buffer(chain_pem.as_bytes())
+        .next()
+        .and_then(|pem| pem.ok())
+        .ok_or_else(|| rejected("is missing"))?;
+    let certificate = pem.parse_x509().map_err(|_| rejected("cannot be parsed"))?;
+    let validity = certificate.validity();
+    Ok((
+        validity.not_before.to_datetime(),
+        validity.not_after.to_datetime(),
+    ))
+}
+
+/// Checks the MSO `validityInfo` as the EUDI iOS library does (`MsoValidation.validateValidityInfo`,
+/// after ISO/IEC 18013-5 §9.3.1): `signed` within the Document Signer's validity, `validFrom`
+/// before `validUntil`, and `now` within `validFrom`..`validUntil` give or take
+/// [VALIDITY_LEEWAY].
+fn check_validity_info(
+    credential: &DetailCredential,
+    document_signer_validity: Option<(OffsetDateTime, OffsetDateTime)>,
+    now: OffsetDateTime,
+) -> Result<()> {
+    let rejected = |details: &str| {
+        PresentationSnafu {
+            details: details.to_string(),
+        }
+        .fail()
+    };
+    let (Some(signed), Some(valid_from), Some(valid_until)) = (
+        credential.issuance_date,
+        credential.valid_from,
+        credential.valid_until,
+    ) else {
+        return rejected("MSO validity info is incomplete");
+    };
+    if let Some((not_before, not_after)) = document_signer_validity
+        && !(not_before..=not_after).contains(&signed)
+    {
+        return rejected("MSO `signed` is not within the Document Signer certificate's validity");
+    }
+    if valid_from >= valid_until {
+        return rejected("MSO `validFrom` is not earlier than `validUntil`");
+    }
+    if valid_from > now + VALIDITY_LEEWAY {
+        return rejected("Credential is not yet valid");
+    }
+    // the leeway goes on `now`: an MSO date near year 9999 plus the leeway would overflow
+    if valid_until < now - VALIDITY_LEEWAY {
+        return rejected("Credential has expired");
     }
     Ok(())
 }
@@ -727,23 +785,33 @@ pub mod tests {
         status: Option<serde_json::Value>,
     ) -> String {
         test_fixtures::mdoc(
-            &serde_json::json!({
-                "doc_type": "org.iso.18013.5.1.mDL",
-                "name_spaces": { "org.iso.18013.5.1": {
-                    "family_name": "Mustermann", "given_name": "Erika"
-                } },
-                "valid_from": "2026-01-01T00:00:00Z",
-                "valid_until": "2046-01-01T00:00:00Z",
-                "x5chain": x5chain,
-                "client_id": VERIFIER,
-                "nonce": NONCE,
-                "response_uri": response_uri,
-                "verifier_key": verifier_key.map(test_fixtures::JWK::to_public),
-                "status": status
-            }),
+            &mdoc_spec(x5chain, response_uri, verifier_key, status),
             ds_key,
             &test_fixtures::keys().holder,
         )
+    }
+
+    /// The `test_fixtures::mdoc` spec of the sample mDL, valid 2026-01-01 to 2046-01-01.
+    fn mdoc_spec(
+        x5chain: &str,
+        response_uri: Option<&str>,
+        verifier_key: Option<&test_fixtures::JWK>,
+        status: Option<serde_json::Value>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "doc_type": "org.iso.18013.5.1.mDL",
+            "name_spaces": { "org.iso.18013.5.1": {
+                "family_name": "Mustermann", "given_name": "Erika"
+            } },
+            "valid_from": "2026-01-01T00:00:00Z",
+            "valid_until": "2046-01-01T00:00:00Z",
+            "x5chain": x5chain,
+            "client_id": VERIFIER,
+            "nonce": NONCE,
+            "response_uri": response_uri,
+            "verifier_key": verifier_key.map(test_fixtures::JWK::to_public),
+            "status": status
+        })
     }
 
     /// Ok, or the DeviceSigned failure of a wrong binding.
@@ -774,6 +842,106 @@ pub mod tests {
     /// A presentation like [sample_mso_mdoc_vp], issuer-signed by `ds_key` under `x5chain`.
     pub fn sample_mso_mdoc_vp_under(x5chain: &str, ds_key: &test_fixtures::JWK) -> String {
         mdoc_vp_under(x5chain, ds_key, None, None, None)
+    }
+
+    /// MSO `validityInfo`, as the EUDI iOS library checks it (`MsoValidation.validateValidityInfo`).
+    mod validity_info {
+        use super::{binder, mdoc_spec};
+        use crate::did::universal::UniversalResolver;
+        use crate::utils::test_utils::{anchors, mdl_chain};
+        use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation, VerifiedMdoc};
+        use crate::vc::formats::{AnchorPolicy, VerifyOptions};
+        use rstest::rstest;
+        use time::format_description::well_known::Rfc3339;
+        use time::{Duration, OffsetDateTime};
+
+        /// `now` moved by `seconds`, as a `YYYY-MM-DDThh:mm:ssZ` date.
+        fn from_now(seconds: i64) -> String {
+            (OffsetDateTime::now_utc() + Duration::seconds(seconds))
+                .replace_nanosecond(0)
+                .unwrap()
+                .format(&Rfc3339)
+                .unwrap()
+        }
+
+        /// The sample mDL under a fresh IACA → DS chain (DS valid 2026-01-01 to 2046-01-01),
+        /// with `signed` = `valid_from`, verified against that IACA.
+        async fn verify(
+            valid_from: &str,
+            valid_until: &str,
+        ) -> crate::vc::formats::Result<VerifiedMdoc> {
+            let (iaca, ds, ds_key) = mdl_chain();
+            let mut spec = mdoc_spec(&ds, None, None, None);
+            spec["valid_from"] = valid_from.into();
+            spec["valid_until"] = valid_until.into();
+            let vp = test_fixtures::mdoc(&spec, &ds_key, &test_fixtures::keys().holder);
+            MsoMdocAPI::verify_vp_with_issuer(
+                &Presentation {
+                    value: vp,
+                    enc_pub_key: None,
+                },
+                Some(binder(None)),
+                VerifyOptions {
+                    trusted_certs: Some(anchors(&[&iaca])),
+                    selective_claims: None,
+                    anchor_policy: AnchorPolicy::Require,
+                },
+                UniversalResolver::default(),
+            )
+            .await
+        }
+
+        async fn error(valid_from: &str, valid_until: &str) -> String {
+            format!("{:?}", verify(valid_from, valid_until).await.unwrap_err())
+        }
+
+        #[rstest]
+        #[case::valid_from_within_the_leeway(from_now(30), "2046-01-01T00:00:00Z".to_string())]
+        #[case::valid_until_within_the_leeway("2026-01-01T00:00:00Z".to_string(), from_now(-30))]
+        #[tokio::test]
+        async fn dates_within_a_minute_of_now_pass(
+            #[case] valid_from: String,
+            #[case] valid_until: String,
+        ) {
+            verify(&valid_from, &valid_until).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn valid_until_at_the_end_of_time_passes() {
+            // `validUntil` + the leeway is beyond what `OffsetDateTime` holds
+            verify("2026-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn valid_from_beyond_the_leeway_is_not_yet_valid() {
+            let error = error(&from_now(120), "2046-01-01T00:00:00Z").await;
+
+            assert!(error.contains("Credential is not yet valid"), "{error}");
+        }
+
+        #[tokio::test]
+        async fn valid_until_beyond_the_leeway_has_expired() {
+            let error = error("2026-01-01T00:00:00Z", &from_now(-120)).await;
+
+            assert!(error.contains("Credential has expired"), "{error}");
+        }
+
+        #[tokio::test]
+        async fn valid_from_after_valid_until_is_rejected() {
+            let error = error("2026-06-01T00:00:00Z", "2026-03-01T00:00:00Z").await;
+
+            assert!(error.contains("not earlier than `validUntil`"), "{error}");
+        }
+
+        #[tokio::test]
+        async fn signed_before_the_document_signer_was_valid_is_rejected() {
+            // the fixture sets `signed` to `valid_from`; the DS is valid from 2026-01-01
+            let error = error("2025-06-01T00:00:00Z", "2046-01-01T00:00:00Z").await;
+
+            assert!(error.contains("`signed` is not within"), "{error}");
+        }
     }
 
     /// The Document Signer certificate's profile, as the EUDI reference issuer checks a PID signer
