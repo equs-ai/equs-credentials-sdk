@@ -9,12 +9,13 @@ use std::collections::HashMap;
 use coset::cbor::value::Value;
 use oauth2::http;
 use oauth2::http::Method;
+use snafu::ensure;
 use tracing::{Level, instrument};
 
 use crate::http::HttpClient;
 use crate::vc::formats::AnchorPolicy;
-use crate::vc::status_formats::cwt::{self, CwtProfile, claim, malformed};
-use crate::vc::status_formats::{Result, StatusListFetchingSnafu};
+use crate::vc::status_formats::cwt::{self, CwtProfile, claim};
+use crate::vc::status_formats::{MalformedStatusListSnafu, Result, StatusListFetchingSnafu};
 
 /// Media type and `typ` header of an Identifier List.
 pub(crate) const IDENTIFIER_LIST_CWT_TYPE: &str = "application/identifierlist+cwt";
@@ -57,9 +58,12 @@ impl IdentifierListCwt {
         anchor_policy: AnchorPolicy,
     ) -> Result<bool> {
         let claims = cwt::verify(&PROFILE, uri, token, trusted_certs, anchor_policy).await?;
-        if claim(&claims, STATUS_LIST_CLAIM).is_some() {
-            return Err(malformed("identifier list CWT has a `status_list` claim"));
-        }
+        ensure!(
+            claim(&claims, STATUS_LIST_CLAIM).is_none(),
+            MalformedStatusListSnafu {
+                details: "identifier list CWT has a `status_list` claim",
+            }
+        );
         let identifiers = identifiers(&claims)?;
         Ok(identifiers
             .iter()
@@ -70,26 +74,35 @@ impl IdentifierListCwt {
 /// The `identifiers` map of the identifier list claim.
 fn identifiers(claims: &[(Value, Value)]) -> Result<&[(Value, Value)]> {
     let Some(Value::Map(list)) = claim(claims, IDENTIFIER_LIST_CLAIM) else {
-        return Err(malformed("missed the identifier list claim"));
+        return MalformedStatusListSnafu {
+            details: "missed the identifier list claim",
+        }
+        .fail();
     };
     let identifiers = list
         .iter()
         .find(|(key, _)| key.as_text() == Some("identifiers"))
         .map(|(_, value)| value);
     let Some(Value::Map(identifiers)) = identifiers else {
-        return Err(malformed("the identifier list has no `identifiers` map"));
+        return MalformedStatusListSnafu {
+            details: "the identifier list has no `identifiers` map",
+        }
+        .fail();
     };
-    if identifiers.len() > MAX_IDENTIFIERS {
-        return Err(malformed(format!(
-            "the identifier list has more than {MAX_IDENTIFIERS} identifiers"
-        )));
-    }
-    if !identifiers
-        .iter()
-        .all(|(identifier, _)| identifier.is_bytes())
-    {
-        return Err(malformed("identifiers must be byte strings"));
-    }
+    ensure!(
+        identifiers.len() <= MAX_IDENTIFIERS,
+        MalformedStatusListSnafu {
+            details: format!("the identifier list has more than {MAX_IDENTIFIERS} identifiers"),
+        }
+    );
+    ensure!(
+        identifiers
+            .iter()
+            .all(|(identifier, _)| identifier.is_bytes()),
+        MalformedStatusListSnafu {
+            details: "identifiers must be byte strings",
+        }
+    );
     Ok(identifiers)
 }
 

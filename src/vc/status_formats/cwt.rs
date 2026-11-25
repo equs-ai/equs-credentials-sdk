@@ -19,12 +19,13 @@ use std::collections::HashMap;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use coset::cbor::value::Value;
-use coset::iana::{Algorithm, EnumI64};
+use coset::iana::{Algorithm, EnumI64, HeaderParameter};
 use coset::{
     Algorithm as CoseAlgorithm, CborSerializable, CoseSign1, Header, Label,
     RegisteredLabelWithPrivate, TaggedCborSerializable,
 };
 use one_core_portable::standardized_types::jwk::PublicJwk;
+use snafu::{OptionExt, ensure};
 
 use crate::utils::certificate_validator::SharedCertificateValidator;
 use crate::utils::x509_truststore::Truststore;
@@ -37,6 +38,9 @@ const X5CHAIN_HEADER: i64 = 33;
 const SUB_CLAIM: i64 = 2;
 const EXP_CLAIM: i64 = 4;
 const IAT_CLAIM: i64 = 6;
+
+/// Headers this module checks: the only ones `crit` may list.
+const UNDERSTOOD_CRIT_HEADERS: [i64; 3] = [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADER];
 
 /// How far `iat` may be ahead of this clock, for clock skew with the list's issuer.
 const MAX_IAT_SKEW_SECS: f64 = 60.0;
@@ -65,7 +69,7 @@ pub(crate) async fn verify(
     let sign1 = decode_sign1(token)?;
     check_crit(&sign1.protected.header)?;
     check_typ(profile, &sign1.protected.header)?;
-    let alg = check_alg(&sign1.protected.header)?;
+    let alg = read_alg(&sign1.protected.header)?;
 
     let pem_chain = x5chain_pem(profile, &sign1)?;
     let leaf = Truststore::new(
@@ -99,13 +103,6 @@ pub(crate) async fn verify(
     Ok(claims)
 }
 
-pub(crate) fn malformed(details: impl Into<String>) -> crate::vc::status_formats::Error {
-    MalformedStatusListSnafu {
-        details: details.into(),
-    }
-    .build()
-}
-
 pub(crate) fn claim(claims: &[(Value, Value)], key: i64) -> Option<&Value> {
     claims
         .iter()
@@ -116,7 +113,12 @@ pub(crate) fn claim(claims: &[(Value, Value)], key: i64) -> Option<&Value> {
 fn decode_sign1(token: &[u8]) -> Result<CoseSign1> {
     CoseSign1::from_tagged_slice(token)
         .or_else(|_| CoseSign1::from_slice(token))
-        .map_err(|err| malformed(format!("not a COSE_Sign1: {err}")))
+        .map_err(|err| {
+            MalformedStatusListSnafu {
+                details: format!("not a COSE_Sign1: {err}"),
+            }
+            .build()
+        })
 }
 
 fn header_param(header: &Header, label: i64) -> Option<&Value> {
@@ -127,51 +129,54 @@ fn header_param(header: &Header, label: i64) -> Option<&Value> {
         .map(|(_, value)| value)
 }
 
-/// Rejects the token when `crit` names a header this code does not check.
-fn check_crit(protected: &Header) -> Result<()> {
-    let unknown: Vec<_> = protected
+/// Rejects the token when `crit` names a header this code does not check (RFC 9052 §3.1).
+fn check_crit(header: &Header) -> Result<()> {
+    let is_understood = |label: &&RegisteredLabelWithPrivate<HeaderParameter>| match label {
+        RegisteredLabelWithPrivate::Assigned(param) => {
+            UNDERSTOOD_CRIT_HEADERS.contains(&param.to_i64())
+        }
+        _ => false,
+    };
+    let unknown: Vec<_> = header
         .crit
         .iter()
-        .filter(|label| {
-            !matches!(
-                label,
-                RegisteredLabelWithPrivate::Assigned(param)
-                    if [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADER].contains(&param.to_i64())
-            )
-        })
+        .filter(|label| !is_understood(label))
         .collect();
     if unknown.is_empty() {
         return Ok(());
     }
-    Err(malformed(format!(
-        "protected `crit` names unsupported parameters: {unknown:?}"
-    )))
+    MalformedStatusListSnafu {
+        details: format!("protected `crit` names unsupported parameters: {unknown:?}"),
+    }
+    .fail()
 }
 
 fn check_typ(profile: &CwtProfile, protected: &Header) -> Result<()> {
     let typ = header_param(protected, TYP_HEADER);
     let known = match typ {
         Some(Value::Text(text)) => text == profile.media_type,
-        Some(Value::Integer(id)) => profile
-            .coap_id
-            .is_some_and(|coap_id| i128::from(*id) == i128::from(coap_id)),
+        Some(Value::Integer(id)) => profile.coap_id.is_some_and(|coap_id| *id == coap_id.into()),
         _ => false,
     };
     if known {
         return Ok(());
     }
-    Err(malformed(format!(
-        "expected protected `typ` {}, got {typ:?}",
-        profile.media_type
-    )))
+    MalformedStatusListSnafu {
+        details: format!(
+            "expected protected `typ` {}, got {typ:?}",
+            profile.media_type
+        ),
+    }
+    .fail()
 }
 
-fn check_alg(protected: &Header) -> Result<Algorithm> {
+fn read_alg(protected: &Header) -> Result<Algorithm> {
     match &protected.alg {
         Some(CoseAlgorithm::Assigned(alg @ (Algorithm::ES256 | Algorithm::EdDSA))) => Ok(*alg),
-        other => Err(malformed(format!(
-            "unsupported or missing protected `alg` (ES256 or EdDSA): {other:?}"
-        ))),
+        other => MalformedStatusListSnafu {
+            details: format!("unsupported or missing protected `alg` (ES256 or EdDSA): {other:?}"),
+        }
+        .fail(),
     }
 }
 
@@ -226,48 +231,69 @@ fn x5chain_pem(profile: &CwtProfile, sign1: &CoseSign1) -> Result<String> {
             .iter()
             .map(|item| item.as_bytes())
             .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| malformed("`x5chain` must hold DER certificates"))?,
-        _ => return Err(malformed("`x5chain` must hold DER certificates")),
+            .context(MalformedStatusListSnafu {
+                details: "`x5chain` must hold DER certificates",
+            })?,
+        _ => {
+            return MalformedStatusListSnafu {
+                details: "`x5chain` must hold DER certificates",
+            }
+            .fail();
+        }
     };
-    if certificates.is_empty() {
-        return Err(malformed("`x5chain` is empty"));
-    }
+    ensure!(
+        !certificates.is_empty(),
+        MalformedStatusListSnafu {
+            details: "`x5chain` is empty",
+        }
+    );
     let x5c: Vec<String> = certificates
         .into_iter()
         .map(|der| STANDARD.encode(der))
         .collect();
-    one_core::mapper::x509::x5c_into_pem_chain(&x5c)
-        .map_err(|err| malformed(format!("could not read `x5chain`: {err}")))
+    one_core::mapper::x509::x5c_into_pem_chain(&x5c).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: format!("could not read `x5chain`: {err}"),
+        }
+        .build()
+    })
 }
 
 fn decode_claims(profile: &CwtProfile, sign1: &CoseSign1) -> Result<Claims> {
-    let payload = sign1
-        .payload
-        .as_deref()
-        .ok_or_else(|| malformed(format!("{} CWT has no payload", profile.name)))?;
+    let payload = sign1.payload.as_deref().context(MalformedStatusListSnafu {
+        details: format!("{} CWT has no payload", profile.name),
+    })?;
     let mut reader = std::io::Cursor::new(payload);
-    let claims: Value = coset::cbor::de::from_reader(&mut reader)
-        .map_err(|err| malformed(format!("{} CWT claims are not CBOR: {err}", profile.name)))?;
-    if reader.position() != payload.len() as u64 {
-        return Err(malformed(format!(
-            "{} CWT claims are followed by extra bytes",
-            profile.name
-        )));
-    }
+    let claims: Value = coset::cbor::de::from_reader(&mut reader).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: format!("{} CWT claims are not CBOR: {err}", profile.name),
+        }
+        .build()
+    })?;
+    ensure!(
+        reader.position() == payload.len() as u64,
+        MalformedStatusListSnafu {
+            details: format!("{} CWT claims are followed by extra bytes", profile.name),
+        }
+    );
     match claims {
         Value::Map(entries) => Ok(entries),
-        _ => Err(malformed(format!(
-            "{} CWT claims are not a map",
-            profile.name
-        ))),
+        _ => MalformedStatusListSnafu {
+            details: format!("{} CWT claims are not a map", profile.name),
+        }
+        .fail(),
     }
 }
 
 fn check_sub(claims: &[(Value, Value)], uri: &str) -> Result<()> {
     let sub = claim(claims, SUB_CLAIM)
-        .ok_or_else(|| malformed("missed the `sub` claim"))?
+        .context(MalformedStatusListSnafu {
+            details: "missed the `sub` claim",
+        })?
         .as_text()
-        .ok_or_else(|| malformed("the `sub` claim must be a URI"))?;
+        .context(MalformedStatusListSnafu {
+            details: "the `sub` claim must be a URI",
+        })?;
     if sub != uri {
         return VCStatusSnafu {
             details: format!("Urls are not equal {uri} {sub}"),
@@ -287,9 +313,12 @@ fn numeric_date(value: &Value) -> Option<f64> {
 }
 
 fn check_times(profile: &CwtProfile, claims: &[(Value, Value)]) -> Result<()> {
-    let iat = claim(claims, IAT_CLAIM)
-        .ok_or_else(|| malformed("missed the `iat` claim"))
-        .and_then(|iat| numeric_date(iat).ok_or_else(|| malformed("`iat` is not a NumericDate")))?;
+    let iat = claim(claims, IAT_CLAIM).context(MalformedStatusListSnafu {
+        details: "missed the `iat` claim",
+    })?;
+    let iat = numeric_date(iat).context(MalformedStatusListSnafu {
+        details: "`iat` is not a NumericDate",
+    })?;
     let now = (time::OffsetDateTime::now_utc() - time::OffsetDateTime::UNIX_EPOCH).as_seconds_f64();
     if iat > now + MAX_IAT_SKEW_SECS {
         return VCStatusSnafu {
@@ -301,7 +330,9 @@ fn check_times(profile: &CwtProfile, claims: &[(Value, Value)]) -> Result<()> {
     let Some(exp) = claim(claims, EXP_CLAIM) else {
         return Ok(());
     };
-    let exp = numeric_date(exp).ok_or_else(|| malformed("`exp` is not a NumericDate"))?;
+    let exp = numeric_date(exp).context(MalformedStatusListSnafu {
+        details: "`exp` is not a NumericDate",
+    })?;
     if exp <= now {
         return VCStatusSnafu {
             details: format!("{} CWT has expired", profile.name),
