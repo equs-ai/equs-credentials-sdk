@@ -49,6 +49,7 @@ const DS = fixtureX509(
     not_before: "2026-01-01",
     not_after: "2046-01-01",
     key_usages: ["digital_signature"],
+    extended_key_usages: ["mdl_ds"],
     authority_key_identifier: true,
   }),
   FixtureKey.Verifier,
