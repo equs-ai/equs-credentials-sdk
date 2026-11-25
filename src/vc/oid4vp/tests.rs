@@ -4879,6 +4879,7 @@ mod delegation_e2e_tests {
     use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::nonce::Nonce;
     use crate::vault::{CredentialEntry, Vault};
+    use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
     use crate::vc::oid4vp::api::{
         AuthorizationResponseMetadata, CredentialMapping, CredentialVerificationMetadata,
         PresentationSession, ResolvedPresentationQuery,
@@ -4911,8 +4912,7 @@ mod delegation_e2e_tests {
     ///    carries the Verifier's `client_id` and nonce → the wallet discovers the grant in
     ///    the vault by the DCQL's `$.vct` field and presents it with its own KB-JWT.
     /// 5. Verifier calls `verify_presentation` with the matching `PresentationSession`.
-    /// 6. Assert that the verified `Claims` include both the delegate-payload claim
-    ///    `scope` and the issuer claim `iss`.
+    /// 6. Assert `scope` is in the last hop, not in `issued_vc`.
     #[tokio::test]
     async fn delegation_end_to_end_grant_present_verify() {
         let orig_holder_kms = LocalKms::new();
@@ -5066,27 +5066,13 @@ mod delegation_e2e_tests {
             .await
             .expect("Verifier::verify_presentation must succeed for delegated credential");
 
-        let vp_token = &claims["vp_token"];
-        let cred_claims = &vp_token[DELEGATE_CRED_ID];
-        let first_cred = &cred_claims.as_vec().expect("must be array")[0];
-
-        assert!(
-            first_cred.get("scope").is_some(),
-            "delegate payload claim 'scope' must be in verified claims, got: {first_cred:?}"
-        );
-
-        assert!(
-            first_cred.get("iss").is_some(),
-            "issuer claim 'iss' must be present in verified claims, got: {first_cred:?}"
-        );
+        assert_delegated_scope(&claims, "delegated-purchase");
     }
 
-    /// Regression: `present_credentials_auto` must discover a stored delegation grant when the
-    /// Verifier's DCQL **value-matches a delegate-payload claim** (as the Merchant's voucher
-    /// query value-matches `purchase_id`). Before the delegate-aware `parse_claims`, auto
-    /// discovery saw only issuer claims, matched nothing, and posted an empty `vp_token`.
+    /// The wallet matches a DCQL on the claims the Verifier checks, the issuer-signed ones, so a
+    /// query that value-matches only a delegate-payload claim finds no stored grant.
     #[tokio::test]
-    async fn delegation_auto_discovery_value_matches_delegate_payload_claim() {
+    async fn delegation_auto_discovery_ignores_delegate_payload_claims() {
         let orig_holder_kms = LocalKms::new();
         let orig_holder_vault = InMemVault::new();
         let (orig_cred_entry, _) = create_sd_jwt_credential_entry(&orig_holder_kms).await;
@@ -5141,10 +5127,8 @@ mod delegation_e2e_tests {
             .expect("vp_token must contain dSD-JWT string")
             .to_string();
 
-        let (verifier, verifier_client_id) = utils::verifier_service().await;
+        let (_, verifier_client_id) = utils::verifier_service().await;
         let e2e_nonce = "value-match-nonce";
-        // DCQL value-matches the delegate-payload claim `scope`, with a claim_set (as the
-        // Merchant's voucher DCQL value-matches `purchase_id`).
         let delegate_auth_request_str = format!(
             r#"{{
               "client_id": "decentralized_identifier:{verifier_client_id}",
@@ -5201,55 +5185,16 @@ mod delegation_e2e_tests {
                     ..Default::default()
                 },
             )
-            .await
-            .expect("present_credentials_auto must succeed");
+            .await;
 
-        let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
-            panic!("expected AuthorizationResponse from present_credentials_auto (dc_api mode)");
-        };
-
-        // The core regression assertion: auto-discovery matched the value-constrained
-        // delegate-payload claim and placed the grant under its credential id.
-        if let AuthorizationResponse::Plain(obj) = &auth_resp {
-            assert!(
-                obj.vp_token.get(DELEGATE_CRED_ID).is_some(),
-                "auto-discovery must place the grant under '{DELEGATE_CRED_ID}', got: {:?}",
-                obj.vp_token
-            );
-        }
-
-        let session = PresentationSession {
-            nonce: Nonce::from_secret(e2e_nonce.to_string()),
-            resolved_presentation_query: ResolvedPresentationQuery::DCQL(build_delegate_dcql(
-                DELEGATE_CRED_ID,
-                "https://credentials.example.com/identity_credential",
-            )),
-            auth_request_jwt: None,
-        };
-
-        let claims = verifier
-            .verify_presentation(
-                &auth_resp,
-                &session,
-                &CredentialVerificationMetadata {
-                    transaction_data: None,
-                    audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
-                        dc_api_origin,
-                    )),
-                },
-            )
-            .await
-            .expect("Verifier must verify the auto-discovered delegated grant");
-
-        let first_cred = &claims["vp_token"][DELEGATE_CRED_ID]
-            .as_vec()
-            .expect("must be array")[0];
-        assert_eq!(
-            first_cred.get("scope"),
-            Some(&crate::vc::claims::Claim::String(
-                "delegated-purchase".to_string()
-            )),
-            "verified claims must include the value-matched delegate-payload claim"
+        let grant_presented = matches!(
+            &present_result,
+            Ok(PresentationResult::AuthorizationResponse(AuthorizationResponse::Plain(obj)))
+                if obj.vp_token.get(DELEGATE_CRED_ID).is_some()
+        );
+        assert!(
+            !grant_presented,
+            "the wallet must not present the grant, got: {present_result:?}"
         );
     }
 
@@ -5401,6 +5346,31 @@ mod delegation_e2e_tests {
                 || err_str.to_lowercase().contains("invalid")
                 || err_str.to_lowercase().contains("error"),
             "expected a nonce-related error, got: {err_str}"
+        );
+    }
+
+    fn assert_delegated_scope(claims: &Claims, scope: &str) {
+        let credential = &claims["vp_token"][DELEGATE_CRED_ID]
+            .as_vec()
+            .expect("must be array")[0];
+        let issued_vc = &credential[ISSUED_VC_CLAIM];
+        assert!(
+            issued_vc.get("iss").is_some(),
+            "the issuer-signed claims must be under 'issued_vc', got: {credential:?}"
+        );
+        assert!(
+            issued_vc.get("scope").is_none(),
+            "the delegate's 'scope' must stay out of 'issued_vc', got: {issued_vc:?}"
+        );
+        let last_hop = credential[DELEGATIONS_CLAIM]
+            .as_vec()
+            .and_then(|hops| hops.last())
+            .and_then(Claim::as_vec)
+            .expect("'delegations' must be an array of hops, each an array of alternatives");
+        assert_eq!(
+            last_hop[0].get("scope"),
+            Some(&Claim::String(scope.to_string())),
+            "the delegate's 'scope' must be in the last hop, got: {last_hop:?}"
         );
     }
 }

@@ -8,7 +8,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 | File | Role |
 |------|------|
 | `mod.rs` | Module root: defines `Credential`, `Presentation`, `VCStatusesData`, `VCStatus`, `StatusList`, `CredentialError`, `CredentialMetadata`, and `RequestedPresentation`; re-exports `VCFormat`, `VPFormat`, `HasClaims`, `ClaimFormat`, `TslVcStatus`; declares all sub-modules. |
-| `claims.rs` | `Claims` (flat `HashMap<String, Claim>`) and `Claim` (typed value enum: Null, Bool, Int, UInt, Float, String, Array, Object). Implements `TryFrom<Value>`/`TryInto<Value>` and `Drop`-based zeroization of sensitive data. |
+| `claims.rs` | `Claims` (flat `HashMap<String, Claim>`) and `Claim` (typed value enum: Null, Bool, Int, UInt, Float, String, Array, Object). Implements `TryFrom<Value>`/`TryInto<Value>` and `Drop`-based zeroization of sensitive data. `Claim::issued_vc` unwraps a verified dSD-JWT's `{ issued_vc, delegations }` to its issuer-signed claims. |
 | `core/` | Abstract actor traits and service implementations — see [core/CLAUDE.md](core/CLAUDE.md) |
 | `formats/` | VC format implementations (SD-JWT, JSON-LD, mso_mdoc) — see [formats/CLAUDE.md](formats/CLAUDE.md) |
 | `oid4vci/` | OID4VCI protocol layer (issuance) — see [oid4vci/CLAUDE.md](oid4vci/CLAUDE.md) |
@@ -21,7 +21,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 | `trust/` | Issuer trust, trust-list export and DCQL `trusted_authorities`, protocol-neutral — see [trust/CLAUDE.md](trust/CLAUDE.md) |
 
 ## Key types / traits
-- `Credential` — `SdJwt(sd_jwt_vc::Credential)` | `LdpVc(json_ld_vc::VC)` | `JwtVcJson(String)` | `JwtVcJsonLd(String)`; implements `is_expired()`, `is_valid()`, `HasVCFormat`, `HasClaims<Claims>`.
+- `Credential` — `SdJwt(sd_jwt_vc::Credential)` | `LdpVc(json_ld_vc::VC)` | `JwtVcJson(String)` | `JwtVcJsonLd(String)`; implements `is_expired()`, `is_valid()`, `HasVCFormat`, `HasClaims<Claims>`; `issuer_signed_claims()` gives the claims a wallet matches a request on (an SD-JWT's without delegate payloads).
 - `Presentation` — `JwtVp(String)` | `LdpVp(json_ld_vc::VP)` | `SdJwtVp(String)` | `MsoMdoc(...)` (non-wasm); implements `HasVPFormat`, `HasCredential<Credential>`.
 - `Claims` / `Claim` — typed credential claim map with zeroize-on-drop; converts to/from `serde_json::Value`.
 - `CredentialMetadata` — transport struct (type, format, kid, alg, fields) shared between OID4VCI and vault storage.

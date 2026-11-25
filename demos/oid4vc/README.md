@@ -56,7 +56,7 @@ Demonstrates a delegated credential flow with **five** entities:
 4. The End-User pastes AR2 into the Holder CLI and approves; the Holder returns a dSD-JWT
    delegation grant bound to the Agent's key.
 5. The Agent presents the grant to the Merchant with its **own KB-JWT** (Auth Response 1);
-   the Merchant verifies the chain and value-matches `purchase_id`.
+   the Merchant verifies the chain and checks `purchase_id` in the verified `delegations`.
 
 ### Run it
 
@@ -84,10 +84,10 @@ Notes:
   upstream SD-JWT chain support, which is what makes chain delegation (Holder), chain-aware
   discovery (Agent), and chain-aware verification (Merchant) available.
 - The Agent crate lives in `agent/`; it builds Auth Request 2, captures the grant, stores it
-  in its wallet vault, and presents it to the Merchant via `present_credentials_auto`. Auto
-  discovery can value-match the delegate-injected `purchase_id` because, under
-  `delegate-sd-jwt`, `Credential::parse_claims` layers each dSD-JWT chain link's delegate
-  payload onto the issuer claims.
+  in its wallet vault, and presents it to the Merchant via `present_credentials_auto`. The
+  wallet matches the voucher on its issuer-signed claims, as the Merchant checks it, so it
+  answers with the `amount` / `currency` claim set; the delegate-injected `purchase_id`
+  reaches the Merchant under `delegations`.
 - The in-process logic (issue → delegate → present-with-KB → verify, with `purchase_id`
   binding) is covered by the `delegation_e2e_tests` in the SDK (`src/vc/oid4vp/tests.rs`),
-  including `delegation_auto_discovery_value_matches_delegate_payload_claim`.
+  including `delegation_auto_discovery_ignores_delegate_payload_claims`.

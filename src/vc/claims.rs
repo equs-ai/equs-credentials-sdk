@@ -161,6 +161,14 @@ impl Claim {
             _ => None,
         }
     }
+
+    /// A verified dSD-JWT's issuer-signed claims; any other claim as is.
+    pub(crate) fn issued_vc(&self) -> &Claim {
+        match (self.get(ISSUED_VC_CLAIM), self.get(DELEGATIONS_CLAIM)) {
+            (Some(issued_vc), Some(_)) => issued_vc,
+            _ => self,
+        }
+    }
 }
 
 impl TryFrom<Claim> for Value {
