@@ -42,6 +42,9 @@ use tracing::Level;
 use tracing::{info, instrument, warn};
 
 pub(crate) const DOCTYPE_CLAIM: &str = "doctype";
+/// id-mdl-kp-mdlDS, the Extended Key Usage of an mdoc Document Signer (ISO/IEC 18013-5 Annex B.1.4).
+const MDL_DS_EKU: x509_parser::oid_registry::Oid<'static> =
+    x509_parser::der_parser::oid!(1.0.18013.5.1.2);
 const TOKEN_STATUS_LIST_ENTRY: &str = "TokenStatusListEntry";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -275,6 +278,10 @@ impl MsoMdocAPI {
                 .build()
             })?;
         }
+        // one-core 0.2.3 always identifies an mdoc issuer by its `x5chain`
+        if let Some(chain) = issuer_chain.as_deref() {
+            check_document_signer_profile(chain)?;
+        }
         let status = MdocStatus::from_credential_status(&verified_claims.status)?;
         Ok(VerifiedMdoc {
             claims: verified_claims.try_into()?,
@@ -324,6 +331,54 @@ impl MsoMdocAPI {
             })?;
         MdocStatus::from_credential_status(&details.status)
     }
+}
+
+/// Checks the Document Signer, the first certificate of `chain_pem`, as the EUDI reference issuer
+/// checks a PID signer (`eudi-srv-web-issuing-eudiw-py` `check_leaf_certificate`): it must not be
+/// a CA, and an Extended Key Usage, when it has one, must list [MDL_DS_EKU]. A DS without the
+/// extension passes, as there; one certified for another purpose (e.g. TLS) does not.
+fn check_document_signer_profile(chain_pem: &str) -> Result<()> {
+    let rejected = |details: &str| {
+        PresentationSnafu {
+            details: format!("Document Signer certificate {details}"),
+        }
+        .build()
+    };
+    let pem = x509_parser::pem::Pem::iter_from_buffer(chain_pem.as_bytes())
+        .next()
+        .and_then(|pem| pem.ok())
+        .ok_or_else(|| rejected("is missing"))?;
+    let certificate = pem.parse_x509().map_err(|_| rejected("cannot be parsed"))?;
+
+    // `basic_constraints()` reads an extension that does not parse as absent
+    let malformed_basic_constraints = || rejected("has a malformed basic constraints extension");
+    let is_ca = match certificate
+        .get_extension_unique(&x509_parser::oid_registry::OID_X509_EXT_BASIC_CONSTRAINTS)
+        .map_err(|_| malformed_basic_constraints())?
+    {
+        None => false,
+        Some(extension) => match extension.parsed_extension() {
+            x509_parser::extensions::ParsedExtension::BasicConstraints(constraints) => {
+                constraints.ca
+            }
+            _ => return Err(malformed_basic_constraints()),
+        },
+    };
+    if is_ca {
+        return Err(rejected("must not be a CA certificate"));
+    }
+
+    let extended_key_usage = certificate
+        .extended_key_usage()
+        .map_err(|_| rejected("has a malformed extended key usage extension"))?;
+    if let Some(extended_key_usage) = extended_key_usage
+        && !extended_key_usage.value.other.contains(&MDL_DS_EKU)
+    {
+        return Err(rejected(
+            "has an extended key usage without the mdoc Document Signer purpose 1.0.18013.5.1.2",
+        ));
+    }
+    Ok(())
 }
 
 impl MdocStatus {
@@ -587,7 +642,7 @@ pub mod tests {
             &serde_json::json!({
                 "subject": [["CN", "Self-signed DS"], ["C", "US"]],
                 "not_before": "2026-01-01", "not_after": "2046-01-01",
-                "key_usages": ["digital_signature"]
+                "key_usages": ["digital_signature"], "extended_key_usages": ["mdl_ds"]
             }),
             &ds_key,
             None,
@@ -714,6 +769,142 @@ pub mod tests {
     /// Anchors holding only an unrelated IACA.
     fn unrelated_iaca() -> HashMap<String, String> {
         anchors(&[&mdl_iaca(&test_fixtures::JWK::generate_p256())])
+    }
+
+    /// A presentation like [sample_mso_mdoc_vp], issuer-signed by `ds_key` under `x5chain`.
+    pub fn sample_mso_mdoc_vp_under(x5chain: &str, ds_key: &test_fixtures::JWK) -> String {
+        mdoc_vp_under(x5chain, ds_key, None, None, None)
+    }
+
+    /// The Document Signer certificate's profile, as the EUDI reference issuer checks a PID signer
+    /// (`eudi-srv-web-issuing-eudiw-py` `check_leaf_certificate`).
+    mod document_signer {
+        use super::{binder, sample_mso_mdoc_vp_under};
+        use crate::did::universal::UniversalResolver;
+        use crate::utils::test_utils::anchors;
+        use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation, VerifiedMdoc};
+        use crate::vc::formats::{AnchorPolicy, VerifyOptions};
+        use rstest::rstest;
+        use serde_json::{Value, json};
+
+        /// An IACA (`C=US`), a DS it issued under `ds_spec` (merged into a `digital_signature`
+        /// leaf with an authority key identifier), and a presentation signed under that DS.
+        fn presentation_under(ds_spec: Value) -> (String, String) {
+            let iaca_key = test_fixtures::JWK::generate_p256();
+            let iaca = test_fixtures::x509(
+                &json!({
+                    "subject": [["CN", "Test IACA"], ["C", "US"]],
+                    "not_before": "2026-01-01", "not_after": "2046-01-01",
+                    "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+                }),
+                &iaca_key,
+                None,
+            );
+            let mut spec = json!({
+                "subject": [["CN", "Test DS"], ["C", "US"]],
+                "not_before": "2026-01-01", "not_after": "2046-01-01",
+                "key_usages": ["digital_signature"], "authority_key_identifier": true
+            });
+            for (name, value) in ds_spec.as_object().unwrap() {
+                spec[name] = value.clone();
+            }
+            let ds_key = test_fixtures::JWK::generate_p256();
+            let ds = test_fixtures::x509(&spec, &ds_key, Some((&iaca, &iaca_key)));
+            (sample_mso_mdoc_vp_under(&ds, &ds_key), iaca)
+        }
+
+        async fn verify(
+            (vp, iaca): (String, String),
+            policy: AnchorPolicy,
+        ) -> crate::vc::formats::Result<VerifiedMdoc> {
+            let trusted_certs = match policy {
+                AnchorPolicy::Require => Some(anchors(&[&iaca])),
+                AnchorPolicy::IntegrityOnly => None,
+            };
+            MsoMdocAPI::verify_vp_with_issuer(
+                &Presentation {
+                    value: vp,
+                    enc_pub_key: None,
+                },
+                Some(binder(None)),
+                VerifyOptions {
+                    trusted_certs,
+                    selective_claims: None,
+                    anchor_policy: policy,
+                },
+                UniversalResolver::default(),
+            )
+            .await
+        }
+
+        #[rstest]
+        #[case::require_server_auth(AnchorPolicy::Require, json!(["server_auth"]))]
+        #[case::require_client_auth(AnchorPolicy::Require, json!(["client_auth"]))]
+        #[case::integrity_only_server_auth(AnchorPolicy::IntegrityOnly, json!(["server_auth"]))]
+        #[case::integrity_only_client_auth(AnchorPolicy::IntegrityOnly, json!(["client_auth"]))]
+        #[tokio::test]
+        async fn signer_with_another_extended_key_usage_is_rejected(
+            #[case] policy: AnchorPolicy,
+            #[case] ekus: Value,
+        ) {
+            let presentation = presentation_under(json!({ "extended_key_usages": ekus }));
+
+            let error = format!("{:?}", verify(presentation, policy).await.unwrap_err());
+
+            assert!(error.contains("1.0.18013.5.1.2"), "{error}");
+        }
+
+        #[rstest]
+        #[case::require_mdl_ds(AnchorPolicy::Require, json!({ "extended_key_usages": ["mdl_ds"] }))]
+        #[case::integrity_only_mdl_ds(AnchorPolicy::IntegrityOnly, json!({ "extended_key_usages": ["mdl_ds"] }))]
+        #[case::among_other_usages(AnchorPolicy::Require, json!({ "extended_key_usages": ["server_auth", "mdl_ds"] }))]
+        #[case::require_no_eku(AnchorPolicy::Require, json!({}))]
+        #[case::integrity_only_no_eku(AnchorPolicy::IntegrityOnly, json!({}))]
+        #[case::other_country_than_its_iaca(AnchorPolicy::Require, json!({
+            "subject": [["CN", "Test DS"], ["C", "DE"]], "extended_key_usages": ["mdl_ds"]
+        }))]
+        #[tokio::test]
+        async fn signer_with_the_ds_profile_passes(
+            #[case] policy: AnchorPolicy,
+            #[case] ds_spec: Value,
+        ) {
+            verify(presentation_under(ds_spec), policy).await.unwrap();
+        }
+
+        #[test]
+        fn signer_with_a_malformed_basic_constraints_extension_is_rejected() {
+            let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+            // an INTEGER where the BasicConstraints SEQUENCE belongs
+            params.custom_extensions = vec![rcgen::CustomExtension::from_oid_content(
+                &[2, 5, 29, 19],
+                vec![0x02, 0x01, 0x01],
+            )];
+            let key = rcgen::KeyPair::generate().unwrap();
+            let pem = params.self_signed(&key).unwrap().pem();
+
+            let error = format!(
+                "{:?}",
+                crate::vc::formats::mso_mdoc::check_document_signer_profile(&pem).unwrap_err()
+            );
+
+            assert!(error.contains("malformed basic constraints"), "{error}");
+        }
+
+        #[rstest]
+        #[case::require(AnchorPolicy::Require)]
+        #[case::integrity_only(AnchorPolicy::IntegrityOnly)]
+        #[tokio::test]
+        async fn signer_that_is_a_ca_is_rejected(#[case] policy: AnchorPolicy) {
+            let presentation = presentation_under(json!({
+                "ca": true,
+                "key_usages": ["digital_signature", "key_cert_sign"],
+                "extended_key_usages": ["mdl_ds"]
+            }));
+
+            let error = format!("{:?}", verify(presentation, policy).await.unwrap_err());
+
+            assert!(error.contains("must not be a CA"), "{error}");
+        }
     }
 
     mod status {

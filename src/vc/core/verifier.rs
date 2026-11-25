@@ -1659,6 +1659,48 @@ mod tests {
             assert_fails_with(result, "status mechanism not supported: future_list");
         }
 
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        // the Document Signer profile is checked before issuer trust, so `report` fails too
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn mdoc_signed_by_a_leaf_for_another_purpose_is_rejected(
+            #[case] mode: IssuerTrustMode,
+        ) {
+            // e.g. a TLS or other signer the trusted IACA also certified, for another purpose
+            let iaca_key = test_fixtures::JWK::generate_p256();
+            let iaca = mdl_iaca(&iaca_key);
+            let leaf_key = test_fixtures::JWK::generate_p256();
+            let leaf = test_fixtures::x509(
+                &json!({
+                    "subject": [["CN", "Other signer"], ["C", "US"]],
+                    "not_before": "2026-01-01", "not_after": "2046-01-01",
+                    "key_usages": ["digital_signature"], "extended_key_usages": ["server_auth"],
+                    "authority_key_identifier": true
+                }),
+                &leaf_key,
+                Some((&iaca, &iaca_key)),
+            );
+            let vp = mso_mdoc::tests::sample_mso_mdoc_vp_under(&leaf, &leaf_key);
+
+            let result = verifier(&iaca, mode, true)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await;
+
+            let error = format!("{:?}", result.unwrap_err());
+            assert!(
+                error.contains("1.0.18013.5.1.2"),
+                "unexpected error: {error}"
+            );
+        }
+
         #[tokio::test]
         async fn mdoc_without_status_verifies_without_a_fetch() {
             let (vp, iaca) = mso_mdoc::tests::sample_mso_mdoc_vp_with_iaca();
