@@ -17,12 +17,14 @@ use std::collections::HashMap;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use coset::cbor::value::Value;
+use coset::iana::HeaderParameter;
 use coset::iana::{Algorithm, EnumI64};
 use coset::{
     Algorithm as CoseAlgorithm, CborSerializable, CoseSign1, Header, Label,
     RegisteredLabelWithPrivate, TaggedCborSerializable,
 };
 use one_core_portable::standardized_types::jwk::PublicJwk;
+use snafu::{OptionExt, ensure};
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
@@ -46,6 +48,9 @@ const EXP_CLAIM: i64 = 4;
 const IAT_CLAIM: i64 = 6;
 const STATUS_LIST_CLAIM: i64 = 65533;
 
+/// Headers this module checks: the only ones `crit` may list.
+const UNDERSTOOD_CRIT_HEADERS: [i64; 3] = [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADER];
+
 pub(crate) struct StatusListCwt;
 
 impl StatusListCwt {
@@ -60,7 +65,7 @@ impl StatusListCwt {
         let sign1 = decode_sign1(token)?;
         check_crit(&sign1.protected.header)?;
         check_typ(&sign1.protected.header)?;
-        let alg = check_alg(&sign1.protected.header)?;
+        let alg = read_alg(&sign1.protected.header)?;
 
         let pem_chain = x5chain_pem(&sign1)?;
         let leaf = Truststore::new(
@@ -95,17 +100,15 @@ impl StatusListCwt {
     }
 }
 
-fn malformed(details: impl Into<String>) -> crate::vc::status_formats::Error {
-    MalformedStatusListSnafu {
-        details: details.into(),
-    }
-    .build()
-}
-
 fn decode_sign1(token: &[u8]) -> Result<CoseSign1> {
     CoseSign1::from_tagged_slice(token)
         .or_else(|_| CoseSign1::from_slice(token))
-        .map_err(|err| malformed(format!("not a COSE_Sign1: {err}")))
+        .map_err(|err| {
+            MalformedStatusListSnafu {
+                details: format!("not a COSE_Sign1: {err}"),
+            }
+            .build()
+        })
 }
 
 fn header_param(header: &Header, label: i64) -> Option<&Value> {
@@ -116,48 +119,51 @@ fn header_param(header: &Header, label: i64) -> Option<&Value> {
         .map(|(_, value)| value)
 }
 
-/// Rejects the token when `crit` names a header this code does not check.
-fn check_crit(protected: &Header) -> Result<()> {
-    let unknown: Vec<_> = protected
+/// Rejects the token when `crit` names a header this code does not check (RFC 9052 §3.1).
+fn check_crit(header: &Header) -> Result<()> {
+    let is_understood = |label: &&RegisteredLabelWithPrivate<HeaderParameter>| match label {
+        RegisteredLabelWithPrivate::Assigned(param) => {
+            UNDERSTOOD_CRIT_HEADERS.contains(&param.to_i64())
+        }
+        _ => false,
+    };
+    let unknown: Vec<_> = header
         .crit
         .iter()
-        .filter(|label| {
-            !matches!(
-                label,
-                RegisteredLabelWithPrivate::Assigned(param)
-                    if [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADER].contains(&param.to_i64())
-            )
-        })
+        .filter(|label| !is_understood(label))
         .collect();
     if unknown.is_empty() {
         return Ok(());
     }
-    Err(malformed(format!(
-        "protected `crit` names unsupported parameters: {unknown:?}"
-    )))
+    MalformedStatusListSnafu {
+        details: format!("protected `crit` names unsupported parameters: {unknown:?}"),
+    }
+    .fail()
 }
 
 fn check_typ(protected: &Header) -> Result<()> {
     let typ = header_param(protected, TYP_HEADER);
     let known = match typ {
         Some(Value::Text(text)) => text == STATUS_LIST_CWT_TYPE,
-        Some(Value::Integer(id)) => i128::from(*id) == i128::from(STATUS_LIST_CWT_COAP_ID),
+        Some(Value::Integer(id)) => *id == STATUS_LIST_CWT_COAP_ID.into(),
         _ => false,
     };
     if known {
         return Ok(());
     }
-    Err(malformed(format!(
-        "expected protected `typ` {STATUS_LIST_CWT_TYPE}, got {typ:?}"
-    )))
+    MalformedStatusListSnafu {
+        details: format!("expected protected `typ` {STATUS_LIST_CWT_TYPE}, got {typ:?}"),
+    }
+    .fail()
 }
 
-fn check_alg(protected: &Header) -> Result<Algorithm> {
+fn read_alg(protected: &Header) -> Result<Algorithm> {
     match &protected.alg {
         Some(CoseAlgorithm::Assigned(alg @ (Algorithm::ES256 | Algorithm::EdDSA))) => Ok(*alg),
-        other => Err(malformed(format!(
-            "unsupported or missing protected `alg` (ES256 or EdDSA): {other:?}"
-        ))),
+        other => MalformedStatusListSnafu {
+            details: format!("unsupported or missing protected `alg` (ES256 or EdDSA): {other:?}"),
+        }
+        .fail(),
     }
 }
 
@@ -202,30 +208,50 @@ fn x5chain_pem(sign1: &CoseSign1) -> Result<String> {
             .iter()
             .map(|item| item.as_bytes())
             .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| malformed("`x5chain` must hold DER certificates"))?,
-        _ => return Err(malformed("`x5chain` must hold DER certificates")),
+            .context(MalformedStatusListSnafu {
+                details: "`x5chain` must hold DER certificates",
+            })?,
+        _ => {
+            return MalformedStatusListSnafu {
+                details: "`x5chain` must hold DER certificates",
+            }
+            .fail();
+        }
     };
-    if certificates.is_empty() {
-        return Err(malformed("`x5chain` is empty"));
-    }
+    ensure!(
+        !certificates.is_empty(),
+        MalformedStatusListSnafu {
+            details: "`x5chain` is empty",
+        }
+    );
     let x5c: Vec<String> = certificates
         .into_iter()
         .map(|der| STANDARD.encode(der))
         .collect();
-    one_core::mapper::x509::x5c_into_pem_chain(&x5c)
-        .map_err(|err| malformed(format!("could not read `x5chain`: {err}")))
+    one_core::mapper::x509::x5c_into_pem_chain(&x5c).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: format!("could not read `x5chain`: {err}"),
+        }
+        .build()
+    })
 }
 
 fn decode_claims(sign1: &CoseSign1) -> Result<Vec<(Value, Value)>> {
-    let payload = sign1
-        .payload
-        .as_deref()
-        .ok_or_else(|| malformed("status list CWT has no payload"))?;
-    let claims: Value = coset::cbor::de::from_reader(payload)
-        .map_err(|err| malformed(format!("status list CWT claims are not CBOR: {err}")))?;
+    let payload = sign1.payload.as_deref().context(MalformedStatusListSnafu {
+        details: "status list CWT has no payload",
+    })?;
+    let claims: Value = coset::cbor::de::from_reader(payload).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: format!("status list CWT claims are not CBOR: {err}"),
+        }
+        .build()
+    })?;
     match claims {
         Value::Map(entries) => Ok(entries),
-        _ => Err(malformed("status list CWT claims are not a map")),
+        _ => MalformedStatusListSnafu {
+            details: "status list CWT claims are not a map",
+        }
+        .fail(),
     }
 }
 
@@ -238,9 +264,13 @@ fn claim(claims: &[(Value, Value)], key: i64) -> Option<&Value> {
 
 fn check_sub(claims: &[(Value, Value)], uri: &str) -> Result<()> {
     let sub = claim(claims, SUB_CLAIM)
-        .ok_or_else(|| malformed("missed the `sub` claim"))?
+        .context(MalformedStatusListSnafu {
+            details: "missed the `sub` claim",
+        })?
         .as_text()
-        .ok_or_else(|| malformed("the `sub` claim must be a URI"))?;
+        .context(MalformedStatusListSnafu {
+            details: "the `sub` claim must be a URI",
+        })?;
     if sub != uri {
         return VCStatusSnafu {
             details: format!("Urls are not equal {uri} {sub}"),
@@ -260,14 +290,19 @@ fn numeric_date(value: &Value) -> Option<f64> {
 }
 
 fn check_times(claims: &[(Value, Value)]) -> Result<()> {
-    claim(claims, IAT_CLAIM)
-        .ok_or_else(|| malformed("missed the `iat` claim"))
-        .and_then(|iat| numeric_date(iat).ok_or_else(|| malformed("`iat` is not a NumericDate")))?;
+    let iat = claim(claims, IAT_CLAIM).context(MalformedStatusListSnafu {
+        details: "missed the `iat` claim",
+    })?;
+    numeric_date(iat).context(MalformedStatusListSnafu {
+        details: "`iat` is not a NumericDate",
+    })?;
 
     let Some(exp) = claim(claims, EXP_CLAIM) else {
         return Ok(());
     };
-    let exp = numeric_date(exp).ok_or_else(|| malformed("`exp` is not a NumericDate"))?;
+    let exp = numeric_date(exp).context(MalformedStatusListSnafu {
+        details: "`exp` is not a NumericDate",
+    })?;
     let now = (time::OffsetDateTime::now_utc() - time::OffsetDateTime::UNIX_EPOCH).as_seconds_f64();
     if exp <= now {
         return VCStatusSnafu {
@@ -280,7 +315,10 @@ fn check_times(claims: &[(Value, Value)]) -> Result<()> {
 
 fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
     let Some(Value::Map(status_list)) = claim(claims, STATUS_LIST_CLAIM) else {
-        return Err(malformed("missed the `status_list` claim"));
+        return MalformedStatusListSnafu {
+            details: "missed the `status_list` claim",
+        }
+        .fail();
     };
     let field = |name: &str| {
         status_list
@@ -292,13 +330,27 @@ fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
     let bits = field("bits")
         .and_then(Value::as_integer)
         .and_then(|bits| u8::try_from(bits).ok())
-        .ok_or_else(|| malformed("`status_list.bits` must be 1, 2, 4 or 8"))?;
-    let bits = StatusSize::try_from(bits).map_err(|err| malformed(err.to_string()))?;
+        .context(MalformedStatusListSnafu {
+            details: "`status_list.bits` must be 1, 2, 4 or 8",
+        })?;
+    let bits = StatusSize::try_from(bits).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })?;
     let lst = field("lst")
         .and_then(Value::as_bytes)
-        .ok_or_else(|| malformed("`status_list.lst` must be a byte string"))?;
+        .context(MalformedStatusListSnafu {
+            details: "`status_list.lst` must be a byte string",
+        })?;
 
-    BitString::from_compressed_bytes(bits, lst, None).map_err(|err| malformed(err.to_string()))
+    BitString::from_compressed_bytes(bits, lst, None).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })
 }
 
 #[cfg(test)]
