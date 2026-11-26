@@ -16,6 +16,8 @@ use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{API, AnchorPolicy, HasCredential, IsExpired, VerifyOptions};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vc::status_formats::list_trust::ListTrust;
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::trust::issuer::{
@@ -144,8 +146,20 @@ impl Verifier for VerifierService {
             Presentation::MsoMdoc(vp) => {
                 use crate::vc::formats::mso_mdoc::MsoMdocAPI;
 
-                let status = MsoMdocAPI::status_unverified(vp).await.context(VCSnafu)?;
-                self.obtain_mdoc_status(&status, http_client, AnchorPolicy::Require)
+                let unverified = MsoMdocAPI::status_unverified(vp).await.context(VCSnafu)?;
+                let anchors = self
+                    .verification_params
+                    .trusted_certs
+                    .iter()
+                    .flat_map(HashMap::values)
+                    .map(String::as_str)
+                    .collect();
+                let list_check = MdocListCheck::Anchored {
+                    issuer_chain: unverified.issuer_chain.as_deref(),
+                    anchors,
+                    mso_verified: false,
+                };
+                self.obtain_mdoc_status(&unverified.status, list_check, http_client)
                     .await
             }
             _ => CredentialStatusNotSupportedSnafu.fail(),
@@ -239,7 +253,19 @@ impl VerifierService {
                 )
                 .await
                 .context(VCSnafu)?;
-                self.check_mdoc_status(&verified.status, http_client, AnchorPolicy::Require)
+                let anchors = self
+                    .verification_params
+                    .trusted_certs
+                    .iter()
+                    .flat_map(HashMap::values)
+                    .map(String::as_str)
+                    .collect();
+                let list_check = MdocListCheck::Anchored {
+                    issuer_chain: verified.issuer_chain.as_deref(),
+                    anchors,
+                    mso_verified: true,
+                };
+                self.check_mdoc_status(&verified.status, list_check, http_client)
                     .await?;
 
                 verified.claims
@@ -375,24 +401,41 @@ impl VerifierService {
                 .await
                 .context(VCSnafu)?;
                 let category = config.classification.classify_claims(&verified.claims);
-                let (outcome, issuer_chain_akis) = match verified.issuer_chain {
+                let (outcome, issuer_chain_akis) = match verified.issuer_chain.as_deref() {
                     Some(chain) => (
                         evaluate_chain_for_category(
                             &certificate_validator,
-                            &chain,
+                            chain,
                             &config,
                             category,
                         )
                         .await
                         .map_err(rejected_issuer_chain)
                         .context(VCSnafu)?,
-                        Some(chain_authority_key_identifiers(&chain)),
+                        Some(chain_authority_key_identifiers(chain)),
                     ),
                     None => (IssuerTrustOutcome::without_chain(category), None),
                 };
 
                 if let Some(policy) = status_anchor_policy(config.mode, &outcome) {
-                    self.check_mdoc_status(&verified.status, http_client, policy)
+                    let issuer_anchors: Vec<String> = config
+                        .anchors_for(category)
+                        .into_iter()
+                        .filter(|anchor| anchor.anchors_issuers())
+                        .map(|anchor| anchor.pem)
+                        .collect();
+                    let issuer_chain = verified.issuer_chain.as_deref();
+                    let list_check = match policy {
+                        AnchorPolicy::Require => MdocListCheck::Anchored {
+                            issuer_chain,
+                            anchors: issuer_anchors.iter().map(String::as_str).collect(),
+                            mso_verified: true,
+                        },
+                        AnchorPolicy::IntegrityOnly => {
+                            MdocListCheck::IntegrityOnly { issuer_chain }
+                        }
+                    };
+                    self.check_mdoc_status(&verified.status, list_check, http_client)
                         .await?;
                 }
                 Ok(IssuerTrustVerification::new(
@@ -433,76 +476,60 @@ impl VerifierService {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[instrument(level = Level::TRACE, skip(self, status, http_client), err())]
+    #[instrument(level = Level::TRACE, skip(self, status, list_check, http_client), err())]
     async fn check_mdoc_status(
         &self,
         status: &crate::vc::formats::mso_mdoc::MdocStatus,
+        list_check: MdocListCheck<'_>,
         http_client: &dyn HttpClient,
-        anchor_policy: AnchorPolicy,
     ) -> Result<()> {
         ensure_valid(
-            self.obtain_mdoc_status(status, http_client, anchor_policy)
+            self.obtain_mdoc_status(status, list_check, http_client)
                 .await?,
         )
     }
 
     /// The status of an mdoc's MSO `status_list` or `identifier_list`; any other mechanism fails.
     /// A `status_list` must be a CWT ([StatusListCwt::get_status]). A credential in its Identifier
-    /// List is `Invalid`.
+    /// List is `Invalid`. The list must chain to the anchor [MdocListCheck] names.
     #[cfg(not(target_arch = "wasm32"))]
-    #[instrument(level = Level::TRACE, skip(self, status, http_client), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, status, list_check, http_client), err(), ret())]
     async fn obtain_mdoc_status(
         &self,
         status: &crate::vc::formats::mso_mdoc::MdocStatus,
+        list_check: MdocListCheck<'_>,
         http_client: &dyn HttpClient,
-        anchor_policy: AnchorPolicy,
     ) -> Result<Option<VCStatus>> {
         use crate::vc::formats::mso_mdoc::MdocStatus;
         use crate::vc::status_formats::identifier_list_token_cwt::IdentifierListCwt;
         use crate::vc::status_formats::status_list_token_cwt::StatusListCwt;
 
+        let trust =
+            |status: &MdocStatus| list_check.trust(status.certificate()).map_err(status_error);
         match status {
             MdocStatus::None => Ok(None),
             MdocStatus::Unsupported(mechanisms) => VCStatusSnafu {
                 details: format!("status mechanism not supported: {}", mechanisms.join(", ")),
             }
             .fail(),
-            MdocStatus::StatusList { uri, idx } => StatusListCwt::get_status(
-                http_client,
-                uri,
-                *idx,
-                self.verification_params.trusted_certs.as_ref(),
-                anchor_policy,
-            )
-            .await
-            .map(|status| Some(VCStatus::StatusListToken(status)))
-            .map_err(|e| {
-                VCStatusSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            }),
-            MdocStatus::IdentifierList { uri, id } => IdentifierListCwt::is_revoked(
-                http_client,
-                uri,
-                &id.0,
-                self.verification_params.trusted_certs.as_ref(),
-                anchor_policy,
-            )
-            .await
-            .map(|revoked| {
-                Some(VCStatus::StatusListToken(if revoked {
-                    status_list_token_jwt::VCStatus::Invalid
-                } else {
-                    status_list_token_jwt::VCStatus::Valid
-                }))
-            })
-            .map_err(|e| {
-                VCStatusSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            }),
+            MdocStatus::StatusList { uri, idx, .. } => {
+                StatusListCwt::get_status(http_client, uri, *idx, &trust(status)?)
+                    .await
+                    .map(|status| Some(VCStatus::StatusListToken(status)))
+                    .map_err(status_error)
+            }
+            MdocStatus::IdentifierList { uri, id, .. } => {
+                IdentifierListCwt::is_revoked(http_client, uri, &id.0, &trust(status)?)
+                    .await
+                    .map(|revoked| {
+                        Some(VCStatus::StatusListToken(if revoked {
+                            status_list_token_jwt::VCStatus::Invalid
+                        } else {
+                            status_list_token_jwt::VCStatus::Valid
+                        }))
+                    })
+                    .map_err(status_error)
+            }
         }
     }
 
@@ -555,6 +582,51 @@ fn ensure_valid(status: Option<VCStatus>) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// A status-list failure as a [crate::vc::core::api::Error].
+#[cfg(not(target_arch = "wasm32"))]
+fn status_error(err: impl std::fmt::Display) -> crate::vc::core::api::Error {
+    VCStatusSnafu {
+        details: err.to_string(),
+    }
+    .build()
+}
+
+/// What an mdoc's revocation list must chain to (see [ListTrust]).
+#[cfg(not(target_arch = "wasm32"))]
+enum MdocListCheck<'a> {
+    /// A trusted issuer, or an MSO read without verification.
+    Anchored {
+        issuer_chain: Option<&'a str>,
+        anchors: Vec<&'a str>,
+        mso_verified: bool,
+    },
+    /// An untrusted issuer under `Report`.
+    IntegrityOnly { issuer_chain: Option<&'a str> },
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl MdocListCheck<'_> {
+    fn trust(&self, certificate: Option<&[u8]>) -> crate::vc::status_formats::Result<ListTrust> {
+        let now = time::OffsetDateTime::now_utc();
+        match self {
+            Self::Anchored {
+                issuer_chain,
+                anchors,
+                mso_verified,
+            } => ListTrust::mdoc_anchored(
+                certificate,
+                *issuer_chain,
+                anchors.as_slice(),
+                *mso_verified,
+                now,
+            ),
+            Self::IntegrityOnly { issuer_chain } => {
+                ListTrust::mdoc_integrity_only(certificate, *issuer_chain, now)
+            }
+        }
+    }
 }
 
 /// How the status list signer is checked: anchored for a trusted issuer and under `Enforce`,
@@ -907,9 +979,11 @@ mod tests {
         use crate::vc::formats::mso_mdoc;
         use crate::vc::formats::mso_mdoc::tests::{sample_binder, sample_mso_mdoc_vp_with_status};
         use crate::vc::status_formats::identifier_list_token_cwt::tests::{
-            LISTED_ID, identifier_list_cwt,
+            LISTED_ID, identifier_list_cwt, identifier_list_cwt_signed_by,
         };
-        use crate::vc::status_formats::status_list_token_cwt::tests::x5c_status_list_cwt;
+        use crate::vc::status_formats::status_list_token_cwt::tests::{
+            status_list_cwt_signed_by, x5c_status_list_cwt,
+        };
         use crate::vc::status_formats::status_list_token_jwt;
         use crate::vc::status_formats::status_list_token_jwt::tests::{
             status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
@@ -944,15 +1018,58 @@ mod tests {
             json!({ "id": { "$bytes": id }, "uri": IDENTIFIER_LIST_URI })
         }
 
+        /// `status` with each list naming [status_list_root_ca], which signs the fixture lists,
+        /// as its MSO `certificate`.
+        fn naming_status_list_root(mut status: Value) -> Value {
+            use base64::Engine;
+            let der = x509_parser::pem::Pem::iter_from_buffer(status_list_root_ca().as_bytes())
+                .next()
+                .unwrap()
+                .unwrap()
+                .contents;
+            let certificate =
+                json!({ "$bytes": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(der) });
+            for mechanism in ["status_list", "identifier_list"] {
+                if let Some(list) = status.get_mut(mechanism) {
+                    list["certificate"] = certificate.clone();
+                }
+            }
+            status
+        }
+
+        /// Serves `cwt` once at [STATUS_LIST_URI] as a CWT status list.
+        fn serving_status_list_cwt(cwt: Vec<u8>) -> MockHttpClient {
+            let mut http_client = MockHttpClient::new();
+            mock_http_fn(
+                &mut http_client,
+                Method::GET,
+                Url::from_str(STATUS_LIST_URI).unwrap(),
+                move |_| {
+                    let mut response = HttpResponse::new(cwt.clone());
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, "application/statuslist+cwt".parse().unwrap());
+                    Ok(response)
+                },
+                1.into(),
+            );
+            http_client
+        }
+
         /// Serves the fixture Identifier List, which lists [LISTED_ID], once.
         fn serving_identifier_list() -> MockHttpClient {
+            serving_identifier_list_cwt(identifier_list_cwt(IDENTIFIER_LIST_URI))
+        }
+
+        /// Serves `cwt` once at [IDENTIFIER_LIST_URI] as an Identifier List.
+        fn serving_identifier_list_cwt(cwt: Vec<u8>) -> MockHttpClient {
             let mut http_client = MockHttpClient::new();
             mock_http_fn(
                 &mut http_client,
                 Method::GET,
                 Url::from_str(IDENTIFIER_LIST_URI).unwrap(),
-                |_| {
-                    let mut response = HttpResponse::new(identifier_list_cwt(IDENTIFIER_LIST_URI));
+                move |_| {
+                    let mut response = HttpResponse::new(cwt.clone());
                     response.headers_mut().insert(
                         CONTENT_TYPE,
                         "application/identifierlist+cwt".parse().unwrap(),
@@ -1016,6 +1133,11 @@ mod tests {
             status_list_anchored: bool,
             http_client: MockHttpClient,
         ) -> crate::vc::core::Result<IssuerTrustVerification> {
+            let status = if status_list_anchored {
+                naming_status_list_root(status)
+            } else {
+                status
+            };
             let (vp, iaca) = sample_mso_mdoc_vp_with_status(status);
             verifier(&iaca, mode, status_list_anchored)
                 .verify_presentation(
@@ -1078,10 +1200,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn status_list_signer_held_as_a_revocation_anchor_passes_under_enforce() {
+        async fn status_list_signer_held_only_as_a_revocation_anchor_is_rejected() {
             let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(VALID));
 
-            let verified = verifier_with(
+            let result = verifier_with(
                 &iaca,
                 IssuerTrustMode::Enforce,
                 Some(status_list_signer_cert()),
@@ -1094,8 +1216,27 @@ mod tests {
                 }),
                 &serving_status_list(),
             )
-            .await
-            .unwrap();
+            .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn status_list_under_the_ca_the_mso_names_passes_without_holding_it() {
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(naming_status_list_root(status_list(VALID)));
+
+            let verified = verifier_with(&iaca, IssuerTrustMode::Enforce, None)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await
+                .unwrap();
 
             assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
         }
@@ -1114,8 +1255,9 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn status_list_signer_under_no_anchor_passes_for_an_untrusted_issuer_under_report() {
-            let (vp, _) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+        async fn status_list_named_by_the_mso_passes_for_an_untrusted_issuer_under_report() {
+            let (vp, _) =
+                sample_mso_mdoc_vp_with_status(naming_status_list_root(status_list(VALID)));
             let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
 
             let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
@@ -1131,6 +1273,28 @@ mod tests {
                 .unwrap();
 
             assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
+        }
+
+        #[tokio::test]
+        async fn status_list_under_another_issuer_fails_for_an_untrusted_issuer_under_report() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            let result = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await;
+
+            assert_fails_with(
+                result,
+                "not issued under the issuer of the Document Signer chain",
+            );
         }
 
         #[rstest]
@@ -1494,10 +1658,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn identifier_list_under_no_anchor_passes_for_an_untrusted_issuer_under_report() {
-            let (vp, _) = sample_mso_mdoc_vp_with_status(json!({
+        async fn identifier_list_named_by_the_mso_passes_for_an_untrusted_issuer_under_report() {
+            let (vp, _) = sample_mso_mdoc_vp_with_status(naming_status_list_root(json!({
                 "identifier_list": identifier_list_naming("AQID")
-            }));
+            })));
             let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
 
             let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
@@ -1624,8 +1788,9 @@ mod tests {
 
         #[tokio::test]
         async fn obtain_credential_status_reads_the_identifier_list() {
-            let (vp, iaca) =
-                sample_mso_mdoc_vp_with_status(json!({ "identifier_list": identifier_list() }));
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(naming_status_list_root(json!({
+                "identifier_list": identifier_list()
+            })));
 
             let status = verifier(&iaca, IssuerTrustMode::Enforce, true)
                 .obtain_credential_status(
@@ -1722,7 +1887,8 @@ mod tests {
 
         #[tokio::test]
         async fn verify_presentation_rejects_a_revoked_mdoc() {
-            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(INVALID));
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(naming_status_list_root(status_list(INVALID)));
 
             let result = verifier(&iaca, IssuerTrustMode::Enforce, true)
                 .verify_presentation(
@@ -1741,9 +1907,263 @@ mod tests {
             );
         }
 
+        /// An IACA with a Document Signer and a list signer under it, and their keys.
+        struct OneIaca {
+            iaca: String,
+            ds: String,
+            ds_key: test_fixtures::JWK,
+            signer: String,
+            signer_key: test_fixtures::JWK,
+        }
+
+        fn one_iaca() -> OneIaca {
+            let iaca_key = test_fixtures::JWK::generate_p256();
+            let iaca = mdl_iaca(&iaca_key);
+            let issued = |common_name: &str, key: &test_fixtures::JWK, eku: Value| {
+                test_fixtures::x509(
+                    &json!({
+                        "subject": [["CN", common_name], ["C", "US"]],
+                        "not_before": "2026-01-01", "not_after": "2046-01-01",
+                        "key_usages": ["digital_signature"], "extended_key_usages": eku,
+                        "authority_key_identifier": true
+                    }),
+                    key,
+                    Some((&iaca, &iaca_key)),
+                )
+            };
+            let ds_key = test_fixtures::JWK::generate_p256();
+            let ds = issued("Test DS", &ds_key, json!(["mdl_ds"]));
+            let signer_key = test_fixtures::JWK::generate_p256();
+            let signer = issued("Test Status List Signer", &signer_key, json!([]));
+            OneIaca {
+                iaca,
+                ds,
+                ds_key,
+                signer,
+                signer_key,
+            }
+        }
+
+        /// An mdoc without an MSO `certificate`, and its status list, both under one IACA.
+        fn mdoc_and_list_under_one_iaca(idx: usize) -> (String, String, Vec<u8>) {
+            let pki = one_iaca();
+            let vp = mso_mdoc::tests::sample_mso_mdoc_vp_with_status_under(
+                &pki.ds,
+                &pki.ds_key,
+                status_list(idx),
+            );
+            let list = status_list_cwt_signed_by(STATUS_LIST_URI, &pki.signer, &pki.signer_key);
+            (vp, pki.iaca, list)
+        }
+
+        #[rstest]
+        #[case::not_listed("AQID", None)]
+        #[case::listed(
+            LISTED_ID,
+            Some("The status of the verifiable credential is 'Invalid'")
+        )]
+        #[tokio::test]
+        async fn identifier_list_under_the_document_signer_iaca_needs_no_certificate(
+            #[case] id: &str,
+            #[case] expected_error: Option<&str>,
+        ) {
+            let pki = one_iaca();
+            let vp = mso_mdoc::tests::sample_mso_mdoc_vp_with_status_under(
+                &pki.ds,
+                &pki.ds_key,
+                json!({ "identifier_list": identifier_list_naming(id) }),
+            );
+            let list =
+                identifier_list_cwt_signed_by(IDENTIFIER_LIST_URI, &pki.signer, &pki.signer_key);
+
+            let result = verifier(&pki.iaca, IssuerTrustMode::Enforce, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_identifier_list_cwt(list),
+                )
+                .await;
+
+            match expected_error {
+                None => assert_eq!(result.unwrap().outcome.status, IssuerTrustStatus::Trusted),
+                Some(expected) => assert_fails_with(result, expected),
+            }
+        }
+
+        #[tokio::test]
+        async fn status_list_under_the_document_signer_iaca_needs_no_certificate() {
+            let (vp, iaca, list) = mdoc_and_list_under_one_iaca(VALID);
+
+            let verified = verifier(&iaca, IssuerTrustMode::Enforce, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list_cwt(list),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Trusted);
+        }
+
+        #[tokio::test]
+        async fn revoked_entry_under_the_document_signer_iaca_is_rejected() {
+            let (vp, iaca, list) = mdoc_and_list_under_one_iaca(INVALID);
+
+            let result = verifier(&iaca, IssuerTrustMode::Enforce, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list_cwt(list),
+                )
+                .await;
+
+            assert_fails_with(
+                result,
+                "The status of the verifiable credential is 'Invalid'",
+            );
+        }
+
+        /// A verifier that holds the status list root as an issuing anchor, beside `iaca`.
+        fn verifier_holding_the_list_root_as_an_issuer_anchor(
+            iaca: &str,
+            mode: IssuerTrustMode,
+        ) -> VerifierService {
+            let anchor = |pem: &str| TrustAnchor {
+                pem: pem.to_string(),
+                source_ref: None,
+                role: Some("eaa_provider".to_string()),
+                service_type: None,
+            };
+            VerifierService::new(mso_mdoc::tests::VERIFIER, UniversalResolver::default())
+                .with_verification_params(VerificationParams {
+                    trusted_certs: Some(anchors(&[iaca, status_list_root_ca()])),
+                    issuer_trust: Some(IssuerTrustConfig {
+                        mode,
+                        anchors: vec![anchor(iaca), anchor(status_list_root_ca())],
+                        ..Default::default()
+                    }),
+                })
+        }
+
+        #[rstest]
+        #[case::enforce(IssuerTrustMode::Enforce)]
+        #[case::report(IssuerTrustMode::Report)]
+        #[tokio::test]
+        async fn status_list_under_another_issuing_anchor_is_rejected(
+            #[case] mode: IssuerTrustMode,
+        ) {
+            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(VALID));
+
+            let result = verifier_holding_the_list_root_as_an_issuer_anchor(&iaca, mode)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list(),
+                )
+                .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn identifier_list_under_another_issuing_anchor_is_rejected() {
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(json!({ "identifier_list": identifier_list() }));
+
+            let result =
+                verifier_holding_the_list_root_as_an_issuer_anchor(&iaca, IssuerTrustMode::Enforce)
+                    .verify_presentation(
+                        Some(sample_binder()),
+                        &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                            value: vp,
+                            enc_pub_key: None,
+                        }),
+                        &serving_identifier_list(),
+                    )
+                    .await;
+
+            assert_fails_with(result, "Certificate chain is not trusted");
+        }
+
+        #[tokio::test]
+        async fn status_list_under_the_document_signer_issuer_passes_for_an_untrusted_issuer_under_report()
+         {
+            let (vp, _, list) = mdoc_and_list_under_one_iaca(VALID);
+            let unrelated_iaca = mdl_iaca(&test_fixtures::JWK::generate_p256());
+
+            let verified = verifier(&unrelated_iaca, IssuerTrustMode::Report, false)
+                .verify_presentation(
+                    Some(sample_binder()),
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list_cwt(list),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(verified.outcome.status, IssuerTrustStatus::Untrusted);
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_rejects_an_unheld_certificate_of_an_unverified_mso() {
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(naming_status_list_root(status_list(INVALID)));
+
+            let result = verifier(&iaca, IssuerTrustMode::Enforce, false)
+                .obtain_credential_status(
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &MockHttpClient::new(),
+                )
+                .await;
+
+            assert_fails_with(result, "unverified credential is not a trusted anchor");
+        }
+
+        #[tokio::test]
+        async fn obtain_credential_status_reads_a_list_under_the_document_signer_iaca() {
+            let (vp, iaca, list) = mdoc_and_list_under_one_iaca(INVALID);
+
+            let status = verifier(&iaca, IssuerTrustMode::Enforce, false)
+                .obtain_credential_status(
+                    &Presentation::MsoMdoc(mso_mdoc::Presentation {
+                        value: vp,
+                        enc_pub_key: None,
+                    }),
+                    &serving_status_list_cwt(list),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                status,
+                Some(VCStatus::StatusListToken(
+                    status_list_token_jwt::VCStatus::Invalid
+                ))
+            );
+        }
+
         #[tokio::test]
         async fn obtain_credential_status_reads_the_mdoc_status() {
-            let (vp, iaca) = sample_mso_mdoc_vp_with_status(status_list(INVALID));
+            let (vp, iaca) =
+                sample_mso_mdoc_vp_with_status(naming_status_list_root(status_list(INVALID)));
 
             let status = verifier(&iaca, IssuerTrustMode::Enforce, true)
                 .obtain_credential_status(

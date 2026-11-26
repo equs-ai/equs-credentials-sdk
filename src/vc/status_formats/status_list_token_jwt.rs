@@ -31,6 +31,8 @@ use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::status_formats::StatusListCreatingSnafu;
 #[cfg(not(target_arch = "wasm32"))]
+use crate::vc::status_formats::list_trust::ListTrust;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::vc::status_formats::status_list_token_cwt::StatusListCwt;
 use base64::Engine;
 use base64::alphabet::URL_SAFE;
@@ -409,13 +411,11 @@ impl StatusListJwt {
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
     ) -> Result<BitString> {
-        Box::pin(StatusListCwt::extract_status_list(
-            uri,
-            cwt,
-            trusted_certs,
-            anchor_policy,
-        ))
-        .await
+        let trust = ListTrust::AnyOf {
+            anchors: trusted_certs.cloned().unwrap_or_default(),
+            policy: anchor_policy,
+        };
+        Box::pin(StatusListCwt::extract_status_list(uri, cwt, &trust)).await
     }
 
     #[cfg(target_arch = "wasm32")]
