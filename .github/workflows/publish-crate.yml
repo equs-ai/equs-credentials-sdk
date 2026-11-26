@@ -48,10 +48,12 @@ jobs:
 
       - name: Package
         shell: bash
+        continue-on-error: ${{ inputs.dry-run == 'true' }}
         run: cargo package --locked -p equs-credentials-sdk
 
       - name: Publish
         shell: bash
+        continue-on-error: ${{ inputs.dry-run == 'true' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN }}
         run: |
