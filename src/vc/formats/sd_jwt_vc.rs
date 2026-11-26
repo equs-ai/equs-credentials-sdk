@@ -865,6 +865,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         }
 
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+        if let Some(window) = opts.kb_iat_window {
+            verifier = verifier.with_kb_iat_window(window);
+        }
 
         let (nonce, aud) = if let Some(hb) = holder_binder {
             (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
@@ -901,14 +904,18 @@ mod tests {
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
     use crate::nonce::{Nonce, NonceHandler};
     use crate::utils::serde::Helpers;
-    use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
+    use crate::utils::test_utils::{
+        create_did_url_and_key_handle, failed_signer_key, no_jwk_key, with_kb_jwt_iat,
+    };
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
     use crate::vc::formats::sd_jwt_vc::{
         Claims, Credential, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM, NBF_CLAIM, SUB_CLAIM, SdJwtAPI,
         VCMetadata, VCT_CLAIM, VPMetadata,
     };
-    use crate::vc::formats::{API, Error, HasClaims, HasCredential, IsExpired, VerifyOptions};
+    use crate::vc::formats::{
+        API, Error, HasClaims, HasCredential, IsExpired, KbJwtIatWindow, VerifyOptions,
+    };
     use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
     use oid4vci::types::IssuerUrl;
     use rstest::rstest;
@@ -1468,6 +1475,74 @@ mod tests {
             .unwrap();
 
         assert!(vm.id.to_string().starts_with(&did));
+    }
+
+    async fn verify_vp_with_kb_iat(
+        iat_offset_secs: i64,
+        opts: VerifyOptions,
+    ) -> std::result::Result<Claims, Error> {
+        let (vc, holder) = sample_sd_jwt_vc_with_hld_kh().await;
+        let nonce = random_nonce().await;
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            holder.clone(),
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+        let vp = with_kb_jwt_iat(&vp, iat_offset_secs, &holder).await;
+
+        SdJwtAPI::verify_vp(
+            &vp,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+                response_uri: None,
+            }),
+            opts,
+            UniversalResolver::default(),
+        )
+        .await
+    }
+
+    #[rstest]
+    #[case::a_year_old(-365 * 24 * 3600, "KB-JWT is too old")]
+    #[case::a_year_ahead(365 * 24 * 3600, "KB-JWT iat is in the future")]
+    #[tokio::test]
+    async fn verify_vp_rejects_a_kb_jwt_iat_outside_the_default_window(
+        #[case] iat_offset_secs: i64,
+        #[case] expected: &str,
+    ) {
+        let err = verify_vp_with_kb_iat(iat_offset_secs, VerifyOptions::default())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&err, Error::Verifying { details, .. } if details.contains(expected)),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_vp_accepts_a_re_signed_kb_jwt_inside_the_default_window() {
+        verify_vp_with_kb_iat(-10, VerifyOptions::default())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn verify_vp_applies_the_kb_iat_window_from_the_options() {
+        let opts = || VerifyOptions {
+            kb_iat_window: Some(KbJwtIatWindow::new(
+                std::time::Duration::from_secs(3 * 3600),
+                std::time::Duration::from_secs(60),
+            )),
+            ..Default::default()
+        };
+
+        verify_vp_with_kb_iat(-2 * 3600, opts()).await.unwrap();
+        verify_vp_with_kb_iat(-4 * 3600, opts()).await.unwrap_err();
     }
 
     async fn sample_sd_jwt_vc_with_hld_kh() -> (Credential, impl KeyHandle) {

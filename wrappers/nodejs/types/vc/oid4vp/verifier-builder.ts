@@ -6,6 +6,7 @@ import {
   contextEnsuredNonceHandler,
   CredentialClassification,
   DIDResolver,
+  KbJwtIatWindow,
   KeyMetadata,
   Kms,
   NonceHandler,
@@ -28,6 +29,7 @@ export class OID4VPVerifierBuilder {
   private issuerTrustMode?: "enforce" | "report";
   private credentialClassification?: CredentialClassification;
   private rolelessAnchors?: "all_categories" | "eaa_only";
+  private kbJwtIatWindow?: KbJwtIatWindow;
 
   constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: ClientId) {
     this.kms = kms;
@@ -124,6 +126,18 @@ export class OID4VPVerifierBuilder {
   }
 
   /**
+   * Sets how far an SD-JWT Key Binding JWT's `iat` may be from this Verifier's clock. A
+   * presentation outside the window is rejected. Default: at most 5 minutes old and 60 seconds
+   * ahead.
+   *
+   * @param {KbJwtIatWindow} window - the maximum age and future skew, in seconds.
+   */
+  withKbJwtIatWindow(window: KbJwtIatWindow): this {
+    this.kbJwtIatWindow = window;
+    return this;
+  }
+
+  /**
    * Sets the X.509 certificate chain emitted in the `x5c` header of the signed
    * Authorization Request Object.
    *
@@ -156,6 +170,7 @@ export class OID4VPVerifierBuilder {
       this.issuerTrustMode,
       this.credentialClassification,
       this.rolelessAnchors,
+      this.kbJwtIatWindow,
     );
     return new OID4VPVerifier(inner);
   }
