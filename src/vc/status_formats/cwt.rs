@@ -3,7 +3,7 @@
 //!
 //! A token is accepted only when:
 //! - it is a COSE_Sign1, tagged or untagged, with nothing after it;
-//! - its `x5chain` certificate chain is trusted under the caller's [AnchorPolicy];
+//! - its `x5chain` certificate chain is trusted as the caller's [ListTrust] says;
 //! - its signature verifies with the key of the first certificate in that chain;
 //! - its protected `typ` is the list's media type, or its CoAP ID where it has one;
 //! - its `alg` is ES256 with a P-256 key or EdDSA with an Ed25519 key;
@@ -32,6 +32,7 @@ use crate::http::HttpClient;
 use crate::utils::certificate_validator::SharedCertificateValidator;
 use crate::utils::x509_truststore::Truststore;
 use crate::vc::formats::AnchorPolicy;
+use crate::vc::status_formats::list_trust::ListTrust;
 use crate::vc::status_formats::{
     MalformedStatusListSnafu, Result, StatusListFetchingSnafu, VCStatusSnafu,
 };
@@ -116,8 +117,7 @@ pub(crate) async fn verify(
     profile: &CwtProfile,
     uri: &str,
     token: &[u8],
-    trusted_certs: Option<&HashMap<String, String>>,
-    anchor_policy: AnchorPolicy,
+    trust: &ListTrust,
 ) -> Result<Claims> {
     let sign1 = decode_sign1(token)?;
     check_crit(&sign1.protected.header)?;
@@ -125,19 +125,27 @@ pub(crate) async fn verify(
     let alg = check_alg(&sign1.protected.header)?;
 
     let pem_chain = x5chain_pem(profile, &sign1)?;
-    let leaf = Truststore::new(
-        SharedCertificateValidator::get(),
-        trusted_certs.cloned().unwrap_or_default(),
-    )
-    .anchor_policy(anchor_policy)
-    .verify_chain_trust(&pem_chain, "")
-    .await
-    .map_err(|err| {
-        VCStatusSnafu {
-            details: err.to_string(),
+    let (anchors, policy) = match trust {
+        ListTrust::Anchor { ski, pem } => (
+            HashMap::from([(ski.clone(), pem.clone())]),
+            AnchorPolicy::Require,
+        ),
+        ListTrust::SameIssuerAs(issuer) => {
+            issuer.check_top_of(&pem_chain)?;
+            (HashMap::new(), AnchorPolicy::IntegrityOnly)
         }
-        .build()
-    })?;
+        ListTrust::AnyOf { anchors, policy } => (anchors.clone(), *policy),
+    };
+    let leaf = Truststore::new(SharedCertificateValidator::get(), anchors)
+        .anchor_policy(policy)
+        .verify_chain_trust(&pem_chain, "")
+        .await
+        .map_err(|err| {
+            VCStatusSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
     check_key_matches_alg(profile, leaf.public_key.public_key_as_jwk(), alg)?;
     sign1
         .verify_signature(b"", |signature, data| {
