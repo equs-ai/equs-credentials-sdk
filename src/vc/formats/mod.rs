@@ -10,6 +10,8 @@ use snafu::{Location, Snafu};
 use ssi::claims::SignatureError;
 use ssi::dids::DIDURL;
 use std::collections::HashMap;
+
+pub use sd_jwt_rs::KbJwtIatWindow;
 use std::fmt::Debug;
 
 pub mod json_ld_vc;
@@ -277,6 +279,9 @@ pub struct VerifyOptions {
     pub trusted_certs: Option<HashMap<String, String>>,
     /// Whether an issuer `x5c` / `x5chain` must reach one of `trusted_certs`.
     pub anchor_policy: AnchorPolicy,
+    /// How far an SD-JWT Key Binding JWT's `iat` may be from now. `None` uses
+    /// [KbJwtIatWindow::default]: at most 5 minutes old and 60 seconds ahead.
+    pub kb_iat_window: Option<KbJwtIatWindow>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
