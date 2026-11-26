@@ -404,31 +404,28 @@ impl StatusListJwt {
     }
 
     /// Reads the status list from a CWT. Not available on wasm, which has no X.509 validation.
-    #[cfg(not(target_arch = "wasm32"))]
     async fn extract_cwt_status_list(
         uri: &str,
         cwt: &[u8],
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
     ) -> Result<BitString> {
-        let trust = ListTrust::AnyOf {
-            anchors: trusted_certs.cloned().unwrap_or_default(),
-            policy: anchor_policy,
-        };
-        Box::pin(StatusListCwt::extract_status_list(uri, cwt, &trust)).await
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    async fn extract_cwt_status_list(
-        _uri: &str,
-        _cwt: &[u8],
-        _trusted_certs: Option<&HashMap<String, String>>,
-        _anchor_policy: AnchorPolicy,
-    ) -> Result<BitString> {
-        VCStatusSnafu {
-            details: format!("status list format not supported: {CWT_CONTENT_TYPE}"),
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (uri, cwt, trusted_certs, anchor_policy);
+            VCStatusSnafu {
+                details: format!("status list format not supported: {CWT_CONTENT_TYPE}"),
+            }
+            .fail()
         }
-        .fail()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let trust = ListTrust::AnyOf {
+                anchors: trusted_certs.cloned().unwrap_or_default(),
+                policy: anchor_policy,
+            };
+            Box::pin(StatusListCwt::extract_status_list(uri, cwt, &trust)).await
+        }
     }
 
     /// Fetches the token at `url`: a CWT if served as `application/statuslist+cwt`, else a JWT.

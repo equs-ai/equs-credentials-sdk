@@ -5,15 +5,16 @@
 //! is always checked against X.509 anchors.
 
 use coset::cbor::value::Value;
+use snafu::OptionExt;
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
 use crate::http::HttpClient;
 use crate::vc::presentation_exchange::StatusSize;
-use crate::vc::status_formats::cwt::{self, CwtProfile, claim, malformed};
+use crate::vc::status_formats::cwt::{self, CwtProfile, claim};
 use crate::vc::status_formats::list_trust::ListTrust;
 use crate::vc::status_formats::status_list_token_jwt::VCStatus;
-use crate::vc::status_formats::{Result, VCStatusSnafu};
+use crate::vc::status_formats::{MalformedStatusListSnafu, Result, VCStatusSnafu};
 
 /// Media type and `typ` header of a CWT Status List Token.
 pub(crate) const STATUS_LIST_CWT_TYPE: &str = "application/statuslist+cwt";
@@ -62,7 +63,10 @@ impl StatusListCwt {
 
 fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
     let Some(Value::Map(status_list)) = claim(claims, STATUS_LIST_CLAIM) else {
-        return Err(malformed("missed the `status_list` claim"));
+        return MalformedStatusListSnafu {
+            details: "missed the `status_list` claim",
+        }
+        .fail();
     };
     let field = |name: &str| {
         status_list
@@ -74,13 +78,27 @@ fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
     let bits = field("bits")
         .and_then(Value::as_integer)
         .and_then(|bits| u8::try_from(bits).ok())
-        .ok_or_else(|| malformed("`status_list.bits` must be 1, 2, 4 or 8"))?;
-    let bits = StatusSize::try_from(bits).map_err(|err| malformed(err.to_string()))?;
+        .context(MalformedStatusListSnafu {
+            details: "`status_list.bits` must be 1, 2, 4 or 8",
+        })?;
+    let bits = StatusSize::try_from(bits).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })?;
     let lst = field("lst")
         .and_then(Value::as_bytes)
-        .ok_or_else(|| malformed("`status_list.lst` must be a byte string"))?;
+        .context(MalformedStatusListSnafu {
+            details: "`status_list.lst` must be a byte string",
+        })?;
 
-    BitString::from_compressed_bytes(bits, lst, None).map_err(|err| malformed(err.to_string()))
+    BitString::from_compressed_bytes(bits, lst, None).map_err(|err| {
+        MalformedStatusListSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })
 }
 
 #[cfg(test)]
