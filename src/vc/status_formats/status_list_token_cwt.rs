@@ -1,10 +1,8 @@
 //! Reads CWT Status List Tokens (draft-ietf-oauth-status-list §5.2), the status list format
 //! used by mdoc credentials. The token checks are in [crate::vc::status_formats::cwt].
 //!
-//! An mdoc's MSO `status_list` is looked up only through [StatusListCwt::get_status], which asks
-//! for and accepts a CWT alone: ISO/IEC 18013-5 2nd ed. is the profile draft-ietf-oauth-status-list
-//! §13.9 leaves the format choice to, and a JWT list would be verified through DID key resolution,
-//! which never meets the X.509 anchors.
+//! An mdoc's MSO `status_list` is read only as a CWT ([StatusListCwt::get_status]), so its signer
+//! is always checked against X.509 anchors.
 
 use coset::cbor::value::Value;
 use ssi::status::token_status_list::BitString;

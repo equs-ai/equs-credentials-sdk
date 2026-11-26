@@ -43,8 +43,7 @@ use tracing::Level;
 use tracing::{info, instrument, warn};
 
 pub(crate) const DOCTYPE_CLAIM: &str = "doctype";
-/// How far the MSO validity window may be off this clock, as in the EUDI iOS library's
-/// `MsoValidation.validateValidityInfo`.
+/// How far the MSO validity window may be off this clock.
 pub(crate) const VALIDITY_LEEWAY: time::Duration = time::Duration::seconds(60);
 /// id-mdl-kp-mdlDS, the Extended Key Usage of an mdoc Document Signer (ISO/IEC 18013-5 Annex B.1.4).
 const MDL_DS_EKU: x509_parser::oid_registry::Oid<'static> =
@@ -355,10 +354,8 @@ impl MsoMdocAPI {
     }
 }
 
-/// Checks the Document Signer, the first certificate of `chain_pem`, as the EUDI reference issuer
-/// checks a PID signer (`eudi-srv-web-issuing-eudiw-py` `check_leaf_certificate`): it must not be
-/// a CA, and an Extended Key Usage, when it has one, must list [MDL_DS_EKU]. A DS without the
-/// extension passes, as there; one certified for another purpose (e.g. TLS) does not.
+/// Checks the Document Signer, the first certificate of `chain_pem`: it must not be a CA, and an
+/// Extended Key Usage, if present, must list [MDL_DS_EKU].
 fn check_document_signer_profile(chain_pem: &str) -> Result<()> {
     let rejected = |details: &str| {
         PresentationSnafu {
@@ -423,9 +420,8 @@ fn document_signer_validity(chain_pem: &str) -> Result<(OffsetDateTime, OffsetDa
     ))
 }
 
-/// Checks the MSO `validityInfo` as the EUDI iOS library does (`MsoValidation.validateValidityInfo`,
-/// after ISO/IEC 18013-5 §9.3.1): `signed` within the Document Signer's validity, `validFrom`
-/// before `validUntil`, and `now` within `validFrom`..`validUntil` give or take
+/// Checks the MSO `validityInfo` (ISO/IEC 18013-5 §9.3.1): `signed` within the Document Signer's
+/// validity, `validFrom` before `validUntil`, and `now` between them give or take
 /// [VALIDITY_LEEWAY].
 fn check_validity_info(
     credential: &DetailCredential,
@@ -909,7 +905,7 @@ pub mod tests {
         mdoc_vp_under(x5chain, ds_key, None, None, None)
     }
 
-    /// MSO `validityInfo`, as the EUDI iOS library checks it (`MsoValidation.validateValidityInfo`).
+    /// MSO `validityInfo` checks.
     mod validity_info {
         use super::{binder, mdoc_spec};
         use crate::did::universal::UniversalResolver;
@@ -1009,8 +1005,7 @@ pub mod tests {
         }
     }
 
-    /// The Document Signer certificate's profile, as the EUDI reference issuer checks a PID signer
-    /// (`eudi-srv-web-issuing-eudiw-py` `check_leaf_certificate`).
+    /// Document Signer certificate profile checks.
     mod document_signer {
         use super::{binder, sample_mso_mdoc_vp_under};
         use crate::did::universal::UniversalResolver;

@@ -63,10 +63,8 @@ pub(crate) struct CwtProfile {
 /// CWT claims, keyed as in the token.
 pub(crate) type Claims = Vec<(Value, Value)>;
 
-/// Fetches the `profile` list at `uri`: asks for the profile's media type only, and requires a
-/// success status, a `Content-Type` whose media type (before any `;` parameters, any case) is the
-/// profile's, and a body of at most [MAX_BODY_BYTES]. The cap applies once the [HttpClient] has
-/// returned the whole body, so it bounds what is parsed, not what is downloaded.
+/// Fetches the `profile` list at `uri`. Requires a success status, the profile's media type and a
+/// body of at most [MAX_BODY_BYTES], checked once the [HttpClient] has read it.
 pub(crate) async fn fetch(
     http_client: &dyn HttpClient,
     uri: &str,
