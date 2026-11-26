@@ -6,16 +6,14 @@
 //! §13.9 leaves the format choice to, and a JWT list would be verified through DID key resolution,
 //! which never meets the X.509 anchors.
 
-use std::collections::HashMap;
-
 use coset::cbor::value::Value;
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
 use crate::http::HttpClient;
-use crate::vc::formats::AnchorPolicy;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::cwt::{self, CwtProfile, claim, malformed};
+use crate::vc::status_formats::list_trust::ListTrust;
 use crate::vc::status_formats::status_list_token_jwt::VCStatus;
 use crate::vc::status_formats::{Result, VCStatusSnafu};
 
@@ -39,12 +37,10 @@ impl StatusListCwt {
         http_client: &dyn HttpClient,
         uri: &str,
         idx: usize,
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
+        trust: &ListTrust,
     ) -> Result<VCStatus> {
         let token = cwt::fetch(http_client, uri, &PROFILE).await?;
-        let status_list =
-            Self::extract_status_list(uri, &token, trusted_certs, anchor_policy).await?;
+        let status_list = Self::extract_status_list(uri, &token, trust).await?;
         let status = status_list.get(idx).ok_or_else(|| {
             VCStatusSnafu {
                 details: format!("failed to get index {idx}"),
@@ -55,14 +51,13 @@ impl StatusListCwt {
     }
 
     /// Verifies the CWT `token` fetched from `uri` and returns its status list.
-    #[instrument(level = Level::TRACE, skip(token, trusted_certs), err())]
+    #[instrument(level = Level::TRACE, skip(token, trust), err())]
     pub(crate) async fn extract_status_list(
         uri: &str,
         token: &[u8],
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
+        trust: &ListTrust,
     ) -> Result<BitString> {
-        let claims = cwt::verify(&PROFILE, uri, token, trusted_certs, anchor_policy).await?;
+        let claims = cwt::verify(&PROFILE, uri, token, trust).await?;
         status_list(&claims)
     }
 }
@@ -98,6 +93,7 @@ pub(crate) mod tests {
     use crate::utils::test_utils::anchors;
     use crate::vc::formats::AnchorPolicy;
     use crate::vc::status_formats::cwt::MAX_BODY_BYTES;
+    use crate::vc::status_formats::list_trust::ListTrust;
     use crate::vc::status_formats::status_list_token_jwt::VCStatus;
     use crate::vc::status_formats::status_list_token_jwt::tests::{
         status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
@@ -134,6 +130,18 @@ pub(crate) mod tests {
         test_fixtures::status_list_cwt(&spec(sub), &test_fixtures::keys().issuer)
     }
 
+    /// A CWT status list for `sub` with [x5c_status_list_cwt]'s entries, signed by `key` under
+    /// `x5chain`.
+    pub(crate) fn status_list_cwt_signed_by(
+        sub: &str,
+        x5chain: &str,
+        key: &test_fixtures::JWK,
+    ) -> Vec<u8> {
+        let mut spec = spec(sub);
+        spec["x5chain"] = json!(x5chain);
+        test_fixtures::status_list_cwt(&spec, key)
+    }
+
     fn cwt_with(edit: impl FnOnce(&mut Value)) -> Vec<u8> {
         let mut spec = spec(URI);
         edit(&mut spec);
@@ -144,19 +152,21 @@ pub(crate) mod tests {
         Some(anchors(&[status_list_root_ca()]))
     }
 
+    fn any_of(trusted_certs: Option<HashMap<String, String>>) -> ListTrust {
+        ListTrust::AnyOf {
+            anchors: trusted_certs.unwrap_or_default(),
+            policy: AnchorPolicy::Require,
+        }
+    }
+
     async fn entry(
         token: &[u8],
         idx: usize,
         trusted_certs: Option<HashMap<String, String>>,
     ) -> crate::vc::status_formats::Result<Option<u8>> {
-        StatusListCwt::extract_status_list(
-            URI,
-            token,
-            trusted_certs.as_ref(),
-            AnchorPolicy::Require,
-        )
-        .await
-        .map(|list| list.get(idx))
+        StatusListCwt::extract_status_list(URI, token, &any_of(trusted_certs))
+            .await
+            .map(|list| list.get(idx))
     }
 
     async fn error_of(token: Vec<u8>, trusted_certs: Option<HashMap<String, String>>) -> String {
@@ -352,6 +362,108 @@ pub(crate) mod tests {
         assert_contains(&error, "Certificate chain is not trusted");
     }
 
+    fn only(anchor: &str) -> ListTrust {
+        ListTrust::Anchor {
+            ski: "anchor".to_string(),
+            pem: anchor.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn cwt_is_accepted_under_its_only_anchor() {
+        let list = StatusListCwt::extract_status_list(
+            URI,
+            &x5c_status_list_cwt(URI),
+            &only(status_list_root_ca()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(list.get(2), Some(1));
+    }
+
+    #[tokio::test]
+    async fn cwt_whose_chain_ends_in_its_only_anchor_is_accepted() {
+        let token = cwt_with(|spec| {
+            spec["x5chain"] = json!(format!(
+                "{}{}",
+                status_list_signer_cert(),
+                status_list_root_ca()
+            ));
+        });
+
+        let list = StatusListCwt::extract_status_list(URI, &token, &only(status_list_root_ca()))
+            .await
+            .unwrap();
+
+        assert_eq!(list.get(2), Some(1));
+    }
+
+    #[tokio::test]
+    async fn only_anchor_is_not_reached_through_another_held_certificate() {
+        let root_key = test_fixtures::JWK::generate_p256();
+        let root = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging Root CA"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &root_key,
+            None,
+        );
+        let intermediate_key = test_fixtures::JWK::generate_p256();
+        let intermediate = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging Intermediate CA"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"],
+                "authority_key_identifier": true
+            }),
+            &intermediate_key,
+            Some((&root, &root_key)),
+        );
+        let signer_key = test_fixtures::JWK::generate_p256();
+        let signer = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging List Signer"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": false, "key_usages": ["digital_signature"],
+                "authority_key_identifier": true
+            }),
+            &signer_key,
+            Some((&intermediate, &intermediate_key)),
+        );
+        let token = status_list_cwt_signed_by(URI, &signer, &signer_key);
+
+        let error = StatusListCwt::extract_status_list(URI, &token, &only(&root))
+            .await
+            .unwrap_err()
+            .to_string();
+        let bridged = StatusListCwt::extract_status_list(
+            URI,
+            &token,
+            &any_of(Some(anchors(&[&root, &intermediate]))),
+        )
+        .await;
+
+        assert_contains(&error, "Certificate chain is not trusted");
+        assert!(bridged.is_ok(), "{bridged:?}");
+    }
+
+    #[tokio::test]
+    async fn cwt_under_another_trusted_anchor_is_rejected() {
+        let error = StatusListCwt::extract_status_list(
+            URI,
+            &x5c_status_list_cwt(URI),
+            &only(&unrelated_root_ca()),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert_contains(&error, "Certificate chain is not trusted");
+    }
+
     fn unrelated_root_ca() -> String {
         test_fixtures::x509(
             &json!({
@@ -395,14 +507,7 @@ pub(crate) mod tests {
         http_client: MockHttpClient,
         idx: usize,
     ) -> crate::vc::status_formats::Result<VCStatus> {
-        StatusListCwt::get_status(
-            &http_client,
-            URI,
-            idx,
-            trusted().as_ref(),
-            AnchorPolicy::Require,
-        )
-        .await
+        StatusListCwt::get_status(&http_client, URI, idx, &any_of(trusted())).await
     }
 
     #[rstest]

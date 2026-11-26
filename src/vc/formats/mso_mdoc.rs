@@ -31,6 +31,7 @@ use one_core::provider::presentation_formatter::{
 };
 use one_core::provider::revocation::token_status_list::{
     IDENTIFIER_LIST_ENTRY_TYPE, IDENTIFIER_LIST_ID_KEY, IDENTIFIER_LIST_URI_KEY,
+    MSO_STATUS_CERTIFICATE_KEY,
 };
 use one_core_portable::standardized_types::jwk::PublicJwk;
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,7 @@ use tracing::{info, instrument, warn};
 pub(crate) const DOCTYPE_CLAIM: &str = "doctype";
 /// How far the MSO validity window may be off this clock, as in the EUDI iOS library's
 /// `MsoValidation.validateValidityInfo`.
-const VALIDITY_LEEWAY: time::Duration = time::Duration::seconds(60);
+pub(crate) const VALIDITY_LEEWAY: time::Duration = time::Duration::seconds(60);
 /// id-mdl-kp-mdlDS, the Extended Key Usage of an mdoc Document Signer (ISO/IEC 18013-5 Annex B.1.4).
 const MDL_DS_EKU: x509_parser::oid_registry::Oid<'static> =
     x509_parser::der_parser::oid!(1.0.18013.5.1.2);
@@ -53,9 +54,24 @@ const TOKEN_STATUS_LIST_ENTRY: &str = "TokenStatusListEntry";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MdocStatus {
     None,
-    StatusList { uri: String, idx: usize },
-    IdentifierList { uri: String, id: CredentialId },
+    StatusList {
+        uri: String,
+        idx: usize,
+        certificate: Option<Vec<u8>>,
+    },
+    IdentifierList {
+        uri: String,
+        id: CredentialId,
+        certificate: Option<Vec<u8>>,
+    },
     Unsupported(Vec<String>),
+}
+
+/// The MSO status and issuer chain of a presentation, read without verifying it.
+#[derive(Debug)]
+pub(crate) struct UnverifiedMdocStatus {
+    pub status: MdocStatus,
+    pub issuer_chain: Option<String>,
 }
 
 /// An mdoc's identifier in its Identifier List. It identifies the credential, so `Debug`
@@ -288,8 +304,10 @@ impl MsoMdocAPI {
         })
     }
 
-    /// The MSO status of the first document, read without verifying the presentation.
-    pub(crate) async fn status_unverified(presentation: &Presentation) -> Result<MdocStatus> {
+    /// The first document's MSO status and issuer chain, read without verification.
+    pub(crate) async fn status_unverified(
+        presentation: &Presentation,
+    ) -> Result<UnverifiedMdocStatus> {
         let certificate_validator = SharedCertificateValidator::get();
         let ctx = ExtractPresentationCtx {
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
@@ -327,7 +345,13 @@ impl MsoMdocAPI {
                 }
                 .build()
             })?;
-        MdocStatus::from_credential_status(&details.status)
+        Ok(UnverifiedMdocStatus {
+            status: MdocStatus::from_credential_status(&details.status)?,
+            issuer_chain: match &details.issuer {
+                IdentifierDetails::Certificate(certificate) => Some(certificate.chain.clone()),
+                _ => None,
+            },
+        })
     }
 }
 
@@ -471,6 +495,12 @@ impl MdocStatus {
     }
 
     fn identifier_list(entry: &CredentialStatus) -> Result<Self> {
+        let malformed = || {
+            PresentationSnafu {
+                details: "Malformed mso_mdoc identifier_list".to_string(),
+            }
+            .build()
+        };
         let field = |name: &str| {
             entry
                 .additional_fields
@@ -478,35 +508,61 @@ impl MdocStatus {
                 .and_then(serde_json::Value::as_str)
         };
         let id = field(IDENTIFIER_LIST_ID_KEY).and_then(|id| URL_SAFE_NO_PAD.decode(id).ok());
+        let certificate = list_certificate(entry).ok_or_else(malformed)?;
         match (field(IDENTIFIER_LIST_URI_KEY), id) {
             (Some(uri), Some(id)) if !id.is_empty() => Ok(Self::IdentifierList {
                 uri: uri.to_string(),
                 id: CredentialId(id),
+                certificate,
             }),
-            _ => PresentationSnafu {
-                details: "Malformed mso_mdoc identifier_list".to_string(),
-            }
-            .fail(),
+            _ => Err(malformed()),
         }
     }
 
     fn status_list(status_list: &CredentialStatus) -> Result<Self> {
+        let malformed = || {
+            PresentationSnafu {
+                details: "Malformed mso_mdoc status_list".to_string(),
+            }
+            .build()
+        };
         let field = |name: &str| {
             status_list
                 .additional_fields
                 .get(name)
                 .and_then(serde_json::Value::as_str)
         };
+        let certificate = list_certificate(status_list).ok_or_else(malformed)?;
         match (field("uri"), field("idx").and_then(|idx| idx.parse().ok())) {
             (Some(uri), Some(idx)) => Ok(Self::StatusList {
                 uri: uri.to_string(),
                 idx,
+                certificate,
             }),
-            _ => PresentationSnafu {
-                details: "Malformed mso_mdoc status_list".to_string(),
-            }
-            .fail(),
+            _ => Err(malformed()),
         }
+    }
+
+    /// The MSO `certificate` of the list, the trust anchor of its `x5chain`.
+    pub(crate) fn certificate(&self) -> Option<&[u8]> {
+        match self {
+            Self::StatusList { certificate, .. } | Self::IdentifierList { certificate, .. } => {
+                certificate.as_deref()
+            }
+            Self::None | Self::Unsupported(_) => None,
+        }
+    }
+}
+
+/// `Some(None)` without a `certificate`, `Some(Some(der))` with one, none if it is not base64url.
+fn list_certificate(entry: &CredentialStatus) -> Option<Option<Vec<u8>>> {
+    match entry.additional_fields.get(MSO_STATUS_CERTIFICATE_KEY) {
+        None => Some(None),
+        Some(value) => value
+            .as_str()
+            .and_then(|der| URL_SAFE_NO_PAD.decode(der).ok())
+            .filter(|der| !der.is_empty())
+            .map(Some),
     }
 }
 
@@ -759,6 +815,15 @@ pub mod tests {
     /// [sample_mso_mdoc_vp_with_iaca] whose MSO carries `status`.
     pub fn sample_mso_mdoc_vp_with_status(status: serde_json::Value) -> (String, String) {
         mdoc_vp_from(None, None, Some(status))
+    }
+
+    /// A presentation with MSO `status`, issuer-signed by `ds_key` under `x5chain`.
+    pub fn sample_mso_mdoc_vp_with_status_under(
+        x5chain: &str,
+        ds_key: &test_fixtures::JWK,
+        status: serde_json::Value,
+    ) -> String {
+        mdoc_vp_under(x5chain, ds_key, None, None, Some(status))
     }
 
     /// The [HolderBinder] the sample presentations are bound to.
@@ -1109,6 +1174,7 @@ pub mod tests {
                 MdocStatus::IdentifierList {
                     uri: URI.to_string(),
                     id: CredentialId(b"6482".to_vec()),
+                    certificate: None,
                 }
             );
         }
@@ -1136,7 +1202,8 @@ pub mod tests {
                 status,
                 MdocStatus::StatusList {
                     uri: URI.to_string(),
-                    idx: 3
+                    idx: 3,
+                    certificate: None,
                 }
             );
         }
@@ -1150,6 +1217,9 @@ pub mod tests {
         #[case::standard_alphabet(json!({ "uri": URI, "id": "+/8B" }))]
         #[case::not_base64(json!({ "uri": URI, "id": "6482!" }))]
         #[case::id_not_a_string(json!({ "uri": URI, "id": 6482 }))]
+        #[case::certificate_not_base64url(json!({ "uri": URI, "id": "NjQ4Mg", "certificate": "MII+" }))]
+        #[case::empty_certificate(json!({ "uri": URI, "id": "NjQ4Mg", "certificate": "" }))]
+        #[case::certificate_not_a_string(json!({ "uri": URI, "id": "NjQ4Mg", "certificate": 1 }))]
         fn malformed_identifier_list_is_rejected(#[case] fields: serde_json::Value) {
             let error = MdocStatus::from_credential_status(&[identifier_list(fields)])
                 .unwrap_err()
@@ -1162,10 +1232,47 @@ pub mod tests {
         }
 
         #[test]
+        fn status_list_certificate_is_read() {
+            let status = MdocStatus::from_credential_status(&[entry(
+                "TokenStatusListEntry",
+                json!({ "uri": URI, "idx": "3", "certificate": "MIIB" }),
+            )])
+            .unwrap();
+
+            assert_eq!(status.certificate(), Some([0x30, 0x82, 0x01].as_slice()));
+        }
+
+        #[test]
+        fn identifier_list_certificate_is_read() {
+            let status = MdocStatus::from_credential_status(&[identifier_list(
+                json!({ "uri": URI, "id": "NjQ4Mg", "certificate": "MIIB" }),
+            )])
+            .unwrap();
+
+            assert_eq!(status.certificate(), Some([0x30, 0x82, 0x01].as_slice()));
+        }
+
+        #[test]
+        fn status_list_with_a_malformed_certificate_is_rejected() {
+            let error = MdocStatus::from_credential_status(&[entry(
+                "TokenStatusListEntry",
+                json!({ "uri": URI, "idx": "3", "certificate": "MII+" }),
+            )])
+            .unwrap_err()
+            .to_string();
+
+            assert!(
+                error.contains("Malformed mso_mdoc status_list"),
+                "unexpected error: {error}"
+            );
+        }
+
+        #[test]
         fn debug_does_not_print_the_identifier() {
             let status = MdocStatus::IdentifierList {
                 uri: URI.to_string(),
                 id: CredentialId(b"6482".to_vec()),
+                certificate: None,
             };
 
             let debug = format!("{status:?}");
