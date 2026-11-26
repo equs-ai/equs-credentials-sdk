@@ -264,3 +264,24 @@ pub fn mdl_chain() -> (String, String, JWK) {
     );
     (iaca, ds, ds_key)
 }
+
+/// Re-signs the Key Binding JWT of the SD-JWT presentation `vp` with `iat` set to now plus
+/// `iat_offset_secs`, keeping its other claims.
+pub async fn with_kb_jwt_iat(vp: &str, iat_offset_secs: i64, holder: &impl Signer) -> String {
+    let (sd_jwt, kb_jwt) = vp.rsplit_once('~').unwrap();
+    let mut parts = kb_jwt.split('.');
+    let header = parts.next().unwrap();
+    let mut claims: serde_json::Map<String, Value> =
+        serde_json::from_slice(&crate::utils::b64::decode(parts.next().unwrap()).unwrap()).unwrap();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    claims.insert("iat".to_string(), (now + iat_offset_secs).into());
+    let signing_input = format!(
+        "{header}.{}",
+        crate::utils::b64::encode(&serde_json::to_vec(&claims).unwrap())
+    );
+    let signature = holder.sign(signing_input.as_bytes()).await.unwrap();
+    format!(
+        "{sd_jwt}~{signing_input}.{}",
+        crate::utils::b64::encode(&signature)
+    )
+}

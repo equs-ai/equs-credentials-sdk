@@ -677,6 +677,7 @@ pub mod tests {
                 trusted_certs: Some(unrelated_iaca()),
                 selective_claims: None,
                 anchor_policy: Default::default(),
+                kb_iat_window: None,
             },
             UniversalResolver::default(),
         )
@@ -790,6 +791,7 @@ pub mod tests {
                 trusted_certs: None,
                 selective_claims: None,
                 anchor_policy: AnchorPolicy::IntegrityOnly,
+                kb_iat_window: None,
             },
             UniversalResolver::default(),
         )
@@ -950,6 +952,7 @@ pub mod tests {
                     trusted_certs: Some(anchors(&[&iaca])),
                     selective_claims: None,
                     anchor_policy: AnchorPolicy::Require,
+                    kb_iat_window: None,
                 },
                 UniversalResolver::default(),
             )
@@ -1064,6 +1067,7 @@ pub mod tests {
                     trusted_certs,
                     selective_claims: None,
                     anchor_policy: policy,
+                    kb_iat_window: None,
                 },
                 UniversalResolver::default(),
             )

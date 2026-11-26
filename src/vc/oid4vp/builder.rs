@@ -7,6 +7,7 @@ use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::KeyMetadata;
 use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
+use crate::vc::formats::KbJwtIatWindow;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
@@ -65,6 +66,7 @@ where
     credential_classification: CredentialClassification,
     roleless_anchors: RolelessAnchors,
     x5c_chain: Option<Vec<u8>>,
+    kb_iat_window: Option<KbJwtIatWindow>,
     _marker: PhantomData<KH>,
 }
 
@@ -114,6 +116,7 @@ where
             credential_classification: CredentialClassification::default(),
             roleless_anchors: RolelessAnchors::default(),
             x5c_chain: None,
+            kb_iat_window: None,
             _marker: Default::default(),
         }
     }
@@ -201,6 +204,7 @@ where
             credential_classification: self.credential_classification,
             roleless_anchors: self.roleless_anchors,
             x5c_chain: self.x5c_chain,
+            kb_iat_window: self.kb_iat_window,
         }
     }
 
@@ -388,6 +392,13 @@ where
         Ok(self)
     }
 
+    /// How far an SD-JWT Key Binding JWT's `iat` may be from now (default
+    /// [KbJwtIatWindow::default]: at most 5 minutes old and 60 seconds ahead).
+    pub fn with_kb_iat_window(mut self, window: KbJwtIatWindow) -> Self {
+        self.kb_iat_window = Some(window);
+        self
+    }
+
     /// How an untrusted issuer affects a verification (default [IssuerTrustMode::Enforce]).
     pub fn with_issuer_trust_mode(mut self, mode: IssuerTrustMode) -> Self {
         self.issuer_trust_mode = mode;
@@ -502,6 +513,7 @@ where
                 classification: self.credential_classification,
                 roleless_anchors: self.roleless_anchors,
             }),
+            kb_iat_window: self.kb_iat_window,
         });
 
         let verifier = VerifierService::new(

@@ -1140,6 +1140,7 @@ mod tests {
             let service = VerifierService::new("verifier", Default::default())
                 .with_verification_params(VerificationParams {
                     trusted_certs: Some(anchors(&pems)),
+                    kb_iat_window: None,
                     issuer_trust: Some(IssuerTrustConfig {
                         mode,
                         anchors: trust_anchors.clone(),
@@ -1211,6 +1212,7 @@ mod tests {
             let service = VerifierService::new("verifier", Default::default())
                 .with_verification_params(VerificationParams {
                     trusted_certs: Some(anchors(&[test_root_ca()])),
+                    kb_iat_window: None,
                     issuer_trust: None,
                 });
 
