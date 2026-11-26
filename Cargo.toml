@@ -153,14 +153,3 @@ strip = "none"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
-
-# equs-one-core 0.2.4 (SHA-384 MSOs, MSO status certificate) until it is published.
-# The sibling crates come from the same commit so their types stay one copy.
-[patch.crates-io]
-equs-one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-crypto = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-dcql = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-proc-macros = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }
-equs-one-core-standardized-types = { git = "https://github.com/equs-ai/one-core.git", rev = "74720b260ebec84318a5bc11224da0c088d697c9" }

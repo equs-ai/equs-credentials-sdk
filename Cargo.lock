@@ -1686,7 +1686,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2994,7 +2994,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core"
 version = "0.2.4"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd5f1d1192acc9b9565a8bd9db6e7037c04b44dd04c64e8100f1faee09dfa821"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3079,7 +3080,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-crypto"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d7a084e31e621c0cec0d13c93f780c7053aa9347fc8d34fc6250753b00b275a"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3115,7 +3117,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-dcql"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ccbe36b9904b8530f0dd3076f452af246e07ec5a1823bbf36852b19a9d0ea8c"
 dependencies = [
  "bon",
  "equs-one-core-standardized-types",
@@ -3127,7 +3130,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-portable"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40eec5598def11171ad8dbb9cf737b970d8a4bd082134fdb591f1d903861128c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3162,7 +3166,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -3174,7 +3179,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-shared-types"
 version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
 dependencies = [
  "regex",
  "serde",
@@ -3186,7 +3192,8 @@ dependencies = [
 [[package]]
 name = "equs-one-core-standardized-types"
 version = "0.2.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=74720b260ebec84318a5bc11224da0c088d697c9#74720b260ebec84318a5bc11224da0c088d697c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e261b6a6b8aaf436cf1fcda31c12c0de3fd50f6ed41787d0724585c956e4a8c"
 dependencies = [
  "anyhow",
  "ct-codecs",
@@ -4402,7 +4409,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -6019,7 +6026,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http 1.3.1",
@@ -6746,7 +6753,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6785,7 +6792,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -10875,7 +10882,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
