@@ -17,6 +17,7 @@ mod protocol_error;
 #[cfg(test)]
 mod tests;
 
+pub use crate::vc::formats::KbJwtIatWindow;
 pub use builder::Error as BuilderError;
 pub use builder::HolderBuilder;
 pub use builder::VerifierBuilder;

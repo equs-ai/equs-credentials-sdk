@@ -11,6 +11,7 @@ use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use equs_sdk::vc::core::KeyMetadata;
 use equs_sdk::vc::oid4vp::ClientMetadata;
+use equs_sdk::vc::oid4vp::KbJwtIatWindow;
 use equs_sdk::vc::trust::issuer::{CredentialClassification, IssuerTrustMode, RolelessAnchors};
 use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Result, Status};
@@ -53,6 +54,24 @@ impl From<JsCredentialClassification> for CredentialClassification {
     }
 }
 
+/// How far an SD-JWT Key Binding JWT's `iat` may be from the Verifier's clock.
+#[napi(object, js_name = "KbJwtIatWindow")]
+pub struct JsKbJwtIatWindow {
+    /// The oldest `iat` accepted, as an age in seconds.
+    pub max_age_seconds: u32,
+    /// How far ahead of the Verifier's clock `iat` may be, in seconds.
+    pub max_future_skew_seconds: u32,
+}
+
+impl From<JsKbJwtIatWindow> for KbJwtIatWindow {
+    fn from(value: JsKbJwtIatWindow) -> Self {
+        KbJwtIatWindow::new(
+            std::time::Duration::from_secs(value.max_age_seconds.into()),
+            std::time::Duration::from_secs(value.max_future_skew_seconds.into()),
+        )
+    }
+}
+
 fn parse_roleless_anchors(scope: &str) -> Result<RolelessAnchors> {
     serde_json::from_value(serde_json::Value::String(scope.to_string())).map_err(|_| {
         Error::new(
@@ -92,6 +111,7 @@ pub async fn _build_vp_verifier(
     credential_classification: Option<JsCredentialClassification>,
     #[napi(ts_arg_type = "'all_categories' | 'eaa_only' | null | undefined")]
     roleless_anchors: Option<String>,
+    kb_iat_window: Option<JsKbJwtIatWindow>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder = equs_sdk::vc::oid4vp::VerifierBuilder::new(
@@ -151,6 +171,9 @@ pub async fn _build_vp_verifier(
     }
     if let Some(scope) = roleless_anchors {
         builder = builder.with_roleless_anchors(parse_roleless_anchors(&scope)?);
+    }
+    if let Some(window) = kb_iat_window {
+        builder = builder.with_kb_iat_window(window.into());
     }
 
     let verifier = builder
