@@ -29,6 +29,7 @@ oauth2 = "5.0.0-rc.1"
 web-sys = { version = "0.3", features = ["console"] }
 url = { version = "2.5.2", features = ["serde"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 [dependencies.wasm-bindgen]
 version = '0.2.100'

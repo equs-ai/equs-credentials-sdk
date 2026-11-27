@@ -18,8 +18,6 @@ use std::collections::HashMap;
 use std::ops::{Add, Deref, DerefMut, Sub};
 use std::str::FromStr;
 
-use actix_web::cookie::time;
-use actix_web::cookie::time::OffsetDateTime;
 use equs_sdk::crypto::Key;
 use equs_sdk::did::DIDDoc;
 use equs_sdk::did::didweb::DIDWeb;
@@ -40,6 +38,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+use time::OffsetDateTime;
 
 const ISSUER_SERVER_URL: &str = "http://localhost:8088";
 const AUTH_SRV_URL: &str = "http://localhost:8080/realms/pid-issuer-realm";
