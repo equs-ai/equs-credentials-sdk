@@ -301,12 +301,12 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - The gate can only be green because `.cargo/audit.toml` allowlists two
   advisory IDs, which no lockfile change can reach. `cargo audit` reads that
   file from the project root, so local runs and both pipelines share one list.
-  Only `vulnerability` is denied, which is cargo-audit's default; the 26
-  `unmaintained`, `unsound` and `yanked` warnings are reported and do not gate.
+  Only `vulnerability` is denied, which is cargo-audit's default; the 21
+  `unmaintained` and `unsound` warnings are reported and do not gate.
   - RUSTSEC-2023-0071, `rsa` 0.6.1 and 0.9.10 — the Marvin timing attack.
-    `patched = []`: no fix has ever been released, and 0.10.0-rc is affected
-    too. Reached through `ssi-jwk` → `isomdl` → `equs-oid4vci`, and through
-    `openidconnect`. It drops out only when those stop pulling `rsa`.
+    Patched only in 0.10.0. Reached through `ssi-jwk` (under `ssi`, and
+    `isomdl` → `equs-oid4vci`) and through `openidconnect`, none of which
+    takes 0.10. It drops out only when those move to `rsa` 0.10.
   - RUSTSEC-2026-0387, `crypto-bigint` 0.3.2 and 0.5.5 — timing variability
     in operations meant to be constant-time. Patched only in 0.7.6. 0.5.5 is
     pinned by `elliptic-curve` 0.13, under `p256`, `p384`, `k256`, `ecdsa`,
@@ -317,7 +317,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `webpki-roots` and `webpki-root-certs` 1.0.10, and `rustls` 0.23.45.
   `rustls` needed `cargo update --precise`; a plain update stops at 0.23.43.
   `zip` 9 needed `equs-one-core` 0.1.2, which builds it without `lzma`.
-  `h2` 0.3 stays out of the lockfile only while nothing enables an `http2`
+  `libsqlite3-sys` 0.40 comes through the askar fork's `sqlx` 0.9, and needed
+  `cargo update -p`, since `sqlx` 0.9 still accepts the affected 0.30.
+  `cookie` stays out of the lockfile only while no demo enables `actix-web`'s
+  `cookies` feature. `h2` 0.3 stays out of the lockfile only while nothing enables an `http2`
   feature that pulls it: the SDK's `hyper` 0.14 (DIDComm HTTP transport)
   takes `server`, `http1`, `tcp` and `runtime` rather than `full`, and the
   demos take `actix-web` without default features.
