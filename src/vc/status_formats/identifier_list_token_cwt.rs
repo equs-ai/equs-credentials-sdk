@@ -4,18 +4,14 @@
 //! The token checks are in [crate::vc::status_formats::cwt]. On top of them, a list is accepted
 //! only when it has no `status_list` claim and its `identifiers` are byte strings.
 
-use std::collections::HashMap;
-
 use coset::cbor::value::Value;
-use oauth2::http;
-use oauth2::http::Method;
 use snafu::ensure;
 use tracing::{Level, instrument};
 
 use crate::http::HttpClient;
-use crate::vc::formats::AnchorPolicy;
 use crate::vc::status_formats::cwt::{self, CwtProfile, claim};
-use crate::vc::status_formats::{MalformedStatusListSnafu, Result, StatusListFetchingSnafu};
+use crate::vc::status_formats::list_trust::ListTrust;
+use crate::vc::status_formats::{MalformedStatusListSnafu, Result};
 
 /// Media type and `typ` header of an Identifier List.
 pub(crate) const IDENTIFIER_LIST_CWT_TYPE: &str = "application/identifierlist+cwt";
@@ -23,7 +19,6 @@ pub(crate) const IDENTIFIER_LIST_CWT_TYPE: &str = "application/identifierlist+cw
 const IDENTIFIER_LIST_CLAIM: i64 = 65530;
 const STATUS_LIST_CLAIM: i64 = 65533;
 
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 const MAX_IDENTIFIERS: usize = 1_000_000;
 
 const PROFILE: CwtProfile = CwtProfile {
@@ -36,28 +31,26 @@ pub(crate) struct IdentifierListCwt;
 
 impl IdentifierListCwt {
     /// Fetches the Identifier List at `uri` and returns whether `id` is in it.
-    #[instrument(level = Level::TRACE, skip(http_client, id, trusted_certs), err())]
+    #[instrument(level = Level::TRACE, skip(http_client, id, trust), err())]
     pub(crate) async fn is_revoked(
         http_client: &dyn HttpClient,
         uri: &str,
         id: &[u8],
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
+        trust: &ListTrust,
     ) -> Result<bool> {
-        let token = fetch(http_client, uri).await?;
-        Self::is_listed(uri, &token, id, trusted_certs, anchor_policy).await
+        let token = cwt::fetch(http_client, uri, &PROFILE).await?;
+        Self::is_listed(uri, &token, id, trust).await
     }
 
     /// Verifies the CWT `token` fetched from `uri` and returns whether `id` is in it.
-    #[instrument(level = Level::TRACE, skip(token, id, trusted_certs), err())]
+    #[instrument(level = Level::TRACE, skip(token, id, trust), err())]
     pub(crate) async fn is_listed(
         uri: &str,
         token: &[u8],
         id: &[u8],
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
+        trust: &ListTrust,
     ) -> Result<bool> {
-        let claims = cwt::verify(&PROFILE, uri, token, trusted_certs, anchor_policy).await?;
+        let claims = cwt::verify(&PROFILE, uri, token, trust).await?;
         ensure!(
             claim(&claims, STATUS_LIST_CLAIM).is_none(),
             MalformedStatusListSnafu {
@@ -106,57 +99,15 @@ fn identifiers(claims: &[(Value, Value)]) -> Result<&[(Value, Value)]> {
     Ok(identifiers)
 }
 
-/// Fetches the Identifier List at `uri`.
-async fn fetch(http_client: &dyn HttpClient, uri: &str) -> Result<Vec<u8>> {
-    let fetching = |details: String| StatusListFetchingSnafu { details }.build();
-    let request = http::request::Builder::new()
-        .uri(uri)
-        .method(Method::GET)
-        .header(http::header::ACCEPT, IDENTIFIER_LIST_CWT_TYPE)
-        .body(vec![])
-        .map_err(|err| fetching(err.to_string()))?;
-    let response = http_client
-        .async_call(request)
-        .await
-        .map_err(|err| fetching(err.to_string()))?;
-    if !response.status().is_success() {
-        return Err(fetching(format!(
-            "identifier list request failed with {}",
-            response.status()
-        )));
-    }
-    let is_identifier_list = response
-        .headers()
-        .get(http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| {
-            value
-                .to_ascii_lowercase()
-                .starts_with(IDENTIFIER_LIST_CWT_TYPE)
-        });
-    if !is_identifier_list {
-        return Err(fetching(format!(
-            "identifier list is not served as {IDENTIFIER_LIST_CWT_TYPE}"
-        )));
-    }
-    let body = response.into_body();
-    if body.len() > MAX_BODY_BYTES {
-        return Err(fetching(format!(
-            "identifier list is larger than {MAX_BODY_BYTES} bytes"
-        )));
-    }
-    Ok(body)
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{
-        IDENTIFIER_LIST_CLAIM, IdentifierListCwt, MAX_BODY_BYTES, MAX_IDENTIFIERS, identifiers,
-    };
+    use super::{IDENTIFIER_LIST_CLAIM, IdentifierListCwt, MAX_IDENTIFIERS, identifiers};
     use crate::http::{HttpResponse, MockHttpClient};
     use crate::utils::http::test::mock_http_fn;
     use crate::utils::test_utils::anchors;
     use crate::vc::formats::AnchorPolicy;
+    use crate::vc::status_formats::cwt::MAX_BODY_BYTES;
+    use crate::vc::status_formats::list_trust::ListTrust;
     use crate::vc::status_formats::status_list_token_jwt::tests::{
         status_list_root_ca, status_list_signer_cert,
     };
@@ -193,6 +144,17 @@ pub(crate) mod tests {
         test_fixtures::status_list_cwt(&spec(sub), &test_fixtures::keys().issuer)
     }
 
+    /// An Identifier List for `sub` listing [LISTED_ID], signed by `key` under `x5chain`.
+    pub(crate) fn identifier_list_cwt_signed_by(
+        sub: &str,
+        x5chain: &str,
+        key: &test_fixtures::JWK,
+    ) -> Vec<u8> {
+        let mut spec = spec(sub);
+        spec["x5chain"] = json!(x5chain);
+        test_fixtures::status_list_cwt(&spec, key)
+    }
+
     fn cwt_with(edit: impl FnOnce(&mut Value)) -> Vec<u8> {
         let mut spec = spec(URI);
         edit(&mut spec);
@@ -203,9 +165,15 @@ pub(crate) mod tests {
         Some(anchors(&[status_list_root_ca()]))
     }
 
+    fn any_of(trusted_certs: Option<HashMap<String, String>>) -> ListTrust {
+        ListTrust::AnyOf {
+            anchors: trusted_certs.unwrap_or_default(),
+            policy: AnchorPolicy::Require,
+        }
+    }
+
     async fn listed(token: &[u8], id: &[u8]) -> crate::vc::status_formats::Result<bool> {
-        IdentifierListCwt::is_listed(URI, token, id, trusted().as_ref(), AnchorPolicy::Require)
-            .await
+        IdentifierListCwt::is_listed(URI, token, id, &any_of(trusted())).await
     }
 
     async fn error_of(token: Vec<u8>) -> String {
@@ -331,12 +299,53 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn list_without_its_anchor_is_rejected() {
+        let error =
+            IdentifierListCwt::is_listed(URI, &identifier_list_cwt(URI), LISTED, &any_of(None))
+                .await
+                .unwrap_err()
+                .to_string();
+
+        assert_contains(&error, "Certificate chain is not trusted");
+    }
+
+    fn only(anchor: &str) -> ListTrust {
+        ListTrust::Anchor {
+            ski: "anchor".to_string(),
+            pem: anchor.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_under_its_only_anchor_is_read() {
+        let listed = IdentifierListCwt::is_listed(
+            URI,
+            &identifier_list_cwt(URI),
+            LISTED,
+            &only(status_list_root_ca()),
+        )
+        .await
+        .unwrap();
+
+        assert!(listed);
+    }
+
+    #[tokio::test]
+    async fn list_under_another_trusted_anchor_is_rejected() {
+        let other_root = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Other Identifier List Root"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
+
         let error = IdentifierListCwt::is_listed(
             URI,
             &identifier_list_cwt(URI),
             LISTED,
-            None,
-            AnchorPolicy::Require,
+            &only(&other_root),
         )
         .await
         .unwrap_err()
@@ -383,14 +392,7 @@ pub(crate) mod tests {
     }
 
     async fn revoked(http_client: MockHttpClient) -> crate::vc::status_formats::Result<bool> {
-        IdentifierListCwt::is_revoked(
-            &http_client,
-            URI,
-            LISTED,
-            trusted().as_ref(),
-            AnchorPolicy::Require,
-        )
-        .await
+        IdentifierListCwt::is_revoked(&http_client, URI, LISTED, &any_of(trusted())).await
     }
 
     #[rstest]
@@ -411,6 +413,12 @@ pub(crate) mod tests {
         "is not served as application/identifierlist+cwt"
     )]
     #[case::no_content_type(identifier_list_cwt(URI), None, StatusCode::OK, "is not served as")]
+    #[case::longer_media_type(
+        identifier_list_cwt(URI),
+        Some("application/identifierlist+cwtx"),
+        StatusCode::OK,
+        "is not served as"
+    )]
     #[case::not_found(
         identifier_list_cwt(URI),
         Some("application/identifierlist+cwt"),

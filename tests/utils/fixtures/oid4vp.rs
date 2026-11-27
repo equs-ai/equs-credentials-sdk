@@ -634,7 +634,7 @@ pub fn mdl_iaca(key: &test_fixtures::JWK) -> String {
     )
 }
 
-/// IACA certificate, a DS certificate (`CN=Test DS, C=US`) it issued, and the DS key.
+/// IACA certificate, a DS certificate (`CN=Test DS, C=US`, mdoc DS EKU) it issued, and the DS key.
 pub fn mdl_chain() -> (String, String, test_fixtures::JWK) {
     let iaca_key = test_fixtures::JWK::generate_p256();
     let iaca = mdl_iaca(&iaca_key);
@@ -643,7 +643,8 @@ pub fn mdl_chain() -> (String, String, test_fixtures::JWK) {
         &json!({
             "subject": [["CN", "Test DS"], ["C", "US"]],
             "not_before": "2026-01-01", "not_after": "2046-01-01",
-            "key_usages": ["digital_signature"], "authority_key_identifier": true
+            "key_usages": ["digital_signature"], "extended_key_usages": ["mdl_ds"],
+            "authority_key_identifier": true
         }),
         &ds_key,
         Some((&iaca, &iaca_key)),

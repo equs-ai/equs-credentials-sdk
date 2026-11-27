@@ -3,7 +3,7 @@
 //!
 //! A token is accepted only when:
 //! - it is a COSE_Sign1, tagged or untagged, with nothing after it;
-//! - its `x5chain` certificate chain is trusted under the caller's [AnchorPolicy];
+//! - its `x5chain` certificate chain is trusted as the caller's [ListTrust] says;
 //! - its signature verifies with the key of the first certificate in that chain;
 //! - its protected `typ` is the list's media type, or its CoAP ID where it has one;
 //! - its `alg` is ES256 with a P-256 key or EdDSA with an Ed25519 key;
@@ -24,13 +24,19 @@ use coset::{
     Algorithm as CoseAlgorithm, CborSerializable, CoseSign1, Header, Label,
     RegisteredLabelWithPrivate, TaggedCborSerializable,
 };
+use oauth2::http;
+use oauth2::http::Method;
 use one_core_portable::standardized_types::jwk::PublicJwk;
 use snafu::{OptionExt, ensure};
 
+use crate::http::HttpClient;
 use crate::utils::certificate_validator::SharedCertificateValidator;
 use crate::utils::x509_truststore::Truststore;
 use crate::vc::formats::AnchorPolicy;
-use crate::vc::status_formats::{MalformedStatusListSnafu, Result, VCStatusSnafu};
+use crate::vc::status_formats::list_trust::ListTrust;
+use crate::vc::status_formats::{
+    MalformedStatusListSnafu, Result, StatusListFetchingSnafu, VCStatusSnafu,
+};
 
 const ALG_HEADER: i64 = 1;
 const TYP_HEADER: i64 = 16;
@@ -45,6 +51,9 @@ const UNDERSTOOD_CRIT_HEADERS: [i64; 3] = [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADE
 /// How far `iat` may be ahead of this clock, for clock skew with the list's issuer.
 const MAX_IAT_SKEW_SECS: f64 = 60.0;
 
+/// Largest list body accepted from a server.
+pub(crate) const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+
 /// The kind of list a CWT carries.
 pub(crate) struct CwtProfile {
     /// Name used in error messages.
@@ -58,13 +67,59 @@ pub(crate) struct CwtProfile {
 /// CWT claims, keyed as in the token.
 pub(crate) type Claims = Vec<(Value, Value)>;
 
+/// Fetches the `profile` list at `uri`. Requires a success status, the profile's media type and a
+/// body of at most [MAX_BODY_BYTES], checked once the [HttpClient] has read it.
+pub(crate) async fn fetch(
+    http_client: &dyn HttpClient,
+    uri: &str,
+    profile: &CwtProfile,
+) -> Result<Vec<u8>> {
+    let fetching = |details: String| StatusListFetchingSnafu { details }.build();
+    let request = http::request::Builder::new()
+        .uri(uri)
+        .method(Method::GET)
+        .header(http::header::ACCEPT, profile.media_type)
+        .body(vec![])
+        .map_err(|err| fetching(err.to_string()))?;
+    let response = http_client
+        .async_call(request)
+        .await
+        .map_err(|err| fetching(err.to_string()))?;
+    if !response.status().is_success() {
+        return Err(fetching(format!(
+            "{} request failed with {}",
+            profile.name,
+            response.status()
+        )));
+    }
+    let has_media_type = response
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|essence| essence.trim().eq_ignore_ascii_case(profile.media_type));
+    if !has_media_type {
+        return Err(fetching(format!(
+            "{} is not served as {}",
+            profile.name, profile.media_type
+        )));
+    }
+    let body = response.into_body();
+    if body.len() > MAX_BODY_BYTES {
+        return Err(fetching(format!(
+            "{} is larger than {MAX_BODY_BYTES} bytes",
+            profile.name
+        )));
+    }
+    Ok(body)
+}
+
 /// Verifies the CWT `token` fetched from `uri` and returns its claims.
 pub(crate) async fn verify(
     profile: &CwtProfile,
     uri: &str,
     token: &[u8],
-    trusted_certs: Option<&HashMap<String, String>>,
-    anchor_policy: AnchorPolicy,
+    trust: &ListTrust,
 ) -> Result<Claims> {
     let sign1 = decode_sign1(token)?;
     check_crit(&sign1.protected.header)?;
@@ -72,19 +127,27 @@ pub(crate) async fn verify(
     let alg = read_alg(&sign1.protected.header)?;
 
     let pem_chain = x5chain_pem(profile, &sign1)?;
-    let leaf = Truststore::new(
-        SharedCertificateValidator::get(),
-        trusted_certs.cloned().unwrap_or_default(),
-    )
-    .anchor_policy(anchor_policy)
-    .verify_chain_trust(&pem_chain, "")
-    .await
-    .map_err(|err| {
-        VCStatusSnafu {
-            details: err.to_string(),
+    let (anchors, policy) = match trust {
+        ListTrust::Anchor { ski, pem } => (
+            HashMap::from([(ski.clone(), pem.clone())]),
+            AnchorPolicy::Require,
+        ),
+        ListTrust::SameIssuerAs(issuer) => {
+            issuer.check_top_of(&pem_chain)?;
+            (HashMap::new(), AnchorPolicy::IntegrityOnly)
         }
-        .build()
-    })?;
+        ListTrust::AnyOf { anchors, policy } => (anchors.clone(), *policy),
+    };
+    let leaf = Truststore::new(SharedCertificateValidator::get(), anchors)
+        .anchor_policy(policy)
+        .verify_chain_trust(&pem_chain, "")
+        .await
+        .map_err(|err| {
+            VCStatusSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
     check_key_matches_alg(profile, leaf.public_key.public_key_as_jwk(), alg)?;
     sign1
         .verify_signature(b"", |signature, data| {

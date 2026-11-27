@@ -202,7 +202,7 @@ fn public_jwk(key: &JWK) -> PublicJwk {
 /// `x5c` header. Every `spec` field is optional: `{"subject": [["CN", "..."], ["C", "US"]],
 /// "sans": ["a.example"], "not_before": "2026-09-23", "not_after": "2046-09-18",
 /// "ca": true | false | {"path_len": 0}, "key_usages": ["digital_signature", "key_encipherment",
-/// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth"],
+/// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth", "mdl_ds"],
 /// "authority_key_identifier": true, "crl_distribution_points": ["https://crl.example/ca.crl"]}`.
 /// The subject keeps the order given, the serial number is random, and a field or value it cannot
 /// apply panics.
@@ -268,6 +268,7 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         .map(|usage| match usage {
             ExtendedKeyUsage::ServerAuth => ExtendedKeyUsagePurpose::ServerAuth,
             ExtendedKeyUsage::ClientAuth => ExtendedKeyUsagePurpose::ClientAuth,
+            ExtendedKeyUsage::MdlDs => ExtendedKeyUsagePurpose::Other(vec![1, 0, 18013, 5, 1, 2]),
         })
         .collect();
     params.use_authority_key_identifier_extension = spec.authority_key_identifier.unwrap_or(false);
@@ -371,6 +372,8 @@ enum KeyUsage {
 enum ExtendedKeyUsage {
     ServerAuth,
     ClientAuth,
+    /// ISO/IEC 18013-5 mdoc Document Signer, `1.0.18013.5.1.2`.
+    MdlDs,
 }
 
 #[cfg(feature = "x509")]
@@ -1128,6 +1131,23 @@ mod tests {
     }
 
     #[cfg(feature = "x509")]
+    #[test]
+    fn x509_writes_the_mdoc_document_signer_extended_key_usage() {
+        let cert = x509(
+            &json!({ "subject": [["CN", "DS"]], "extended_key_usages": ["mdl_ds"] }),
+            &keys().issuer,
+            None,
+        );
+
+        let (_, pem) = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap();
+        let cert_x509 = pem.parse_x509().unwrap();
+        let eku = cert_x509.extended_key_usage().unwrap().unwrap().value;
+        assert_eq!(
+            eku.other,
+            [x509_parser::oid_registry::Oid::from(&[1, 0, 18013, 5, 1, 2]).unwrap()]
+        );
+    }
+
     #[test]
     fn x509_issues_a_leaf_for_the_fixture_key_under_a_root() {
         let ca_key = JWK::generate_p256();

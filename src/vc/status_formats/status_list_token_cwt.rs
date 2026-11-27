@@ -1,17 +1,20 @@
 //! Reads CWT Status List Tokens (draft-ietf-oauth-status-list §5.2), the status list format
 //! used by mdoc credentials. The token checks are in [crate::vc::status_formats::cwt].
-
-use std::collections::HashMap;
+//!
+//! An mdoc's MSO `status_list` is read only as a CWT ([StatusListCwt::get_status]), so its signer
+//! is always checked against X.509 anchors.
 
 use coset::cbor::value::Value;
 use snafu::OptionExt;
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
-use crate::vc::formats::AnchorPolicy;
+use crate::http::HttpClient;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::cwt::{self, CwtProfile, claim};
-use crate::vc::status_formats::{MalformedStatusListSnafu, Result};
+use crate::vc::status_formats::list_trust::ListTrust;
+use crate::vc::status_formats::status_list_token_jwt::VCStatus;
+use crate::vc::status_formats::{MalformedStatusListSnafu, Result, VCStatusSnafu};
 
 /// Media type and `typ` header of a CWT Status List Token.
 pub(crate) const STATUS_LIST_CWT_TYPE: &str = "application/statuslist+cwt";
@@ -27,15 +30,33 @@ const PROFILE: CwtProfile = CwtProfile {
 pub(crate) struct StatusListCwt;
 
 impl StatusListCwt {
+    /// Fetches the CWT status list at `uri`, verifies it and returns the status at `idx`.
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    pub(crate) async fn get_status(
+        http_client: &dyn HttpClient,
+        uri: &str,
+        idx: usize,
+        trust: &ListTrust,
+    ) -> Result<VCStatus> {
+        let token = cwt::fetch(http_client, uri, &PROFILE).await?;
+        let status_list = Self::extract_status_list(uri, &token, trust).await?;
+        let status = status_list.get(idx).ok_or_else(|| {
+            VCStatusSnafu {
+                details: format!("failed to get index {idx}"),
+            }
+            .build()
+        })?;
+        Ok(status.into())
+    }
+
     /// Verifies the CWT `token` fetched from `uri` and returns its status list.
-    #[instrument(level = Level::TRACE, skip(token, trusted_certs), err())]
+    #[instrument(level = Level::TRACE, skip(token, trust), err())]
     pub(crate) async fn extract_status_list(
         uri: &str,
         token: &[u8],
-        trusted_certs: Option<&HashMap<String, String>>,
-        anchor_policy: AnchorPolicy,
+        trust: &ListTrust,
     ) -> Result<BitString> {
-        let claims = cwt::verify(&PROFILE, uri, token, trusted_certs, anchor_policy).await?;
+        let claims = cwt::verify(&PROFILE, uri, token, trust).await?;
         status_list(&claims)
     }
 }
@@ -83,14 +104,23 @@ fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::StatusListCwt;
+    use crate::http::{HttpResponse, MockHttpClient};
+    use crate::utils::http::test::mock_http_fn;
     use crate::utils::test_utils::anchors;
     use crate::vc::formats::AnchorPolicy;
+    use crate::vc::status_formats::cwt::MAX_BODY_BYTES;
+    use crate::vc::status_formats::list_trust::ListTrust;
+    use crate::vc::status_formats::status_list_token_jwt::VCStatus;
     use crate::vc::status_formats::status_list_token_jwt::tests::{
-        status_list_root_ca, status_list_signer_cert,
+        status_list_root_ca, status_list_signer_cert, x5c_status_list_token,
     };
+    use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
+    use oauth2::http::{Method, StatusCode};
     use rstest::rstest;
     use serde_json::{Value, json};
     use std::collections::HashMap;
+    use std::str::FromStr;
+    use url::Url;
 
     const URI: &str = "https://status.example/mdoc/1";
 
@@ -116,6 +146,18 @@ pub(crate) mod tests {
         test_fixtures::status_list_cwt(&spec(sub), &test_fixtures::keys().issuer)
     }
 
+    /// A CWT status list for `sub` with [x5c_status_list_cwt]'s entries, signed by `key` under
+    /// `x5chain`.
+    pub(crate) fn status_list_cwt_signed_by(
+        sub: &str,
+        x5chain: &str,
+        key: &test_fixtures::JWK,
+    ) -> Vec<u8> {
+        let mut spec = spec(sub);
+        spec["x5chain"] = json!(x5chain);
+        test_fixtures::status_list_cwt(&spec, key)
+    }
+
     fn cwt_with(edit: impl FnOnce(&mut Value)) -> Vec<u8> {
         let mut spec = spec(URI);
         edit(&mut spec);
@@ -126,19 +168,21 @@ pub(crate) mod tests {
         Some(anchors(&[status_list_root_ca()]))
     }
 
+    fn any_of(trusted_certs: Option<HashMap<String, String>>) -> ListTrust {
+        ListTrust::AnyOf {
+            anchors: trusted_certs.unwrap_or_default(),
+            policy: AnchorPolicy::Require,
+        }
+    }
+
     async fn entry(
         token: &[u8],
         idx: usize,
         trusted_certs: Option<HashMap<String, String>>,
     ) -> crate::vc::status_formats::Result<Option<u8>> {
-        StatusListCwt::extract_status_list(
-            URI,
-            token,
-            trusted_certs.as_ref(),
-            AnchorPolicy::Require,
-        )
-        .await
-        .map(|list| list.get(idx))
+        StatusListCwt::extract_status_list(URI, token, &any_of(trusted_certs))
+            .await
+            .map(|list| list.get(idx))
     }
 
     async fn error_of(token: Vec<u8>, trusted_certs: Option<HashMap<String, String>>) -> String {
@@ -334,6 +378,108 @@ pub(crate) mod tests {
         assert_contains(&error, "Certificate chain is not trusted");
     }
 
+    fn only(anchor: &str) -> ListTrust {
+        ListTrust::Anchor {
+            ski: "anchor".to_string(),
+            pem: anchor.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn cwt_is_accepted_under_its_only_anchor() {
+        let list = StatusListCwt::extract_status_list(
+            URI,
+            &x5c_status_list_cwt(URI),
+            &only(status_list_root_ca()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(list.get(2), Some(1));
+    }
+
+    #[tokio::test]
+    async fn cwt_whose_chain_ends_in_its_only_anchor_is_accepted() {
+        let token = cwt_with(|spec| {
+            spec["x5chain"] = json!(format!(
+                "{}{}",
+                status_list_signer_cert(),
+                status_list_root_ca()
+            ));
+        });
+
+        let list = StatusListCwt::extract_status_list(URI, &token, &only(status_list_root_ca()))
+            .await
+            .unwrap();
+
+        assert_eq!(list.get(2), Some(1));
+    }
+
+    #[tokio::test]
+    async fn only_anchor_is_not_reached_through_another_held_certificate() {
+        let root_key = test_fixtures::JWK::generate_p256();
+        let root = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging Root CA"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &root_key,
+            None,
+        );
+        let intermediate_key = test_fixtures::JWK::generate_p256();
+        let intermediate = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging Intermediate CA"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"],
+                "authority_key_identifier": true
+            }),
+            &intermediate_key,
+            Some((&root, &root_key)),
+        );
+        let signer_key = test_fixtures::JWK::generate_p256();
+        let signer = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Bridging List Signer"]],
+                "not_before": "2025-01-01", "not_after": "2046-01-01",
+                "ca": false, "key_usages": ["digital_signature"],
+                "authority_key_identifier": true
+            }),
+            &signer_key,
+            Some((&intermediate, &intermediate_key)),
+        );
+        let token = status_list_cwt_signed_by(URI, &signer, &signer_key);
+
+        let error = StatusListCwt::extract_status_list(URI, &token, &only(&root))
+            .await
+            .unwrap_err()
+            .to_string();
+        let bridged = StatusListCwt::extract_status_list(
+            URI,
+            &token,
+            &any_of(Some(anchors(&[&root, &intermediate]))),
+        )
+        .await;
+
+        assert_contains(&error, "Certificate chain is not trusted");
+        assert!(bridged.is_ok(), "{bridged:?}");
+    }
+
+    #[tokio::test]
+    async fn cwt_under_another_trusted_anchor_is_rejected() {
+        let error = StatusListCwt::extract_status_list(
+            URI,
+            &x5c_status_list_cwt(URI),
+            &only(&unrelated_root_ca()),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert_contains(&error, "Certificate chain is not trusted");
+    }
+
     fn unrelated_root_ca() -> String {
         test_fixtures::x509(
             &json!({
@@ -344,5 +490,112 @@ pub(crate) mod tests {
             &test_fixtures::JWK::generate_p256(),
             None,
         )
+    }
+
+    /// Serves `body` once at [URI] with `content_type` and `status`, asking for a CWT only.
+    fn served(
+        body: Vec<u8>,
+        content_type: Option<&'static str>,
+        status: StatusCode,
+    ) -> MockHttpClient {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::GET,
+            Url::from_str(URI).unwrap(),
+            move |request| {
+                assert_eq!(request.headers()[ACCEPT], "application/statuslist+cwt");
+                let mut response = HttpResponse::new(body.clone());
+                *response.status_mut() = status;
+                if let Some(content_type) = content_type {
+                    response
+                        .headers_mut()
+                        .insert(CONTENT_TYPE, content_type.parse().unwrap());
+                }
+                Ok(response)
+            },
+            1.into(),
+        );
+        http_client
+    }
+
+    async fn status_at(
+        http_client: MockHttpClient,
+        idx: usize,
+    ) -> crate::vc::status_formats::Result<VCStatus> {
+        StatusListCwt::get_status(&http_client, URI, idx, &any_of(trusted())).await
+    }
+
+    #[rstest]
+    #[case::exact("application/statuslist+cwt")]
+    #[case::with_parameters("Application/StatusList+CWT; charset=binary")]
+    #[tokio::test]
+    async fn get_status_reads_the_fetched_list(#[case] content_type: &'static str) {
+        let http_client = served(x5c_status_list_cwt(URI), Some(content_type), StatusCode::OK);
+
+        assert_eq!(status_at(http_client, 2).await.unwrap(), VCStatus::Invalid);
+    }
+
+    #[rstest]
+    #[case::jwt_type(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+jwt"),
+        StatusCode::OK,
+        "is not served as application/statuslist+cwt"
+    )]
+    #[case::no_content_type(x5c_status_list_cwt(URI), None, StatusCode::OK, "is not served as")]
+    #[case::longer_media_type(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+cwtx"),
+        StatusCode::OK,
+        "is not served as"
+    )]
+    #[case::jwt_body_labelled_cwt(
+        x5c_status_list_token(URI, "statuslist+jwt", true).into_bytes(),
+        Some("application/statuslist+cwt"),
+        StatusCode::OK,
+        "not a COSE_Sign1"
+    )]
+    #[case::not_found(
+        x5c_status_list_cwt(URI),
+        Some("application/statuslist+cwt"),
+        StatusCode::NOT_FOUND,
+        "failed with 404"
+    )]
+    #[case::too_large(
+        vec![0; MAX_BODY_BYTES + 1],
+        Some("application/statuslist+cwt"),
+        StatusCode::OK,
+        "is larger than"
+    )]
+    #[tokio::test]
+    async fn get_status_rejects_a_list_it_cannot_use(
+        #[case] body: Vec<u8>,
+        #[case] content_type: Option<&'static str>,
+        #[case] status: StatusCode,
+        #[case] expected: &str,
+    ) {
+        let error = status_at(served(body, content_type, status), 0)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains(expected), "unexpected error: {error}");
+    }
+
+    #[tokio::test]
+    async fn get_status_rejects_an_index_beyond_the_list() {
+        let http_client = served(
+            x5c_status_list_cwt(URI),
+            Some("application/statuslist+cwt"),
+            StatusCode::OK,
+        );
+
+        let error = status_at(http_client, 100_000)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("failed to get index 100000"), "{error}");
     }
 }
