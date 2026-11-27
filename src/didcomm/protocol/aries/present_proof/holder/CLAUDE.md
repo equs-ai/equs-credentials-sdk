@@ -22,7 +22,7 @@ Fields: `agent`, `key_metadata`, `source_id`, `storage`, `vault`, `event_emitter
 1. Parses OOB invitation URL → extracts `PresentationRequest` from first attachment.
 2. Accepts OOB invitation → creates `ConnectionRecord`.
 3. Stores initial `PresentationHolderState::RequestReceived` state, with the invitation's `from` as `verifier_did`.
-4. Creates `HolderService` (wraps KMS + vault).
+4. Creates `HolderService` (wraps KMS + vault) with the default `ReqwestClient` (HTTPS only, verified TLS, no redirects), which fetches the status lists of the holder's credentials; a client that fails to build fails with `ReqwestClientBuilder`.
 5. Registers `PresentationProtocol::new_with_holder(self)` with the agent.
 
 ### Public API

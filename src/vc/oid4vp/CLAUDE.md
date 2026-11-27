@@ -47,7 +47,7 @@ Implements the OpenID for Verifiable Presentations (OID4VP) protocol layer, prov
 - The upstream request builder rejects any `client_id` prefix the Wallet Metadata does not advertise (`is_client_id_prefix_supported`), and cross-device OID4VP has no Wallet Metadata, so `default_wallet_metadata()` must keep advertising `x509_san_dns` / `x509_hash` for an X.509 `client_id` to work at all.
 - Verifying an `mso_mdoc` VP needs issuer trust anchors (`VerifierBuilder::add_trusted_root_certificate` or `add_trust_anchor`); without one the issuer is `not_evaluated/no_anchors_configured`, which fails under `Enforce` and is reported under `Report` (see Issuer trust below; the default metadata advertises the format regardless). `add_trusted_root_certificate` stores the parsed certificate re-encoded as a single PEM, not the caller's raw bytes, so a bundle cannot smuggle extra certificates into the anchor.
 
-## Issuer trust (ASI-6961)
+## Issuer trust
 
 - `VerifierBuilder::add_trust_anchor(pem, source_ref, role, service_type)` adds anchors that may be intermediates or
   listed signing certificates, tried in order. Only an anchor without a `service_type`, or of an issuing service

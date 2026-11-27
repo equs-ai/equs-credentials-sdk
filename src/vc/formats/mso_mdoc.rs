@@ -9,6 +9,8 @@ use crate::vc::formats::{
 };
 use crate::vc::formats::{PresentationSnafu, Result};
 use async_trait::async_trait;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use one_core::config::core_config::{KeyAlgorithmType, VerificationProtocolType};
 use one_core::model::did::KeyRole;
 use one_core::proto::certificate_validator::CertificateValidator;
@@ -27,6 +29,9 @@ use one_core::provider::presentation_formatter::model::{
 use one_core::provider::presentation_formatter::{
     PresentationFormatter, mso_mdoc::MsoMdocPresentationFormatter,
 };
+use one_core::provider::revocation::token_status_list::{
+    IDENTIFIER_LIST_ENTRY_TYPE, IDENTIFIER_LIST_ID_KEY, IDENTIFIER_LIST_URI_KEY,
+};
 use one_core_portable::standardized_types::jwk::PublicJwk;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
@@ -43,7 +48,19 @@ const TOKEN_STATUS_LIST_ENTRY: &str = "TokenStatusListEntry";
 pub(crate) enum MdocStatus {
     None,
     StatusList { uri: String, idx: usize },
+    IdentifierList { uri: String, id: CredentialId },
     Unsupported(Vec<String>),
+}
+
+/// An mdoc's identifier in its Identifier List. It identifies the credential, so `Debug`
+/// does not print it.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct CredentialId(pub(crate) Vec<u8>);
+
+impl std::fmt::Debug for CredentialId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CredentialId(<redacted>)")
+    }
 }
 
 #[derive(Debug)]
@@ -310,21 +327,57 @@ impl MsoMdocAPI {
 }
 
 impl MdocStatus {
+    /// The MSO status to check: `status_list` first, else `identifier_list`.
     fn from_credential_status(entries: &[CredentialStatus]) -> Result<Self> {
         if entries.is_empty() {
             return Ok(Self::None);
         }
-        let (status_lists, others): (Vec<_>, Vec<_>) = entries
-            .iter()
-            .partition(|entry| entry.r#type == TOKEN_STATUS_LIST_ENTRY);
-        let others: Vec<String> = others.iter().map(|entry| entry.r#type.clone()).collect();
-        let Some(status_list) = status_lists.first() else {
-            return Ok(Self::Unsupported(others));
-        };
-        if !others.is_empty() {
-            info!(mechanisms = ?others, "mdoc status mechanisms other than status_list not checked");
+        let mechanisms: Vec<&str> = entries.iter().map(|entry| entry.r#type.as_str()).collect();
+        let find = |r#type: &str| entries.iter().find(|entry| entry.r#type == r#type);
+        if let Some(status_list) = find(TOKEN_STATUS_LIST_ENTRY) {
+            if mechanisms.len() > 1 {
+                info!(
+                    ?mechanisms,
+                    "mdoc status mechanisms other than status_list not checked"
+                );
+            }
+            return Self::status_list(status_list);
         }
+        if let Some(identifier_list) = find(IDENTIFIER_LIST_ENTRY_TYPE) {
+            if mechanisms.len() > 1 {
+                info!(
+                    ?mechanisms,
+                    "mdoc status mechanisms other than identifier_list not checked"
+                );
+            }
+            return Self::identifier_list(identifier_list);
+        }
+        Ok(Self::Unsupported(
+            mechanisms.into_iter().map(str::to_owned).collect(),
+        ))
+    }
 
+    fn identifier_list(entry: &CredentialStatus) -> Result<Self> {
+        let field = |name: &str| {
+            entry
+                .additional_fields
+                .get(name)
+                .and_then(serde_json::Value::as_str)
+        };
+        let id = field(IDENTIFIER_LIST_ID_KEY).and_then(|id| URL_SAFE_NO_PAD.decode(id).ok());
+        match (field(IDENTIFIER_LIST_URI_KEY), id) {
+            (Some(uri), Some(id)) if !id.is_empty() => Ok(Self::IdentifierList {
+                uri: uri.to_string(),
+                id: CredentialId(id),
+            }),
+            _ => PresentationSnafu {
+                details: "Malformed mso_mdoc identifier_list".to_string(),
+            }
+            .fail(),
+        }
+    }
+
+    fn status_list(status_list: &CredentialStatus) -> Result<Self> {
         let field = |name: &str| {
             status_list
                 .additional_fields
@@ -663,5 +716,106 @@ pub mod tests {
     /// Anchors holding only an unrelated IACA.
     fn unrelated_iaca() -> HashMap<String, String> {
         anchors(&[&mdl_iaca(&test_fixtures::JWK::generate_p256())])
+    }
+
+    mod status {
+        use crate::vc::formats::mso_mdoc::{CredentialId, MdocStatus};
+        use one_core::provider::credential_formatter::model::CredentialStatus;
+        use rstest::rstest;
+        use serde_json::json;
+        use std::collections::HashMap;
+
+        const URI: &str = "https://status.example/identifiers/1";
+
+        fn entry(r#type: &str, fields: serde_json::Value) -> CredentialStatus {
+            CredentialStatus {
+                id: None,
+                r#type: r#type.to_string(),
+                status_purpose: None,
+                additional_fields: serde_json::from_value::<HashMap<_, _>>(fields).unwrap(),
+            }
+        }
+
+        fn identifier_list(fields: serde_json::Value) -> CredentialStatus {
+            entry("identifier_list", fields)
+        }
+
+        #[test]
+        fn identifier_list_is_read_with_its_decoded_id() {
+            let status = MdocStatus::from_credential_status(&[identifier_list(
+                json!({ "uri": URI, "id": "NjQ4Mg" }),
+            )])
+            .unwrap();
+
+            assert_eq!(
+                status,
+                MdocStatus::IdentifierList {
+                    uri: URI.to_string(),
+                    id: CredentialId(b"6482".to_vec()),
+                }
+            );
+        }
+
+        #[test]
+        fn identifier_list_beside_an_unknown_mechanism_is_read() {
+            let status = MdocStatus::from_credential_status(&[
+                entry("future_list", json!({})),
+                identifier_list(json!({ "uri": URI, "id": "NjQ4Mg" })),
+            ])
+            .unwrap();
+
+            assert!(matches!(status, MdocStatus::IdentifierList { .. }));
+        }
+
+        #[test]
+        fn status_list_wins_over_an_identifier_list() {
+            let status = MdocStatus::from_credential_status(&[
+                identifier_list(json!({ "uri": URI, "id": "NjQ4Mg" })),
+                entry("TokenStatusListEntry", json!({ "uri": URI, "idx": "3" })),
+            ])
+            .unwrap();
+
+            assert_eq!(
+                status,
+                MdocStatus::StatusList {
+                    uri: URI.to_string(),
+                    idx: 3
+                }
+            );
+        }
+
+        #[rstest]
+        #[case::type_only(json!({}))]
+        #[case::no_uri(json!({ "id": "NjQ4Mg" }))]
+        #[case::no_id(json!({ "uri": URI }))]
+        #[case::empty_id(json!({ "uri": URI, "id": "" }))]
+        #[case::padded_id(json!({ "uri": URI, "id": "NjQ4Mg==" }))]
+        #[case::standard_alphabet(json!({ "uri": URI, "id": "+/8B" }))]
+        #[case::not_base64(json!({ "uri": URI, "id": "6482!" }))]
+        #[case::id_not_a_string(json!({ "uri": URI, "id": 6482 }))]
+        fn malformed_identifier_list_is_rejected(#[case] fields: serde_json::Value) {
+            let error = MdocStatus::from_credential_status(&[identifier_list(fields)])
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                error.contains("Malformed mso_mdoc identifier_list"),
+                "unexpected error: {error}"
+            );
+        }
+
+        #[test]
+        fn debug_does_not_print_the_identifier() {
+            let status = MdocStatus::IdentifierList {
+                uri: URI.to_string(),
+                id: CredentialId(b"6482".to_vec()),
+            };
+
+            let debug = format!("{status:?}");
+
+            assert!(debug.contains("<redacted>"), "{debug}");
+            assert!(!debug.contains("54, 52, 56, 50"), "{debug}");
+            assert!(!debug.contains("6482"), "{debug}");
+        }
     }
 }

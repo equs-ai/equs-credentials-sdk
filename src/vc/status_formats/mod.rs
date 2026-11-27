@@ -12,6 +12,12 @@ use ssi::dids::DIDURL;
 use std::collections::HashMap;
 use strum_macros::Display;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod cwt;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod identifier_list_token_cwt;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod status_list_token_cwt;
 pub mod status_list_token_jwt;
 
 /// `Status List` format internal error.
