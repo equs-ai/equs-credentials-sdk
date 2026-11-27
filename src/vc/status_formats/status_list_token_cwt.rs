@@ -1,55 +1,28 @@
 //! Reads CWT Status List Tokens (draft-ietf-oauth-status-list §5.2), the status list format
-//! used by mdoc credentials.
-//!
-//! A token is accepted only when:
-//! - it is a COSE_Sign1, tagged or untagged;
-//! - its `x5chain` certificate chain is trusted under the caller's [AnchorPolicy];
-//! - its signature verifies with the key of the first certificate in that chain;
-//! - its protected `typ` is `application/statuslist+cwt` or the matching CoAP ID;
-//! - its `alg` is ES256 with a P-256 key or EdDSA with an Ed25519 key;
-//! - its protected `crit` lists only `alg`, `typ` and `x5chain`;
-//! - its `sub` is the URI it was fetched from, it has an `iat`, and it has not expired.
-//!
-//! `ttl` is ignored, since the cache lasts for one call only.
+//! used by mdoc credentials. The token checks are in [crate::vc::status_formats::cwt].
 
 use std::collections::HashMap;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use coset::cbor::value::Value;
-use coset::iana::HeaderParameter;
-use coset::iana::{Algorithm, EnumI64};
-use coset::{
-    Algorithm as CoseAlgorithm, CborSerializable, CoseSign1, Header, Label,
-    RegisteredLabelWithPrivate, TaggedCborSerializable,
-};
-use one_core_portable::standardized_types::jwk::PublicJwk;
-use snafu::{OptionExt, ensure};
+use snafu::OptionExt;
 use ssi::status::token_status_list::BitString;
 use tracing::{Level, instrument};
 
-use crate::utils::certificate_validator::SharedCertificateValidator;
-use crate::utils::x509_truststore::Truststore;
 use crate::vc::formats::AnchorPolicy;
 use crate::vc::presentation_exchange::StatusSize;
-use crate::vc::status_formats::{MalformedStatusListSnafu, Result, VCStatusSnafu};
+use crate::vc::status_formats::cwt::{self, CwtProfile, claim};
+use crate::vc::status_formats::{MalformedStatusListSnafu, Result};
 
 /// Media type and `typ` header of a CWT Status List Token.
 pub(crate) const STATUS_LIST_CWT_TYPE: &str = "application/statuslist+cwt";
 
-/// CoAP ID of `application/statuslist+cwt`, also accepted as the `typ` header.
-const STATUS_LIST_CWT_COAP_ID: i64 = 279;
-
-const ALG_HEADER: i64 = 1;
-const TYP_HEADER: i64 = 16;
-const X5CHAIN_HEADER: i64 = 33;
-const SUB_CLAIM: i64 = 2;
-const EXP_CLAIM: i64 = 4;
-const IAT_CLAIM: i64 = 6;
 const STATUS_LIST_CLAIM: i64 = 65533;
 
-/// Headers this module checks: the only ones `crit` may list.
-const UNDERSTOOD_CRIT_HEADERS: [i64; 3] = [ALG_HEADER, TYP_HEADER, X5CHAIN_HEADER];
+const PROFILE: CwtProfile = CwtProfile {
+    name: "status list",
+    media_type: STATUS_LIST_CWT_TYPE,
+    coap_id: Some(279),
+};
 
 pub(crate) struct StatusListCwt;
 
@@ -62,255 +35,9 @@ impl StatusListCwt {
         trusted_certs: Option<&HashMap<String, String>>,
         anchor_policy: AnchorPolicy,
     ) -> Result<BitString> {
-        let sign1 = decode_sign1(token)?;
-        check_crit(&sign1.protected.header)?;
-        check_typ(&sign1.protected.header)?;
-        let alg = read_alg(&sign1.protected.header)?;
-
-        let pem_chain = x5chain_pem(&sign1)?;
-        let leaf = Truststore::new(
-            SharedCertificateValidator::get(),
-            trusted_certs.cloned().unwrap_or_default(),
-        )
-        .anchor_policy(anchor_policy)
-        .verify_chain_trust(&pem_chain, "")
-        .await
-        .map_err(|err| {
-            VCStatusSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-        check_key_matches_alg(leaf.public_key.public_key_as_jwk(), alg)?;
-        sign1
-            .verify_signature(b"", |signature, data| {
-                leaf.public_key.verify(data, signature)
-            })
-            .map_err(|err| {
-                VCStatusSnafu {
-                    details: format!("status list signature is invalid: {err}"),
-                }
-                .build()
-            })?;
-
-        let claims = decode_claims(&sign1)?;
-        check_sub(&claims, uri)?;
-        check_times(&claims)?;
+        let claims = cwt::verify(&PROFILE, uri, token, trusted_certs, anchor_policy).await?;
         status_list(&claims)
     }
-}
-
-fn decode_sign1(token: &[u8]) -> Result<CoseSign1> {
-    CoseSign1::from_tagged_slice(token)
-        .or_else(|_| CoseSign1::from_slice(token))
-        .map_err(|err| {
-            MalformedStatusListSnafu {
-                details: format!("not a COSE_Sign1: {err}"),
-            }
-            .build()
-        })
-}
-
-fn header_param(header: &Header, label: i64) -> Option<&Value> {
-    header
-        .rest
-        .iter()
-        .find(|(key, _)| *key == Label::Int(label))
-        .map(|(_, value)| value)
-}
-
-/// Rejects the token when `crit` names a header this code does not check (RFC 9052 §3.1).
-fn check_crit(header: &Header) -> Result<()> {
-    let is_understood = |label: &&RegisteredLabelWithPrivate<HeaderParameter>| match label {
-        RegisteredLabelWithPrivate::Assigned(param) => {
-            UNDERSTOOD_CRIT_HEADERS.contains(&param.to_i64())
-        }
-        _ => false,
-    };
-    let unknown: Vec<_> = header
-        .crit
-        .iter()
-        .filter(|label| !is_understood(label))
-        .collect();
-    if unknown.is_empty() {
-        return Ok(());
-    }
-    MalformedStatusListSnafu {
-        details: format!("protected `crit` names unsupported parameters: {unknown:?}"),
-    }
-    .fail()
-}
-
-fn check_typ(protected: &Header) -> Result<()> {
-    let typ = header_param(protected, TYP_HEADER);
-    let known = match typ {
-        Some(Value::Text(text)) => text == STATUS_LIST_CWT_TYPE,
-        Some(Value::Integer(id)) => *id == STATUS_LIST_CWT_COAP_ID.into(),
-        _ => false,
-    };
-    if known {
-        return Ok(());
-    }
-    MalformedStatusListSnafu {
-        details: format!("expected protected `typ` {STATUS_LIST_CWT_TYPE}, got {typ:?}"),
-    }
-    .fail()
-}
-
-fn read_alg(protected: &Header) -> Result<Algorithm> {
-    match &protected.alg {
-        Some(CoseAlgorithm::Assigned(alg @ (Algorithm::ES256 | Algorithm::EdDSA))) => Ok(*alg),
-        other => MalformedStatusListSnafu {
-            details: format!("unsupported or missing protected `alg` (ES256 or EdDSA): {other:?}"),
-        }
-        .fail(),
-    }
-}
-
-/// Checks that `alg` fits the certificate key, since one-core picks the algorithm from the key.
-fn check_key_matches_alg<E: std::fmt::Display>(
-    key: core::result::Result<PublicJwk, E>,
-    alg: Algorithm,
-) -> Result<()> {
-    let key = key.map_err(|err| {
-        VCStatusSnafu {
-            details: format!("could not read the status list certificate's key: {err}"),
-        }
-        .build()
-    })?;
-    let matches = match (&key, alg) {
-        (PublicJwk::Ec(ec), Algorithm::ES256) => ec.crv == "P-256",
-        (PublicJwk::Okp(okp), Algorithm::EdDSA) => okp.crv == "Ed25519",
-        _ => false,
-    };
-    if matches {
-        return Ok(());
-    }
-    VCStatusSnafu {
-        details: format!("status list CWT `alg` {alg:?} does not match its certificate's key"),
-    }
-    .fail()
-}
-
-/// Returns the `x5chain` certificates as a PEM chain, signer first.
-fn x5chain_pem(sign1: &CoseSign1) -> Result<String> {
-    let x5chain = header_param(&sign1.protected.header, X5CHAIN_HEADER)
-        .or_else(|| header_param(&sign1.unprotected, X5CHAIN_HEADER))
-        .ok_or_else(|| {
-            VCStatusSnafu {
-                details: "status list CWT has no `x5chain` to resolve its signing key",
-            }
-            .build()
-        })?;
-    let certificates = match x5chain {
-        Value::Bytes(der) => vec![der],
-        Value::Array(items) => items
-            .iter()
-            .map(|item| item.as_bytes())
-            .collect::<Option<Vec<_>>>()
-            .context(MalformedStatusListSnafu {
-                details: "`x5chain` must hold DER certificates",
-            })?,
-        _ => {
-            return MalformedStatusListSnafu {
-                details: "`x5chain` must hold DER certificates",
-            }
-            .fail();
-        }
-    };
-    ensure!(
-        !certificates.is_empty(),
-        MalformedStatusListSnafu {
-            details: "`x5chain` is empty",
-        }
-    );
-    let x5c: Vec<String> = certificates
-        .into_iter()
-        .map(|der| STANDARD.encode(der))
-        .collect();
-    one_core::mapper::x509::x5c_into_pem_chain(&x5c).map_err(|err| {
-        MalformedStatusListSnafu {
-            details: format!("could not read `x5chain`: {err}"),
-        }
-        .build()
-    })
-}
-
-fn decode_claims(sign1: &CoseSign1) -> Result<Vec<(Value, Value)>> {
-    let payload = sign1.payload.as_deref().context(MalformedStatusListSnafu {
-        details: "status list CWT has no payload",
-    })?;
-    let claims: Value = coset::cbor::de::from_reader(payload).map_err(|err| {
-        MalformedStatusListSnafu {
-            details: format!("status list CWT claims are not CBOR: {err}"),
-        }
-        .build()
-    })?;
-    match claims {
-        Value::Map(entries) => Ok(entries),
-        _ => MalformedStatusListSnafu {
-            details: "status list CWT claims are not a map",
-        }
-        .fail(),
-    }
-}
-
-fn claim(claims: &[(Value, Value)], key: i64) -> Option<&Value> {
-    claims
-        .iter()
-        .find(|(name, _)| name.as_integer() == Some(key.into()))
-        .map(|(_, value)| value)
-}
-
-fn check_sub(claims: &[(Value, Value)], uri: &str) -> Result<()> {
-    let sub = claim(claims, SUB_CLAIM)
-        .context(MalformedStatusListSnafu {
-            details: "missed the `sub` claim",
-        })?
-        .as_text()
-        .context(MalformedStatusListSnafu {
-            details: "the `sub` claim must be a URI",
-        })?;
-    if sub != uri {
-        return VCStatusSnafu {
-            details: format!("Urls are not equal {uri} {sub}"),
-        }
-        .fail();
-    }
-    Ok(())
-}
-
-/// Reads a NumericDate: whole or fractional seconds since the epoch.
-fn numeric_date(value: &Value) -> Option<f64> {
-    match value {
-        Value::Integer(integer) => Some(i128::from(*integer) as f64),
-        Value::Float(float) => Some(*float),
-        _ => None,
-    }
-}
-
-fn check_times(claims: &[(Value, Value)]) -> Result<()> {
-    let iat = claim(claims, IAT_CLAIM).context(MalformedStatusListSnafu {
-        details: "missed the `iat` claim",
-    })?;
-    numeric_date(iat).context(MalformedStatusListSnafu {
-        details: "`iat` is not a NumericDate",
-    })?;
-
-    let Some(exp) = claim(claims, EXP_CLAIM) else {
-        return Ok(());
-    };
-    let exp = numeric_date(exp).context(MalformedStatusListSnafu {
-        details: "`exp` is not a NumericDate",
-    })?;
-    let now = (time::OffsetDateTime::now_utc() - time::OffsetDateTime::UNIX_EPOCH).as_seconds_f64();
-    if exp <= now {
-        return VCStatusSnafu {
-            details: "status list CWT has expired",
-        }
-        .fail();
-    }
-    Ok(())
 }
 
 fn status_list(claims: &[(Value, Value)]) -> Result<BitString> {
@@ -505,12 +232,36 @@ pub(crate) mod tests {
         assert_contains(&error, "missed the `iat` claim");
     }
 
+    fn iat_from_now(offset_secs: i64) -> Value {
+        json!(time::OffsetDateTime::now_utc().unix_timestamp() + offset_secs)
+    }
+
+    #[tokio::test]
+    async fn cwt_issued_in_the_future_is_rejected() {
+        let token = cwt_with(|spec| spec["iat"] = iat_from_now(3600));
+
+        let error = error_of(token, trusted()).await;
+
+        assert_contains(&error, "status list CWT `iat` is in the future");
+    }
+
+    #[tokio::test]
+    async fn cwt_issued_slightly_ahead_of_this_clock_is_accepted() {
+        let token = cwt_with(|spec| spec["iat"] = iat_from_now(10));
+
+        let status = entry(&token, 2, trusted()).await.unwrap();
+
+        assert_eq!(status, Some(1));
+    }
+
     #[rstest]
     #[case::other_typ(cwt_with(|spec| spec["typ"] = json!("application/cwt")), "expected protected `typ`")]
     #[case::no_typ(cwt_with(|spec| { spec.as_object_mut().unwrap().remove("typ"); }), "expected protected `typ`")]
     #[case::no_x5chain(cwt_with(|spec| { spec.as_object_mut().unwrap().remove("x5chain"); }), "has no `x5chain`")]
     #[case::three_bits(cwt_with(|spec| spec["bits"] = json!(3)), "Malformed status list")]
     #[case::not_cose(b"not a status list".to_vec(), "not a COSE_Sign1")]
+    #[case::trailing_bytes([x5c_status_list_cwt(URI), vec![0x3f, 0xd5, 0x45]].concat(), "not a COSE_Sign1")]
+    #[case::signed_trailing_bytes(cwt_with(|spec| spec["payload_suffix"] = json!("P9VF")), "status list CWT claims are followed by extra bytes")]
     #[tokio::test]
     async fn malformed_cwt_is_rejected(#[case] token: Vec<u8>, #[case] expected: &str) {
         let error = error_of(token, trusted()).await;
