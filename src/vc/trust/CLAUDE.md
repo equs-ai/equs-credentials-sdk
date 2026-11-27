@@ -1,7 +1,7 @@
 # trust — Context
 
 ## Purpose
-Issuer trust (ASI-6961): which certificates a verifier trusts credential issuers under, where those anchors come from (a
+Issuer trust: which certificates a verifier trusts credential issuers under, where those anchors come from (a
 Verifier's own roots, or an exported ETSI trust list), and how a presented credential's issuer is checked against them,
 per EUDI credential category. Protocol-neutral: the core verifier evaluates it, OID4VP configures it and adds the DCQL
 `trusted_authorities` check, and the trust-list export feeds it.
