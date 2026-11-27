@@ -270,6 +270,45 @@ describe("OID4VP Verifier: ", () => {
     expect(claims).toEqual(CLAIMS);
   });
 
+  describe("KB-JWT iat window", () => {
+    async function verifyWithWindow(window: { maxAgeSeconds: number; maxFutureSkewSeconds: number }) {
+      const kms = new InMemKms();
+      const { keyMetadata } = await createDidAndKeyMetadata(kms);
+      const verifier = await new OID4VPVerifierBuilder(
+        kms,
+        new LocalNonceHandler(),
+        keyMetadata,
+        ClientId.fromDid(fixtureDidKey(FixtureKey.Verifier)),
+      )
+        .withHttpClient(ReqwestHttpClient.insecure())
+        .withKbJwtIatWindow(window)
+        .build();
+      const session: _PresentationSession = {
+        nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
+        resolvedPresentationQuery: {
+          presentation_definition: PRESENTATION_QUERY.presentation_definition,
+          dcql_query: PRESENTATION_QUERY.dcql_query,
+        },
+        authorizationRequestJwt: "",
+      };
+      const response: AuthorizationResponse = {
+        type: AuthorizationResponseType.Plain,
+        object: { vpToken: VP, presentationSubmission: PRESENTATION_SUBMISSION, state: STATE },
+      };
+      return verifier.verifyPresentation(response, session, {});
+    }
+
+    it("accepts a KB-JWT within the window", async () => {
+      await expect(verifyWithWindow({ maxAgeSeconds: 3600, maxFutureSkewSeconds: 60 })).resolves.toEqual(CLAIMS);
+    });
+
+    it("rejects a KB-JWT older than the window", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      await expect(verifyWithWindow({ maxAgeSeconds: 0, maxFutureSkewSeconds: 0 })).rejects.toThrow(/"code":"VC"/);
+    });
+  });
+
   it("verify Authorization Response with transaction data", async () => {
     const verifier = await buildVerifier(fixtureDidKey(FixtureKey.Verifier));
 
