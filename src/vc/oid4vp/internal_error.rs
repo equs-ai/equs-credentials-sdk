@@ -89,6 +89,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Request Object re-issue error: {details}"))]
+    RequestObjectReissue {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Parse error"))]
     Json {
         #[snafu(implicit)]

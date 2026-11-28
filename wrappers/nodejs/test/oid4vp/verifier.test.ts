@@ -28,6 +28,8 @@ import {
   WalletMetadata,
   FixtureKey,
   fixtureDidKey,
+  HttpMethodForAuth,
+  VpInternalError,
 } from "../../";
 import {
   AUTH_RESPONSE_JWE,
@@ -766,7 +768,123 @@ describe("OID4VP Verifier: ", () => {
 
     expect(kms.decryptCalledWith).toEqual(auth_response.jwe);
   });
+
+  it("re-issues a DID Request Object with the wallet_nonce and keeps every other claim", async () => {
+    const kms = staticKeyKms();
+    const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
+    const verifier = await new OID4VPVerifierBuilder(kms, new LocalNonceHandler(), keyMetadata, ClientId.fromDid(did))
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .build();
+    const { authorizationRequestJwt } = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      byReferencePostMetadata(),
+    );
+
+    const reissued = await verifier.reissueAuthorizationRequest(authorizationRequestJwt, {
+      walletNonce: REISSUE_WALLET_NONCE,
+    });
+
+    const [storedHeader, storedPayload] = decodeJwt(authorizationRequestJwt);
+    const [header, payload] = decodeJwt(reissued);
+    expect(header.kid).toEqual(storedHeader.kid);
+    expect(payload).toEqual({ ...storedPayload, wallet_nonce: REISSUE_WALLET_NONCE });
+    expect(payload.request_uri_method).toBeUndefined();
+    expect(verifiesWithStaticKey(reissued)).toBe(true);
+  });
+
+  it("re-issues an x509_hash Request Object with the same x5c and the wallet's audience", async () => {
+    const kms = staticKeyKms();
+    const clientId = ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.Hash);
+    const verifier = await buildX509Verifier(clientId, kms);
+    const { authorizationRequestJwt } = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      byReferencePostMetadata(),
+    );
+
+    const reissued = await verifier.reissueAuthorizationRequest(authorizationRequestJwt, {
+      walletNonce: REISSUE_WALLET_NONCE,
+      audience: "https://wallet.example",
+    });
+
+    const [storedHeader, storedPayload] = decodeJwt(authorizationRequestJwt);
+    const [header, payload] = decodeJwt(reissued);
+    expect(header.x5c).toEqual(storedHeader.x5c);
+    expect(payload).toEqual({ ...storedPayload, wallet_nonce: REISSUE_WALLET_NONCE, aud: "https://wallet.example" });
+    expect(verifiesWithStaticKey(reissued)).toBe(true);
+  });
+
+  it("refuses a Request Object signed for another client_id", async () => {
+    const kms = staticKeyKms();
+    const hashVerifier = await buildX509Verifier(
+      ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.Hash),
+      kms,
+    );
+    const sanDnsVerifier = await buildX509Verifier(
+      ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.SanDns),
+      kms,
+    );
+    const { authorizationRequestJwt } = await hashVerifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      byReferencePostMetadata(),
+    );
+
+    await expect(
+      sanDnsVerifier.reissueAuthorizationRequest(authorizationRequestJwt, { walletNonce: REISSUE_WALLET_NONCE }),
+    ).rejects.toThrow(VpInternalError.RequestObjectReissue);
+  });
+
+  it("refuses to re-issue when nothing is to change", async () => {
+    const kms = new InMemKms();
+    const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
+    const verifier = await new OID4VPVerifierBuilder(kms, new LocalNonceHandler(), keyMetadata, ClientId.fromDid(did))
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .build();
+    const { authorizationRequestJwt } = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      byReferencePostMetadata(),
+    );
+
+    await expect(verifier.reissueAuthorizationRequest(authorizationRequestJwt, {})).rejects.toThrow(
+      VpInternalError.RequestObjectReissue,
+    );
+  });
 });
+
+const REISSUE_WALLET_NONCE = "wallet-nonce-+/=&";
+
+function byReferencePostMetadata(): AuthorizationRequestMetadata {
+  return {
+    authResponseOptions: {
+      mode: "direct_post",
+      type: "vp_token",
+      submissionUri: "http://localhost:9001/response",
+      state: STATE,
+    },
+    passAuthRequestObject: {
+      type: PassAuthRequestObjectType.ByReference,
+      requestUri: "http://localhost:9001/request",
+      method: HttpMethodForAuth.POST,
+    },
+  };
+}
+
+function verifiesWithStaticKey(jwt: string): boolean {
+  const [header, payload, signature] = jwt.split(".");
+  return crypto.verify(
+    "sha256",
+    Buffer.from(`${header}.${payload}`),
+    { key: crypto.createPublicKey(x509Material.privateKeyPem), dsaEncoding: "ieee-p1363" },
+    Buffer.from(signature, "base64url"),
+  );
+}
+
+function decodeJwt(jwt: string): [Record<string, any>, Record<string, any>] {
+  const [header, payload] = jwt
+    .split(".")
+    .slice(0, 2)
+    .map((part) => JSON.parse(jose.base64url.decode(part).toString()));
+  return [header, payload];
+}
 
 async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX") {
   const kms = new InMemKms();

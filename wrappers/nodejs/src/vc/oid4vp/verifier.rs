@@ -4,7 +4,7 @@ use crate::vc::JsonObject;
 use crate::vc::oid4vp::JsInnerAuthorizationResponse;
 use equs_sdk::vc::dcql::NonEmptyVec;
 use equs_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationRequestMetadata, ClientMetadata,
+    AuthResponseOptions, AuthorizationRequestChanges, AuthorizationRequestMetadata, ClientMetadata,
     CredentialVerificationMetadata, ExpectedOrigins, HttpMethodForAuth, PassAuthRequestObject,
     PresentationSession as RustPresentationSession, Verifier, VerifierInfo, VerifierInfoEntry,
     WalletMetadata,
@@ -152,6 +152,40 @@ impl InternalOID4VPVerifier {
                 .map(JsIssuerTrust::try_from)
                 .collect::<Result<_>>()?,
         })
+    }
+
+    /// Re-signs a stored Request Object with `changes` set and every other claim kept.
+    ///
+    /// @throws {Error} `KMS` if the key cannot be loaded, `RequestObjectReissue` if nothing changes
+    /// or the stored object does not match this Verifier.
+    #[napi]
+    pub async fn reissue_authorization_request(
+        &self,
+        stored_jwt: String,
+        changes: JsAuthorizationRequestChanges,
+    ) -> Result<String> {
+        self.0
+            .reissue_authorization_request(&stored_jwt, changes.into())
+            .await
+            .map_err(IntoNapiError::into_napi_error)
+    }
+}
+
+/// The claims to set. An empty value counts as absent.
+#[napi(object, js_name = "AuthorizationRequestChanges")]
+pub struct JsAuthorizationRequestChanges {
+    /// Set as `wallet_nonce`.
+    pub wallet_nonce: Option<String>,
+    /// Set as `aud`.
+    pub audience: Option<String>,
+}
+
+impl From<JsAuthorizationRequestChanges> for AuthorizationRequestChanges {
+    fn from(value: JsAuthorizationRequestChanges) -> Self {
+        AuthorizationRequestChanges {
+            wallet_nonce: value.wallet_nonce,
+            audience: value.audience,
+        }
     }
 }
 

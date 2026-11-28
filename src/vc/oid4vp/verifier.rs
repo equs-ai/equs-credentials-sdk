@@ -50,13 +50,15 @@ use crate::vc::oid4vp::metadata::{
     SELF_ISSUED_V2, default_client_metadata, default_wallet_metadata, ensure_supported_vp_formats,
 };
 use crate::vc::oid4vp::protocol_error::ErrorType;
+use crate::vc::oid4vp::reissue;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthorizationRequestMetadata, AuthorizationResponse, AuthorizationResponseObject, ClientId,
-    ClientIdPrefix, ClientMetadata, CredentialVerificationMetadata, PRESENTATION_SUBMISSION,
-    PassAuthRequestObject, PresentationSession, ProtocolError, ResolvedPresentationQuery,
-    ResponseMode, ResponseType, STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG,
-    TransactionDataItem, TransactionDataResponse, get_transaction_data_hash,
+    AuthorizationRequestChanges, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseObject, ClientId, ClientIdPrefix, ClientMetadata,
+    CredentialVerificationMetadata, PRESENTATION_SUBMISSION, PassAuthRequestObject,
+    PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, TransactionDataItem,
+    TransactionDataResponse, get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
@@ -291,6 +293,21 @@ where
             presentations,
             issuer_trust,
         })
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    async fn reissue_authorization_request(
+        &self,
+        stored_jwt: &str,
+        changes: AuthorizationRequestChanges,
+    ) -> Result<String> {
+        info!("access to the key {}", self.metadata.key_metadata.kid);
+        let key = self
+            .kms
+            .get(&self.metadata.key_metadata.kid)
+            .await
+            .context(KMSSnafu)?;
+        reissue::reissue_authorization_request(key, &self.metadata, stored_jwt, changes).await
     }
 }
 

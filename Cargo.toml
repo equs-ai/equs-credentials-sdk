@@ -42,7 +42,7 @@ name = "equs_sdk"
 equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 # Internally maintained forked dependencies
 oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
-openid4vp = { package = "equs-openid4vp", version = "0.1.1" }
+openid4vp = { package = "equs-openid4vp", version = "0.1.2" }
 sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.2" }
 didcomm = { package = "equs-didcomm", version = "0.1.2" }
 did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
@@ -153,3 +153,7 @@ strip = "none"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
+
+# equs-openid4vp 0.1.2 until it is published.
+[patch.crates-io]
+equs-openid4vp = { git = "https://github.com/equs-ai/openid4vp.git", rev = "229a00f8243f0ce05c3b81d50099caa304c379bb" }

@@ -56,6 +56,7 @@ const replacements = [
   { from: "JsX509Variant", to: "X509Variant" },
   { from: "JsDeclineAuthorizationRequestReason", to: "DeclineAuthorizationRequestReason" },
   { from: "JsDeclineAuthorizationRequest", to: "DeclineAuthorizationRequest" },
+  { from: "JsAuthorizationRequestChanges", to: "AuthorizationRequestChanges" },
   { from: "JsTrustAnchor", to: "TrustAnchor" },
   { from: "JsIssuerTrust", to: "IssuerTrust" },
   { from: "JsTrustListExportOptions", to: "TrustListExportOptions" },

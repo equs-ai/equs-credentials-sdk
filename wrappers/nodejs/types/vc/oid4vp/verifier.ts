@@ -1,5 +1,6 @@
 import {
   _PresentationSession,
+  AuthorizationRequestChanges,
   AuthorizationRequestMetadata,
   AuthorizationRequestWithSession,
   InnerAuthorizationResponse,
@@ -27,6 +28,7 @@ export type AuthorizationResponse = {
  *
  *  @property createAuthorizationRequest - {@link OID4VPVerifier.createAuthorizationRequest}
  *  @property verifyPresentation - {@link OID4VPVerifier.verifyPresentation}
+ *  @property reissueAuthorizationRequest - {@link OID4VPVerifier.reissueAuthorizationRequest}
  */
 export class OID4VPVerifier {
   constructor(private readonly inner: InternalOID4VPVerifier) {}
@@ -91,5 +93,19 @@ export class OID4VPVerifier {
     verificationMetadata: CredentialVerificationMetadata,
   ): Promise<ClaimsPresentations> {
     return this.inner.verifyAndExtractPresentation(authorizationResponse, session, verificationMetadata);
+  }
+
+  /**
+   * Re-signs a stored Request Object with `changes` set and every other claim kept, for a Request
+   * URI the Wallet fetched by POST (OpenID4VP 1.0 §5.10).
+   *
+   * @param {string} storedJwt - the Request Object from {@link OID4VPVerifier.createAuthorizationRequest}.
+   * @param {AuthorizationRequestChanges} changes - the `walletNonce` and/or `audience` to set.
+   * @returns {Promise<string>} the re-signed Request Object.
+   * @throws {Error} `KMS` if the key cannot be loaded, `RequestObjectReissue` if nothing changes or
+   *   the stored object does not match this Verifier.
+   */
+  reissueAuthorizationRequest(storedJwt: string, changes: AuthorizationRequestChanges): Promise<string> {
+    return this.inner.reissueAuthorizationRequest(storedJwt, changes);
   }
 }

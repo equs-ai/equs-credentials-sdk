@@ -4,6 +4,7 @@ pub(crate) mod api;
 #[cfg(feature = "delegate-sd-jwt")]
 pub(crate) mod delegate;
 pub(crate) mod holder;
+mod reissue;
 pub(super) mod signer;
 pub(crate) mod verifier;
 pub(crate) mod x509;

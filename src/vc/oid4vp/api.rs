@@ -546,6 +546,33 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<VerifiedPresentationResponse, Error>;
+
+    /// Re-signs a stored Request Object with `changes` set and every other claim kept, for a
+    /// Request URI the Wallet fetched by POST (OpenID4VP 1.0 §5.10).
+    ///
+    /// The stored object must verify under this Verifier's key and carry its `client_id` and
+    /// `kid` / `x5c`. The DID document is not resolved.
+    ///
+    /// # Errors
+    ///
+    /// * [InternalError::KMS] - if the signing key cannot be loaded.
+    /// * [InternalError::RequestObjectReissue] - if nothing changes or the stored object does not
+    ///   match this Verifier.
+    /// * [InternalError::Oid4VpLib] - if signing fails.
+    async fn reissue_authorization_request(
+        &self,
+        stored_jwt: &str,
+        changes: AuthorizationRequestChanges,
+    ) -> Result<String, Error>;
+}
+
+/// The claims [`Verifier::reissue_authorization_request`] sets. An empty value counts as absent.
+#[derive(Debug, Clone, Default)]
+pub struct AuthorizationRequestChanges {
+    /// Set as `wallet_nonce`.
+    pub wallet_nonce: Option<String>,
+    /// Set as `aud`.
+    pub audience: Option<String>,
 }
 
 #[derive(Debug, Clone)]
